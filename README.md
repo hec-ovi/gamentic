@@ -39,7 +39,13 @@ The text model is an uncensored ("heretic") finetune of Gemma (`igorls/gemma-4-1
 
 ## 🖼️ Image (optional)
 
-ComfyUI (FLUX) behind a small REST adapter, generating scene and character art. Optional: the game is fully playable text-only, and art fills in as it is generated.
+**FLUX.2 [klein] 4B** (the distilled, few-step variant) running in ComfyUI behind a small REST adapter, generating scene and character art. The exact model set (Comfy-Org repacks, the official ComfyUI Klein template, around 16 GB total):
+
+- diffusion model: `flux-2-klein-4b.safetensors`
+- text encoder: `qwen_3_4b.safetensors` (FLUX.2 uses a Qwen3-4B encoder)
+- VAE: `flux2-vae.safetensors`
+
+Optional: the game is fully playable text-only, and art fills in as it is generated.
 
 ## 🔊 Voice (optional)
 
@@ -59,8 +65,8 @@ docker compose up -d
 |---|---|---|
 | 🎮 Frontend | http://localhost:5173 | Vanilla HTML / CSS / JS, served by nginx |
 | 🧠 Orchestrator (game API) | http://localhost:8000 | FastAPI, SQLite, httpx, Python 3.12 |
-| 📝 Text model | http://localhost:8080 | llama.cpp (Vulkan), Gemma 12B GGUF Q4 |
-| 🖼️ Image | http://localhost:9001 | ComfyUI + FLUX, FastAPI REST adapter |
+| 📝 Text model | http://localhost:8080 | llama.cpp (Vulkan), `gemma-4-12B-it-heretic` GGUF Q4 |
+| 🖼️ Image | http://localhost:9001 | ComfyUI + FLUX.2 [klein] 4B (distilled), FastAPI REST adapter |
 | 🔊 Voice | http://localhost:9002 | Kokoro-82M (ONNX) on CPU, FastAPI |
 
 Open the frontend, create a world by chatting with the story creator, and play.
