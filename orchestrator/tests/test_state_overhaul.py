@@ -105,7 +105,7 @@ def test_narrator_prompt_has_internal_transition_reasoning(client, fake_llm):
     sys = fake_llm.narrator_calls()[-1]["system"]
     assert "NEXT state" in sys
     assert "what CHANGES" in sys and "what is KEPT" in sys and "TRANSITIONS" in sys
-    assert "Never print these questions" in sys  # the questions guide tools/prose, not output
+    assert "Never print the questions" in sys  # the questions guide tools/prose, not output
 
 
 def test_internal_questions_do_not_leak_into_beats(client, fake_llm):

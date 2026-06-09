@@ -83,12 +83,12 @@ def _state_block(conn, gid: str) -> str:
     exits = repo.db.loads(sc["exits"], [])
     exit_text = ", ".join(f"{e['label']} -> {e['target']}" for e in exits) or "none yet"
     scene_items = repo.narrator_items(sc["items"]) or "nothing in view"
-    new_flag = "" if repo.scene_is_established(sc) else "   <- NEW PLACE: describe it, set its mood, reveal a way onward"
+    new_flag = "" if repo.scene_is_established(sc) else "   <- NEW PLACE"
 
     t = repo.game_time(conn, gid)
     lines = [
         f"CURRENT GOAL: {g['current_goal'] or 'none yet'}",
-        f"TIME: {t['label']} (story time; advance_time when the fiction skips ahead)",
+        f"TIME: {t['label']}",
         f"LOCATION: {pd['location']}  (scene mood: {sc['status']}){new_flag}",
         f"SCENE DESCRIPTION: {sc['description'] or '(not described yet)'}",
         f"PLAYER LIFE: {pd['life']}/{pd['max_life']}    POINTS: {pd['points']}",
@@ -100,8 +100,7 @@ def _state_block(conn, gid: str) -> str:
     if elsewhere_text:
         lines.append(f"CHARACTERS ELSEWHERE: {elsewhere_text}")
     if (g["arrival_note"] or "").strip():
-        lines.append(f"RETURNING: {g['arrival_note']} Decide what plausibly changed here "
-                     "while the player was away and apply it with tools before narrating.")
+        lines.append(f"RETURNING: {g['arrival_note']}")
     lines.append(f"ACTIVE QUESTS:\n{quest_text}")
     # The narrator is omniscient: it knows each character's secret so it can honor planted
     # facts (a hidden key, a chip under a table) and reveal them when the player earns it.
@@ -126,6 +125,21 @@ def _lore_block(conn, gid: str, focus_text: str, budget: int) -> str:
 
 # ---------- message builders ----------
 
+def _situation_blocks(conn, gid: str) -> str:
+    """Resolver-style dispatch: detailed protocol blocks are injected ONLY when the current
+    state triggers them (new place to furnish, a return after absence). The core system
+    prompt stays lean; the model reads furnish/returning guidance only on the turns it
+    actually applies, which is what a small model can follow."""
+    g = repo.get_game(conn, gid)
+    sc = repo.current_scene(conn, gid)
+    blocks = []
+    if not repo.scene_is_established(sc):
+        blocks.append(render("narrator.newplace.md"))
+    if (g["arrival_note"] or "").strip():
+        blocks.append(render("narrator.returning.md"))
+    return ("\n\n" + "\n\n".join(blocks)) if blocks else ""
+
+
 def build_narrator_messages(conn, gid: str, action: str, history_limit: int, lore_budget: int,
                             attempts: list[str] | None = None) -> list[dict]:
     g = repo.get_game(conn, gid)
@@ -137,6 +151,7 @@ def build_narrator_messages(conn, gid: str, action: str, history_limit: int, lor
         narrator_persona=g["narrator_persona"] or "",
         setting=g["setting"] or "unspecified",
         tone=g["tone"] or "cinematic",
+        situation=_situation_blocks(conn, gid),
         world_rules=constants.world_rules(),
         state=_state_block(conn, gid),
         lore=_lore_block(conn, gid, focus, lore_budget),
