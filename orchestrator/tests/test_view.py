@@ -154,6 +154,22 @@ def test_image_beats_stay_out_of_model_transcripts(client, fake_llm, monkeypatch
         assert any(b["kind"] == "image" for b in repo.all_beats(conn, gid))   # FE still gets it
 
 
+def test_creator_finalize_also_schedules_opening_scene_art(client, fake_llm, monkeypatch, tmp_path):
+    """Both creation paths must behave the same: the creator-finalize route schedules the
+    opening scene's art, not just character portraits (live-found: a finalized game had
+    full character sets but scene_image None until the first action)."""
+    from app import llm as llmmod
+    captured = {}
+    _enable(monkeypatch, tmp_path, captured)
+    client.post("/create/message", json={"session_id": "art", "message": "A pirate cove."})
+    fake_llm.finalize = llmmod.LLMReply(content="", tool_calls=[llmmod.ToolCall("save_world", {
+        "title": "Cove", "setting": "a pirate cove", "opening_scenario": "Waves crash.",
+        "start_location": "cove", "characters": [], "quests": [{"title": "x"}], "lore": []})])
+    r = client.post("/create/finalize", json={"session_id": "art"})
+    assert r.status_code == 200
+    assert "pirate cove" in captured.get("prompt", "")       # opening-scene art was generated
+
+
 def test_view_refuses_when_images_are_disabled(client, fake_llm):
     gid = client.post("/games", json=WORLD).json()["game_id"]
     assert client.post(f"/games/{gid}/view").status_code == 409     # IMAGE_ENABLED=false in tests

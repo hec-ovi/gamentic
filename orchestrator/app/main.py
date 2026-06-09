@@ -170,8 +170,10 @@ def create_finalize(body: dict, background_tasks: BackgroundTasks):
         with db.get_conn() as conn:
             gid = creator.finalize(conn, session_id)
             integrate.assign_voices_for_game(conn, gid)
+            scene_id = repo.current_scene(conn, gid)["id"]
     except ValueError as e:
         raise HTTPException(409, str(e))
     if settings.IMAGE_ENABLED:
-        background_tasks.add_task(integrate.generate_images_for_game, gid)
+        background_tasks.add_task(integrate.generate_images_for_game, gid)   # character portraits
+        background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)  # opening-scene art
     return {"game_id": gid}
