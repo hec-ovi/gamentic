@@ -1,10 +1,11 @@
 """Tiny persistent character -> voice registry.
 
 The orchestrator is the real source of truth for game state, but the voice
-service owns *voice assignment*: given a new character it picks a fitting, distinct
-preset (and a default speed / emotion), remembers it, and can synthesize that
-character's lines without the caller re-sending the voice each time. Backed by a
-JSON file so it survives restarts; small enough to keep wholly in memory.
+service owns *voice assignment*: given a new character it composes a fitting,
+distinct voice description (and a default speed / emotion), remembers it, and can
+synthesize that character's lines without the caller re-sending the voice each
+time. Backed by a JSON file so it survives restarts; small enough to keep wholly
+in memory.
 """
 from __future__ import annotations
 
@@ -39,6 +40,22 @@ class Registry:
         if self._path.exists():
             raw = json.loads(self._path.read_text())
             self._chars = {k: Character(**v) for k, v in raw.items()}
+            if self._migrate_legacy_voices():
+                self._save()
+
+    def _migrate_legacy_voices(self) -> bool:
+        """Re-assign voices that no longer resolve (e.g. Kokoro preset ids from
+        the pre-Maya1 era), so an old registry keeps working after the engine swap."""
+        migrated = False
+        for char in self._chars.values():
+            try:
+                voicelib.resolve_voice(char.voice_id)
+            except ValueError:
+                char.voice_id, char.speed = voicelib.assign_voice(
+                    key=char.id or char.name, description=char.description,
+                    exclude=[c.voice_id for c in self._chars.values() if c is not char])
+                migrated = True
+        return migrated
 
     def _save(self) -> None:
         config.ensure_dirs()
@@ -58,7 +75,6 @@ class Registry:
     def upsert(
         self,
         *,
-        available_voices: list[str],
         char_id: str,
         name: str,
         description: str = "",
@@ -82,7 +98,6 @@ class Registry:
                     voice_id, assigned_speed = existing.voice_id, existing.speed
                 else:
                     voice_id, assigned_speed = voicelib.assign_voice(
-                        available_voices,
                         key=char_id or name,
                         description=description,
                         gender=gender,

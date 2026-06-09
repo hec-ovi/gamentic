@@ -1,121 +1,76 @@
-"""Emotion approximation for a non-expressive engine.
+"""Inline emotion tags for Maya1.
 
-Kokoro has no native emotion tags, so we approximate at the service layer. Text
-may contain inline ``[tag]`` markers. Two kinds:
+The game (and the SPECS contract) writes emotion as ``[tag]`` markers in the
+line. Maya1 understands native inline ``<tag>`` markers, so this layer is now a
+thin translation instead of an approximation: ``[angry]`` becomes ``<angry>``,
+aliases collapse onto the model's vocabulary, and anything the model does not
+know is dropped so it is never read aloud.
 
-  - TONE tags set the delivery of the speech that follows (speed + gain), until
-    the next tone tag or end of line: ``[angry] [sad] [happy] [excited]
-    [whisper] [shout] [scared] [calm] [neutral]``.
-  - VOCALIZATION tags insert a short non-speech sound in place:
-    ``[laugh] [chuckle] [sigh] [gasp] [cough] [sob] [scream]`` plus ``[pause]``.
-    If a real clip exists in the vocalizations dir (e.g. ``laugh.wav``) it is used;
-    otherwise we synth a crude onomatopoeia fallback. Drop in real clips for quality.
-
-The parser turns a line into an ordered list of ops the synth engine renders and
-concatenates. Unknown ``[...]`` markers are dropped so they are never spoken.
+Two Maya1 gotchas encoded here (both observed on the box):
+  - Tags are single inline markers. A closing ``</whisper>`` is NOT syntax; the
+    model speaks it as the word "whisper". So only opening forms are emitted.
+  - ``[pause]`` has no Maya1 tag; an ellipsis produces a natural beat instead.
 """
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 
-# tone -> (speed multiplier, gain in dB)
-TONE = {
-    "neutral": (1.00, 0.0),
-    "calm": (0.96, -1.0),
-    "happy": (1.06, 1.0),
-    "excited": (1.15, 2.0),
-    "angry": (1.10, 3.0),
-    "shout": (1.08, 4.0),
-    "scared": (1.12, 0.0),
-    "sad": (0.88, -2.0),
-    "whisper": (0.95, -8.0),
+# Maya1's native inline tags (the documented set we rely on; verified on-box:
+# laugh, giggle, whisper, angry, gasp, scream).
+NATIVE = {
+    "laugh", "giggle", "chuckle", "sigh", "whisper",
+    "angry", "gasp", "cry", "scream", "excited", "sad",
 }
 
-# vocalization -> (onomatopoeia text, speed) synth fallback when no clip file exists
-VOCAL = {
-    "laugh": ("Ha ha ha ha!", 1.05),
-    "chuckle": ("Heh heh.", 0.98),
-    "sigh": ("Haaah.", 0.7),
-    "gasp": ("Ah!", 1.1),
-    "cough": ("Khh, khh.", 1.0),
-    "sob": ("Huh, huh, huh.", 0.85),
-    "scream": ("Aaaah!", 1.1),
-}
-
-# Some friendly aliases map onto the canonical tags above.
+# Friendly aliases from game text onto the native vocabulary.
 ALIASES = {
     "laughing": "laugh", "laughs": "laugh", "lol": "laugh",
-    "sighs": "sigh", "gasps": "gasp", "coughs": "cough",
-    "crying": "sob", "sobbing": "sob", "screaming": "scream",
-    "yell": "shout", "yelling": "shout", "shouting": "shout",
+    "sighs": "sigh", "gasps": "gasp",
+    "sob": "cry", "sobbing": "cry", "crying": "cry",
+    "screaming": "scream", "shout": "scream", "yell": "scream",
+    "yelling": "scream", "shouting": "scream",
     "whispering": "whisper", "furious": "angry", "mad": "angry",
-    "afraid": "scared", "terrified": "scared", "joyful": "happy",
+    "happy": "excited", "joyful": "excited",
+    "scared": "gasp", "afraid": "gasp", "terrified": "gasp",
 }
 
-# A bare [pause] or [pause:500] inserts silence (default 350ms, or N ms).
-DEFAULT_PAUSE_MS = 350
-
 _TAG_RE = re.compile(r"\[([a-zA-Z]+)(?::([0-9]+))?\]")
+_MAYA_TAG_RE = re.compile(r"</?([a-zA-Z_]+)>")
 
 
-@dataclass
-class Speak:
-    text: str
-    speed_mult: float
-    gain_db: float
+def canonical(tag: str) -> str | None:
+    """Map a raw tag word to a native Maya1 tag, or None if unsupported."""
+    t = tag.lower()
+    t = ALIASES.get(t, t)
+    return t if t in NATIVE else None
 
 
-@dataclass
-class Vocal:
-    tag: str  # canonical vocalization name
+def prepare(text: str, base_emotion: str = "neutral") -> str:
+    """Turn game text into Maya1 input: translate ``[tag]`` markers, sanitize any
+    raw ``<tag>`` the LLM may have emitted itself, and lead with the base emotion
+    when it maps to a native tag."""
 
-
-@dataclass
-class Silence:
-    ms: int
-
-
-Op = Speak | Vocal | Silence
-
-
-def parse(text: str, base_tone: str = "neutral") -> list[Op]:
-    """Parse a line into render ops. ``base_tone`` seeds the delivery (a character's
-    default emotion) before any inline tag overrides it."""
-    speed, gain = TONE.get(base_tone, TONE["neutral"])
-    ops: list[Op] = []
-    pos = 0
-    buf: list[str] = []
-
-    def flush():
-        chunk = "".join(buf).strip()
-        buf.clear()
-        if chunk:
-            ops.append(Speak(text=chunk, speed_mult=speed, gain_db=gain))
-
-    for m in _TAG_RE.finditer(text):
-        buf.append(text[pos:m.start()])
-        pos = m.end()
+    def replace(m: re.Match) -> str:
         raw = m.group(1).lower()
-        arg = m.group(2)
-        tag = ALIASES.get(raw, raw)
-        if tag == "pause":
-            flush()
-            ops.append(Silence(ms=int(arg) if arg else DEFAULT_PAUSE_MS))
-        elif tag in TONE:
-            flush()
-            speed, gain = TONE[tag]
-        elif tag in VOCAL:
-            flush()
-            ops.append(Vocal(tag=tag))
-        # unknown tag -> dropped (not appended to buf), never spoken
-    buf.append(text[pos:])
-    flush()
-    if not ops:  # all-tags or empty input: emit nothing speakable
-        return []
-    return ops
+        if raw == "pause":
+            return "..."
+        tag = canonical(raw)
+        return f"<{tag}>" if tag else ""
+
+    def sanitize(m: re.Match) -> str:
+        # keep valid opening tags, drop closing/unknown forms entirely
+        if m.group(0).startswith("</"):
+            return ""
+        return m.group(0) if m.group(1).lower() in NATIVE else ""
+
+    out = _MAYA_TAG_RE.sub(sanitize, _TAG_RE.sub(replace, text))
+    out = re.sub(r"[ \t]{2,}", " ", out).strip()
+    base = canonical(base_emotion)
+    if base and f"<{base}>" not in out:
+        out = f"<{base}> {out}"
+    return out
 
 
 def strip_tags(text: str) -> str:
-    """Plain text with every ``[tag]`` removed. Useful for logging / captions."""
-    return _TAG_RE.sub("", text).strip()
+    """Plain text with every ``[tag]`` and ``<tag>`` removed. For logs/captions."""
+    return re.sub(r"[ \t]{2,}", " ", _MAYA_TAG_RE.sub("", _TAG_RE.sub("", text))).strip()

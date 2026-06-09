@@ -4,7 +4,8 @@ name: gamentic
 # Services:
 #   llm-text  - Gemma 4 12B Heretic (Q4) via llama.cpp server, Vulkan backend (AMD Strix Halo APU)
 #   image     - ComfyUI (ROCm / TheRock 7.13)  [added from the ComfyUI repo]
-#   voice     - TTS  [TBD]
+#   llm-voice - Maya1-3B (Q4) via llama.cpp server, Vulkan backend (SNAC token generation)
+#   voice-api - decodes Maya1's SNAC tokens to audio on CPU, owns the /voice contract
 #
 # Config lives in .env. Models are mounted read-only from MODELS_DIR.
 
@@ -108,10 +109,15 @@ services:
         condition: service_healthy
     environment:
       - COMFY_URL=http://gamentic-image:8188
-      - IMAGE_DEFAULT_WIDTH=${IMAGE_DEFAULT_WIDTH:-1024}
-      - IMAGE_DEFAULT_HEIGHT=${IMAGE_DEFAULT_HEIGHT:-1024}
+      - IMAGE_DEFAULT_WIDTH=${IMAGE_DEFAULT_WIDTH:-768}
+      - IMAGE_DEFAULT_HEIGHT=${IMAGE_DEFAULT_HEIGHT:-768}
       - IMAGE_DEFAULT_STEPS=${IMAGE_DEFAULT_STEPS:-4}
       - IMAGE_GENERATE_TIMEOUT=${IMAGE_GENERATE_TIMEOUT:-120}
+      # Per-view character sizes (image-api owns these): face square, body tall full-body.
+      - IMAGE_CHAR_FACE_WIDTH=${IMAGE_CHAR_FACE_WIDTH:-512}
+      - IMAGE_CHAR_FACE_HEIGHT=${IMAGE_CHAR_FACE_HEIGHT:-512}
+      - IMAGE_CHAR_BODY_WIDTH=${IMAGE_CHAR_BODY_WIDTH:-640}
+      - IMAGE_CHAR_BODY_HEIGHT=${IMAGE_CHAR_BODY_HEIGHT:-1152}
     ports:
       - "${IMAGE_API_PORT:-9001}:9001"
     healthcheck:
@@ -123,10 +129,49 @@ services:
     networks:
       - gamentic
 
-  # voice-api: TTS service. Kokoro-82M on CPU (no GPU): non-autoregressive, runs
-  # ~6-8x faster than realtime on a few cores, so the iGPU stays free for the LLM
-  # and ComfyUI. The big autoregressive models (s2-pro/maya1) were too slow on this
-  # box (~realtime at best); see .research/local-tts-amd-strix-2026. Contract:
+  # llm-voice: Maya1-3B GGUF on llama.cpp Vulkan, generating SNAC audio tokens.
+  # Measured on the box: ~80 tok/s = ~1.1x realtime (SNAC needs ~83 tok/s for 1.0x).
+  # Kokoro (fast but flat, no real emotion) was dropped for quality 2026-06-09;
+  # Maya1 has native <laugh>/<whisper>/<angry>/<scream> tags and natural-language
+  # voice design. See .research/local-tts-amd-strix-2026.
+  llm-voice:
+    image: ghcr.io/ggml-org/llama.cpp:server-vulkan
+    container_name: gamentic-llm-voice
+    restart: unless-stopped
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "${RENDER_GID:-990}"
+      - "${VIDEO_GID:-44}"
+    volumes:
+      - ${MODELS_DIR:-/home/hec/models/gguf}:/models:ro
+    ports:
+      - "${LLM_VOICE_PORT:-9091}:8080"
+    command:
+      - --model
+      - /models/${LLM_VOICE_MODEL:-maya1/maya1-q4_k_m.gguf}
+      - --alias
+      - maya1
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --n-gpu-layers
+      - "99"
+      - --ctx-size
+      - "${LLM_VOICE_CTX:-4096}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+    networks:
+      - gamentic
+
+  # voice-api: the /voice contract. Builds Maya1 prompts (voice description +
+  # inline emotion tags), pulls SNAC tokens from llm-voice and decodes them to
+  # 24kHz audio with the ~80MB SNAC codec on CPU. Contract:
   # POST /voice/speak {text, voice_id} -> {audio_url}.
   voice-api:
     build:
@@ -135,14 +180,15 @@ services:
     container_name: gamentic-voice-api
     restart: unless-stopped
     environment:
-      - KOKORO_THREADS=${VOICE_THREADS:-4}
+      - MAYA1_URL=http://llm-voice:8080
     volumes:
-      # Kokoro model files (read-only) + writable data dir (generated audio,
-      # character registry, optional real vocalization clips).
-      - ${KOKORO_DIR:-/home/hec/models/kokoro}:/models/kokoro:ro
+      # writable data dir: generated audio + the character voice registry
       - ../voice-api/data:/data
     ports:
       - "${VOICE_API_PORT:-9002}:8080"
+    depends_on:
+      llm-voice:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://localhost:8080/health')\" || exit 1"]
       interval: 30s

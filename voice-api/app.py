@@ -1,11 +1,13 @@
 """Gamentic voice service (workstream E).
 
-Kokoro-82M on CPU. Honors the SPECS contract ``POST /voice/speak {text, voice_id}
+Maya1-3B (GGUF on llama.cpp Vulkan) generates SNAC tokens; this service decodes
+them on CPU. Honors the SPECS contract ``POST /voice/speak {text, voice_id}
 -> {audio_url}`` and adds a thin character layer (assign a voice at creation,
 retrieve it, speak as that character) plus a low-latency streaming endpoint.
 
-Emotion is approximated from inline ``[tag]`` markers (see emotion.py); the engine
-runs faster-than-realtime on CPU so the iGPU stays free for the LLM and images.
+Emotion is native: inline ``[tag]`` markers translate to Maya1 ``<tag>`` markers
+(laugh, whisper, angry, scream, ...), and ``voice_id`` is a natural-language
+voice description (or a named preset), so characters get real distinct voices.
 """
 from __future__ import annotations
 
@@ -23,11 +25,11 @@ import synth
 import voices as voicelib
 from characters import Registry
 
-_engine: synth.KokoroEngine | None = None
+_engine: synth.Maya1Engine | None = None
 _registry: Registry | None = None
 
 
-def engine() -> synth.KokoroEngine:
+def engine() -> synth.Maya1Engine:
     assert _engine is not None, "engine not initialised"
     return _engine
 
@@ -41,12 +43,12 @@ def registry() -> Registry:
 async def lifespan(app: FastAPI):
     global _engine, _registry
     config.ensure_dirs()
-    _engine = synth.KokoroEngine()
+    _engine = synth.Maya1Engine()
     _registry = Registry()
     yield
 
 
-app = FastAPI(title="Gamentic Voice API", version="1.0", lifespan=lifespan)
+app = FastAPI(title="Gamentic Voice API", version="2.0", lifespan=lifespan)
 
 
 # --- schemas --------------------------------------------------------------
@@ -55,7 +57,7 @@ class SpeakRequest(BaseModel):
     text: str = Field(..., min_length=1)
     voice_id: str = config.DEFAULT_VOICE
     speed: float = Field(1.0, gt=0.1, le=3.0)
-    emotion: str = "neutral"  # base tone; inline [tags] override per-span
+    emotion: str = "neutral"  # base tone; inline [tags] add per-span emotion
     format: str = "url"        # "url" -> {audio_url} | "base64" -> {audio_base64}
 
 
@@ -93,6 +95,8 @@ def _synth_to_payload(text: str, voice_id: str, speed: float, base_emotion: str,
         wav = engine().render(text, voice_id, speed=speed, base_emotion=base_emotion)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except synth.UpstreamError as e:
+        raise HTTPException(status_code=502, detail=str(e))
     if wav.size == 0:
         raise HTTPException(status_code=400, detail="nothing to speak after tag parsing")
     dur = synth.duration_s(wav)
@@ -109,15 +113,16 @@ def _synth_to_payload(text: str, voice_id: str, speed: float, base_emotion: str,
 @app.get("/health")
 def health() -> dict:
     ok = _engine is not None
-    return {"status": "ok" if ok else "loading",
-            "voices": len(engine().available_voices()) if ok else 0,
+    upstream = engine().upstream_ok() if ok else False
+    return {"status": "ok" if ok and upstream else ("degraded" if ok else "loading"),
+            "upstream": upstream,
+            "voices": len(voicelib.PRESETS),
             "sample_rate": config.SAMPLE_RATE}
 
 
 @app.get("/voices")
-def list_voices(all: bool = False) -> dict:
-    infos = voicelib.catalog(engine().available_voices(), english_only=not all)
-    return {"voices": [vi.__dict__ for vi in infos]}
+def list_voices() -> dict:
+    return {"voices": [vi.__dict__ for vi in voicelib.catalog()]}
 
 
 @app.post("/voice/assign")
@@ -126,7 +131,7 @@ def assign(req: AssignRequest) -> dict:
     if not key:
         raise HTTPException(status_code=400, detail="name or seed required")
     voice_id, speed = voicelib.assign_voice(
-        engine().available_voices(), key=key, description=req.description,
+        key=key, description=req.description,
         gender=req.gender, accent=req.accent, exclude=req.exclude)
     return {"voice_id": voice_id, "speed": speed}
 
@@ -139,7 +144,7 @@ def speak(req: SpeakRequest) -> dict:
 @app.post("/voice/stream")
 async def stream(req: SpeakRequest):
     try:
-        voicelib.parse_voice_id(req.voice_id)
+        voicelib.resolve_voice(req.voice_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -169,9 +174,8 @@ def get_audio(name: str):
 def create_character(req: CharacterRequest) -> dict:
     try:
         if req.voice_id is not None:
-            voicelib.parse_voice_id(req.voice_id)
+            voicelib.resolve_voice(req.voice_id)
         char = registry().upsert(
-            available_voices=engine().available_voices(),
             char_id=req.id, name=req.name, description=req.description,
             gender=req.gender, accent=req.accent, voice_id=req.voice_id,
             speed=req.speed, base_emotion=req.base_emotion)

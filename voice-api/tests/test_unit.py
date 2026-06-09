@@ -1,103 +1,119 @@
-"""Pure-unit tests for the tag parser and voice policy. No model required."""
+"""Pure-unit tests: tag translation, voice design, frame unpacking. No model,
+no upstream needed."""
 from __future__ import annotations
 
-import emotion as emo
-import voices as voicelib
+import pytest
+
+import emotion
+import synth
+import voices
 
 
-def test_tone_tag_sets_delivery():
-    ops = emo.parse("[angry] How dare you")
-    assert len(ops) == 1
-    assert isinstance(ops[0], emo.Speak)
-    assert ops[0].text == "How dare you"
-    assert ops[0].speed_mult == emo.TONE["angry"][0]
-    assert ops[0].gain_db == emo.TONE["angry"][1]
+# --- emotion.prepare ------------------------------------------------------
+
+def test_game_tags_become_maya_tags():
+    assert emotion.prepare("[angry] Get out!") == "<angry> Get out!"
+    assert emotion.prepare("Ha! [laugh] Classic.") == "Ha! <laugh> Classic."
 
 
-def test_vocalization_becomes_its_own_op():
-    ops = emo.parse("Ha. [laugh] Got you.")
-    kinds = [type(o).__name__ for o in ops]
-    assert kinds == ["Speak", "Vocal", "Speak"]
-    assert ops[1].tag == "laugh"
+def test_aliases_collapse_to_native_vocabulary():
+    assert emotion.prepare("[shout] Charge!") == "<scream> Charge!"
+    assert emotion.prepare("[sob] It's over.") == "<cry> It's over."
+    assert emotion.prepare("[happy] We won!") == "<excited> We won!"
 
 
-def test_aliases_and_pause():
-    ops = emo.parse("[furious] Stop! [pause:500] [laughing] done")
-    assert ops[0].speed_mult == emo.TONE["angry"][0]  # furious -> angry
-    silences = [o for o in ops if isinstance(o, emo.Silence)]
-    assert silences and silences[0].ms == 500
-    vocals = [o for o in ops if isinstance(o, emo.Vocal)]
-    assert vocals and vocals[0].tag == "laugh"  # laughing -> laugh
+def test_unknown_tags_are_dropped_not_spoken():
+    assert emotion.prepare("[flibber] Hello [wobble] there") == "Hello there"
 
 
-def test_unknown_tag_is_dropped_not_spoken():
-    ops = emo.parse("Hello [bogus] world")
-    assert len(ops) == 1
-    assert ops[0].text == "Hello  world".replace("  ", " ") or "bogus" not in ops[0].text
-    assert "bogus" not in emo.strip_tags("Hello [bogus] world")
+def test_pause_becomes_a_beat():
+    assert emotion.prepare("Wait. [pause] Listen.") == "Wait. ... Listen."
+    assert emotion.prepare("Wait. [pause:800] Listen.") == "Wait. ... Listen."
 
 
-def test_base_emotion_seeds_tone():
-    ops = emo.parse("just text", base_tone="sad")
-    assert ops[0].speed_mult == emo.TONE["sad"][0]
+def test_closing_maya_tags_are_sanitized():
+    # observed on-box: the model READS closing tags aloud ("...whisper"), so they
+    # must never reach it, even if the game LLM emits them directly
+    assert emotion.prepare("<whisper> quiet </whisper> now") == "<whisper> quiet now"
 
 
-def test_empty_after_tags_yields_no_ops():
-    assert emo.parse("[angry][whisper]") == []
+def test_unknown_raw_maya_tags_are_sanitized():
+    assert emotion.prepare("<explode> boom") == "boom"
 
 
-def test_parse_plain_voice():
-    assert voicelib.parse_voice_id("af_heart") == [("af_heart", 1.0)]
+def test_base_emotion_prepends_once():
+    assert emotion.prepare("Hello.", "angry") == "<angry> Hello."
+    # already present inline -> not doubled
+    assert emotion.prepare("[angry] Hello.", "angry") == "<angry> Hello."
+    # unsupported base tones add nothing
+    assert emotion.prepare("Hello.", "neutral") == "Hello."
+    assert emotion.prepare("Hello.", "sarcastic") == "Hello."
 
 
-def test_parse_blend_normalizes_weights():
-    parts = voicelib.parse_voice_id("af_heart:0.6,am_adam:0.4")
-    names = [p[0] for p in parts]
-    weights = [p[1] for p in parts]
-    assert names == ["af_heart", "am_adam"]
-    assert abs(sum(weights) - 1.0) < 1e-6
-    assert abs(weights[0] - 0.6) < 1e-6
+def test_strip_tags_for_captions():
+    assert emotion.strip_tags("[angry] Get <laugh> out [pause]") == "Get out"
 
 
-def test_bad_voice_spec_raises():
-    import pytest
+# --- voices ----------------------------------------------------------------
+
+def test_resolve_preset_and_freeform():
+    assert voices.resolve_voice("narrator").startswith("Male voice")
+    free = "Robot voice, monotone, clipped delivery"
+    assert voices.resolve_voice(free) == free
+
+
+def test_resolve_rejects_unknown_single_word():
     with pytest.raises(ValueError):
-        voicelib.parse_voice_id("NOT A VOICE")
+        voices.resolve_voice("af_heart")  # old kokoro ids are no longer valid
+    with pytest.raises(ValueError):
+        voices.resolve_voice("")
 
 
-def test_voice_info_prefix_metadata():
-    vi = voicelib.voice_info("bm_george")
-    assert vi.gender == "male"
-    assert vi.lang_code == "en-gb"
-    assert "British" in vi.language
+def test_assignment_is_deterministic():
+    a1, _ = voices.assign_voice(key="npc-1", description="a young female bard")
+    a2, _ = voices.assign_voice(key="npc-1", description="a young female bard")
+    assert a1 == a2
 
 
-def test_assign_is_deterministic_and_respects_description():
-    pool = ["af_heart", "am_adam", "bm_george", "bf_emma", "am_echo"]
-    v1, sp1 = voicelib.assign_voice(pool, key="Grimgar", description="a deep old ogre")
-    v2, sp2 = voicelib.assign_voice(pool, key="Grimgar", description="a deep old ogre")
-    assert (v1, sp1) == (v2, sp2)          # deterministic
-    assert voicelib.voice_info(v1).gender == "male"  # ogre -> male bias
-    assert sp1 < 1.0                        # "deep/old" -> slower delivery
+def test_assignment_reads_the_character_sheet():
+    v, _ = voices.assign_voice(key="x", description="an old gravelly wizard king")
+    assert v.startswith("Male voice, 70 years old")
+    assert "British accent" in v  # "wizard" is a british-flavored word
+    v2, _ = voices.assign_voice(key="y", description="a young female rogue")
+    assert v2.startswith("Female voice, early 20s")
+    v3, _ = voices.assign_voice(key="z", description="an evil necromancer queen")
+    assert v3.startswith("Female voice")
+    assert "menacing" in v3
 
 
-def test_female_description_gets_female_voice():
-    # regression: "female" must not trigger the male bias via the "male" substring,
-    # nor "woman" via "man".
-    pool = ["af_heart", "af_bella", "am_adam", "am_echo", "bf_emma", "bm_george"]
-    for desc in ("a young cheerful female rogue", "a wise old woman"):
-        v, _ = voicelib.assign_voice(pool, key="C", description=desc)
-        assert voicelib.voice_info(v).gender == "female", f"{desc!r} -> {v}"
+def test_assignment_avoids_used_voices():
+    used = []
+    for i in range(4):
+        v, _ = voices.assign_voice(key="same-sheet", description="a male warrior", exclude=used)
+        assert v not in used
+        used.append(v)
 
 
-def test_male_description_gets_male_voice():
-    pool = ["af_heart", "af_bella", "am_adam", "am_echo", "bf_emma", "bm_george"]
-    v, _ = voicelib.assign_voice(pool, key="C", description="a gruff male warrior")
-    assert voicelib.voice_info(v).gender == "male"
+def test_gender_word_boundaries():
+    v, _ = voices.assign_voice(key="k", description="a female warrior")  # "male" inside "female"
+    assert v.startswith("Female voice")
 
 
-def test_assign_excludes_used_voices_when_possible():
-    pool = ["am_adam", "am_echo"]
-    first, _ = voicelib.assign_voice(pool, key="A", gender="male")
-    second, _ = voicelib.assign_voice(pool, key="B", gender="male", exclude=[first])
-    assert second != first
+# --- synth helpers ----------------------------------------------------------
+
+def test_frames_truncate_at_code_end_and_partials():
+    toks = [synth.SNAC_MIN + i for i in range(16)]  # 2 full frames + 2 leftovers
+    assert len(synth._frames(toks)) == 2
+    with_end = toks[:7] + [synth.CODE_END] + toks[7:]
+    assert len(synth._frames(with_end)) == 1  # everything after CODE_END ignored
+
+
+def test_frames_ignore_non_snac_tokens():
+    toks = [1, 2, 3] + [synth.SNAC_MIN + i for i in range(7)] + [99]
+    assert len(synth._frames(toks)) == 1
+
+
+def test_speed_pacing_fold():
+    assert "slow unhurried pacing" in synth._with_pacing("X", 0.8)
+    assert "fast urgent pacing" in synth._with_pacing("X", 1.3)
+    assert synth._with_pacing("X", 1.0) == "X"

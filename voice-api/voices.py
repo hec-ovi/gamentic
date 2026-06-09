@@ -1,15 +1,16 @@
-"""Voice catalog + per-character assignment policy.
+"""Voice design + per-character assignment policy.
 
-Kokoro voice ids encode language and gender in the first two letters
-(e.g. ``af_heart`` = American/female, ``bm_george`` = British/male). We derive
-metadata from that prefix instead of hand-maintaining a table, so the catalog
-always matches whatever the loaded voices file actually contains.
+Maya1 conditions on a natural-language voice description, so a ``voice_id`` is
+no longer a preset file name. It is either:
 
-A ``voice_id`` accepted everywhere can be either:
-  - a plain preset name: ``"af_heart"``
-  - a blend spec: ``"af_heart:0.6,am_adam:0.4"`` (weighted mix of style vectors)
-The blend form multiplies the ~28 English presets into a much larger space of
-distinct character voices without any cloning.
+  - a free-form description: ``"Female voice, 30s, soft breathy timbre, calm"``
+    (anything with whitespace is taken verbatim), or
+  - a named preset from the catalog below: ``"narrator"``, ``"elder_male"``, ...
+    convenient short ids for the orchestrator and the frontend.
+
+Assignment composes a description from the character sheet (gender / age /
+accent words in the free text) plus hash-picked timbre and personality traits,
+so the same character always gets the same distinct voice.
 """
 from __future__ import annotations
 
@@ -17,98 +18,88 @@ import hashlib
 import re
 from dataclasses import dataclass
 
-# First letter -> (language label, lang code passed to Kokoro).
-_LANG = {
-    "a": ("American English", "en-us"),
-    "b": ("British English", "en-gb"),
-    "e": ("Spanish", "es"),
-    "f": ("French", "fr-fr"),
-    "h": ("Hindi", "hi"),
-    "i": ("Italian", "it"),
-    "j": ("Japanese", "ja"),
-    "p": ("Brazilian Portuguese", "pt-br"),
-    "z": ("Mandarin Chinese", "zh"),
-}
-_GENDER = {"f": "female", "m": "male"}
-
-# Voices we surface as game-character options by default (English only). Other
-# languages stay available by exact id but are hidden from the default catalog.
-ENGLISH_PREFIXES = ("af_", "am_", "bf_", "bm_")
-
 
 @dataclass(frozen=True)
 class VoiceInfo:
     voice_id: str
     gender: str
-    accent: str
-    language: str
-    lang_code: str
-    label: str  # human-friendly, e.g. "George (British English, male)"
+    description: str
+    label: str
 
 
-def voice_info(voice_id: str) -> VoiceInfo:
-    """Derive metadata for a single preset id from its prefix."""
-    lang_letter = voice_id[0:1]
-    gender_letter = voice_id[1:2]
-    language, lang_code = _LANG.get(lang_letter, ("Unknown", "en-us"))
-    gender = _GENDER.get(gender_letter, "neutral")
-    accent = language
-    name = voice_id.split("_", 1)[-1].capitalize()
-    return VoiceInfo(
-        voice_id=voice_id,
-        gender=gender,
-        accent=accent,
-        language=language,
-        lang_code=lang_code,
-        label=f"{name} ({language}, {gender})",
-    )
+# Short ids the rest of the stack can use without writing prose.
+PRESETS: dict[str, tuple[str, str]] = {
+    # id -> (gender, description)
+    "narrator": ("male", "Male voice, 40s, warm medium pitch, measured storyteller pacing, engaging narrator tone"),
+    "narrator_female": ("female", "Female voice, 30s, warm clear pitch, measured storyteller pacing, engaging narrator tone"),
+    "elder_male": ("male", "Male voice, 70 years old, deep gravelly pitch, slow deliberate pacing, wise weathered tone"),
+    "elder_female": ("female", "Female voice, 70 years old, low warm pitch, slow deliberate pacing, kind weathered tone"),
+    "adult_male": ("male", "Male voice, 30s, medium pitch, natural conversational pacing, confident friendly tone"),
+    "adult_female": ("female", "Female voice, 30s, medium pitch, natural conversational pacing, confident friendly tone"),
+    "young_male": ("male", "Male voice, early 20s, bright energetic pitch, quick pacing, eager playful tone"),
+    "young_female": ("female", "Female voice, early 20s, bright high pitch, quick pacing, lively playful tone"),
+    "villain_male": ("male", "Male voice, 50s, deep cold pitch, slow menacing pacing, calculating villainous tone"),
+    "villain_female": ("female", "Female voice, 40s, low silky pitch, slow menacing pacing, cruel commanding tone"),
+    "child": ("female", "Child voice, around 10 years old, high small pitch, quick curious pacing, innocent tone"),
+    "brute": ("male", "Male voice, 40s, very deep booming pitch, slow heavy pacing, gruff intimidating tone"),
+}
 
 
-def catalog(all_voice_ids: list[str], english_only: bool = True) -> list[VoiceInfo]:
-    ids = sorted(all_voice_ids)
-    if english_only:
-        ids = [v for v in ids if v.startswith(ENGLISH_PREFIXES)]
-    return [voice_info(v) for v in ids]
+def catalog() -> list[VoiceInfo]:
+    return [
+        VoiceInfo(voice_id=vid, gender=g, description=d,
+                  label=f"{vid.replace('_', ' ').title()} ({g})")
+        for vid, (g, d) in sorted(PRESETS.items())
+    ]
 
 
-# --- blend spec parsing ---------------------------------------------------
+def resolve_voice(voice_id: str) -> str:
+    """Resolve a voice_id to the Maya1 description string.
 
-_BLEND_RE = re.compile(r"^\s*([a-z]{2}_[a-z]+)\s*(?::\s*([0-9]*\.?[0-9]+)\s*)?$")
-
-
-def parse_voice_id(voice_id: str) -> list[tuple[str, float]]:
-    """Parse a voice_id into a list of (preset_name, weight).
-
-    Plain name -> [(name, 1.0)]. Blend -> normalized weights summing to 1.0.
-    Raises ValueError on malformed specs so the API can return a clean 400.
+    Raises ValueError on an id that is neither a preset nor a plausible
+    description, so the API can return a clean 400.
     """
-    parts = [p for p in voice_id.split(",") if p.strip()]
-    if not parts:
+    v = (voice_id or "").strip()
+    if not v:
         raise ValueError("empty voice_id")
-    out: list[tuple[str, float]] = []
-    for part in parts:
-        m = _BLEND_RE.match(part)
-        if not m:
-            raise ValueError(f"bad voice spec: {part!r}")
-        name = m.group(1)
-        weight = float(m.group(2)) if m.group(2) is not None else 1.0
-        out.append((name, weight))
-    total = sum(w for _, w in out)
-    if total <= 0:
-        raise ValueError("voice weights sum to zero")
-    return [(name, w / total) for name, w in out]
+    if v in PRESETS:
+        return PRESETS[v][1]
+    if any(c.isspace() for c in v):
+        return v  # free-form description, pass through
+    raise ValueError(f"unknown voice preset: {v!r} (use a preset name or a free-form description)")
 
 
 # --- per-character assignment policy --------------------------------------
 
-# Description keywords that bias voice selection and default delivery speed.
-# Matched as whole words (see _has): "male" must NOT fire inside "female", and
-# "man" must NOT fire inside "woman".
-_DEEP_WORDS = ("old", "deep", "gravelly", "gruff", "elder", "ancient", "low", "booming", "giant", "ogre")
-_BRIGHT_WORDS = ("young", "child", "high", "bright", "cheerful", "girl", "boy", "small", "fairy", "squeaky")
-_MALE_WORDS = ("man", "male", "king", "wizard", "warrior", "lord", "father", "boy", "he", "his", "knight", "monk", "ogre", "dwarf")
-_FEMALE_WORDS = ("woman", "female", "queen", "witch", "lady", "mother", "girl", "she", "her", "sorceress", "priestess", "maiden")
+# Description keywords that bias voice design. Matched as whole words (see
+# _has): "male" must NOT fire inside "female", "man" must NOT fire inside "woman".
+_OLD_WORDS = ("old", "elder", "ancient", "elderly", "aged", "grandfather", "grandmother", "venerable")
+_YOUNG_WORDS = ("young", "child", "girl", "boy", "small", "fairy", "teen", "kid", "little")
+_DEEP_WORDS = ("deep", "gravelly", "gruff", "low", "booming", "giant", "ogre", "rough", "husky")
+_BRIGHT_WORDS = ("high", "bright", "cheerful", "squeaky", "sweet", "soft")
+_MALE_WORDS = ("man", "male", "king", "wizard", "warrior", "lord", "father", "boy", "he", "his", "him", "knight", "monk", "ogre", "dwarf", "prince")
+_FEMALE_WORDS = ("woman", "female", "queen", "witch", "lady", "mother", "girl", "she", "her", "hers", "sorceress", "priestess", "maiden", "princess")
 _BRITISH_WORDS = ("noble", "royal", "posh", "british", "english", "knight", "lord", "lady", "wizard")
+_DARK_WORDS = ("villain", "evil", "dark", "cruel", "sinister", "menacing", "demon", "necromancer", "assassin")
+
+# Trait pools the hash picks from, so different characters with the same sheet
+# still sound distinct. Measured on-box (speaker embeddings over interleaved
+# lines): DISTINCTIVE descriptions anchor a consistent voice across lines while
+# generic ones ("medium pitch, conversational") audibly drift, so every pool
+# entry is a strong, specific anchor and same-gender picks are spaced far apart.
+_PITCH = {
+    "male": ["very deep rumbling bass pitch", "low gravelly rough pitch",
+             "rich resonant baritone pitch", "higher clear tenor pitch"],
+    "female": ["low smoky husky pitch", "warm mellow rounded pitch",
+               "bright crisp clear pitch", "high airy delicate pitch"],
+}
+_PERSONALITY = [
+    "confident steady tone", "warm friendly tone", "dry sardonic tone",
+    "earnest sincere tone", "playful mischievous tone", "stern commanding tone",
+    "gentle thoughtful tone", "brisk no-nonsense tone",
+]
+_PACING = ["natural conversational pacing", "measured deliberate pacing", "quick lively pacing"]
+_ACCENT = ["American accent", "British accent"]
 
 
 def _has(text: str, words) -> bool:
@@ -116,28 +107,7 @@ def _has(text: str, words) -> bool:
     return any(re.search(rf"\b{re.escape(w)}\b", text) for w in words)
 
 
-def _bias_from_description(description: str) -> tuple[str | None, str | None, float]:
-    """Return (gender|None, accent_letter|None, speed) inferred from free text."""
-    d = description.lower()
-    female = _has(d, _FEMALE_WORDS)
-    male = _has(d, _MALE_WORDS)
-    # Only set a gender when exactly one side matches; ambiguous -> leave to caller/hash.
-    gender = None
-    if female and not male:
-        gender = "female"
-    elif male and not female:
-        gender = "male"
-    accent = "b" if _has(d, _BRITISH_WORDS) else None
-    speed = 1.0
-    if _has(d, _DEEP_WORDS):
-        speed = 0.92
-    if _has(d, _BRIGHT_WORDS):
-        speed = 1.08
-    return gender, accent, speed
-
-
 def assign_voice(
-    all_voice_ids: list[str],
     *,
     key: str,
     description: str = "",
@@ -145,28 +115,57 @@ def assign_voice(
     accent: str | None = None,
     exclude: list[str] | None = None,
 ) -> tuple[str, float]:
-    """Deterministically pick a distinct English preset for a new character.
-
-    Selection is a stable hash of ``key`` (character id or name) over the filtered
-    candidate list, so the same character always gets the same voice, but different
-    characters spread across the catalog. ``exclude`` (already-used voices) is
-    avoided when possible. Returns ``(voice_id, default_speed)``.
+    """Deterministically compose a distinct Maya1 voice description for a new
+    character. Stable hash of ``key`` (character id or name) picks the traits, so
+    the same character always gets the same voice. ``exclude`` (descriptions
+    already in use) bumps the hash until the result is fresh. Returns
+    ``(voice_description, default_speed)``; speed is kept for contract
+    compatibility (folded into pacing words by the engine).
     """
-    exclude = set(exclude or [])
-    d_gender, d_accent, speed = _bias_from_description(description)
-    gender = gender or d_gender
-    accent_letter = {"american": "a", "british": "b"}.get((accent or "").lower(), accent) or d_accent
+    d = (description or "").lower()
+    female = _has(d, _FEMALE_WORDS)
+    male = _has(d, _MALE_WORDS)
+    if not gender:
+        if female and not male:
+            gender = "female"
+        elif male and not female:
+            gender = "male"
+    excluded = set(exclude or [])
 
-    cands = [voice_info(v) for v in all_voice_ids if v.startswith(ENGLISH_PREFIXES)]
-    if gender:
-        g = [c for c in cands if c.gender == gender] or cands
-        cands = g
-    if accent_letter in ("a", "b"):
-        a = [c for c in cands if c.voice_id[0] == accent_letter] or cands
-        cands = a
-    cands = sorted(cands, key=lambda c: c.voice_id)
+    for salt in range(8):
+        h = int(hashlib.sha256(f"{key}\x1f{salt}".encode("utf-8")).hexdigest(), 16)
+        g = gender or ("female" if h % 2 else "male")
 
-    fresh = [c for c in cands if c.voice_id not in exclude] or cands
-    h = int(hashlib.sha256(key.encode("utf-8")).hexdigest(), 16)
-    chosen = fresh[h % len(fresh)]
-    return chosen.voice_id, speed
+        if _has(d, _OLD_WORDS):
+            age = "70 years old"
+        elif _has(d, _YOUNG_WORDS):
+            age = "early 20s"
+        else:
+            age = ["30s", "40s", "50s"][h // 2 % 3]
+
+        if _has(d, _DEEP_WORDS):
+            pitch = "very deep gravelly pitch" if g == "male" else "low smoky pitch"
+        elif _has(d, _BRIGHT_WORDS):
+            pitch = "bright clear pitch"
+        else:
+            pitch = _PITCH[g][h // 7 % len(_PITCH[g])]
+
+        if _has(d, _DARK_WORDS):
+            personality = "cold menacing tone"
+        else:
+            personality = _PERSONALITY[h // 31 % len(_PERSONALITY)]
+
+        pacing = _PACING[h // 311 % len(_PACING)]
+        # always name an accent: it is one more anchor for cross-line consistency
+        if (accent or "").lower() == "british" or (not accent and _has(d, _BRITISH_WORDS)):
+            acc = ", British accent"
+        elif (accent or "").lower() not in ("", "none"):
+            acc = f", {accent} accent"
+        else:
+            acc = f", {_ACCENT[h // 1009 % len(_ACCENT)]}"
+
+        noun = "Male voice" if g == "male" else "Female voice"
+        voice = f"{noun}, {age}, {pitch}, {pacing}, {personality}{acc}"
+        if voice not in excluded:
+            return voice, 1.0
+    return voice, 1.0  # catalog exhausted for this sheet; reuse is acceptable

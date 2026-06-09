@@ -5,25 +5,30 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-# Model files (mounted read-only in the container). Defaults match the host layout.
-KOKORO_MODEL = os.environ.get("KOKORO_MODEL", "/home/hec/models/kokoro/kokoro-v1.0.onnx")
-KOKORO_VOICES = os.environ.get("KOKORO_VOICES", "/home/hec/models/kokoro/voices-v1.0.bin")
+# The Maya1 token server: a llama.cpp server-vulkan instance holding the GGUF.
+# In compose this is the llm-voice service; locally it is whatever port you ran it on.
+MAYA1_URL = os.environ.get("MAYA1_URL", "http://localhost:9091")
+MAYA1_TIMEOUT = float(os.environ.get("MAYA1_TIMEOUT", "120"))
 
-# Writable data dir: generated audio, the character registry, and optional real
-# vocalization clips that override the synthesized fallbacks.
+# SNAC neural codec decoder (CPU, ~80MB). Resolved through the HF cache; the
+# Docker image bakes the weights in so the container never hits the network.
+SNAC_MODEL = os.environ.get("SNAC_MODEL", "hubertsiuzdak/snac_24khz")
+
+# Sampling defaults from the maya1 model card.
+MAYA1_TEMPERATURE = float(os.environ.get("MAYA1_TEMPERATURE", "0.4"))
+MAYA1_TOP_P = float(os.environ.get("MAYA1_TOP_P", "0.9"))
+MAYA1_REPEAT_PENALTY = float(os.environ.get("MAYA1_REPEAT_PENALTY", "1.1"))
+MAYA1_MAX_TOKENS = int(os.environ.get("MAYA1_MAX_TOKENS", "2048"))
+
+# Writable data dir: generated audio and the character registry.
 DATA_DIR = Path(os.environ.get("VOICE_DATA_DIR", str(Path(__file__).parent / "data")))
 AUDIO_DIR = DATA_DIR / "audio"
-VOCAL_DIR = Path(os.environ.get("VOICE_VOCAL_DIR", str(DATA_DIR / "vocalizations")))
 CHARACTERS_FILE = DATA_DIR / "characters.json"
 
-SAMPLE_RATE = 24000  # Kokoro output rate, fixed by the model
-DEFAULT_VOICE = os.environ.get("VOICE_DEFAULT", "af_heart")
-DEFAULT_LANG = os.environ.get("VOICE_LANG", "en-us")
-
-# onnxruntime intra-op threads. The model is tiny, so a few threads already run
-# several times faster than realtime; capping keeps voice a good neighbour to the
-# LLM/image work. 0 = let onnxruntime decide (uses all cores).
-KOKORO_THREADS = int(os.environ.get("KOKORO_THREADS", "4"))
+SAMPLE_RATE = 24000  # SNAC 24kHz codec, fixed by the model
+DEFAULT_VOICE = os.environ.get(
+    "VOICE_DEFAULT",
+    "Male voice, 40s, warm medium pitch, measured storyteller pacing, engaging narrator tone")
 
 # How long to keep generated audio before it can be cleaned up (best-effort).
 AUDIO_TTL_SECONDS = int(os.environ.get("VOICE_AUDIO_TTL", "3600"))
@@ -31,4 +36,3 @@ AUDIO_TTL_SECONDS = int(os.environ.get("VOICE_AUDIO_TTL", "3600"))
 
 def ensure_dirs() -> None:
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-    VOCAL_DIR.mkdir(parents=True, exist_ok=True)
