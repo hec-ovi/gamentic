@@ -32,6 +32,45 @@ def _slug(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")[:40] or "img"
 
 
+# ---------- image prompt composition ----------
+# The model's appearance text is the source, but two failure modes are netted
+# deterministically here: gender drift (a "woman" rendered ambiguous because the
+# appearance never says so) and rendered text (FLUX draws any words it finds an
+# excuse for: sign names, lettering, watermarks).
+
+_FEMALE = re.compile(r"\b(woman|women|female|girl|lady|she|her|hers)\b", re.I)
+_MALE = re.compile(r"\b(man|men|male|boy|guy|gentleman|he|him|his)\b", re.I)
+_QUOTED = re.compile(r'["“”][^"“”]*["“”]')   # "..." spans (incl. curly quotes)
+NO_TEXT_GUARD = "no readable text, no lettering, no captions, no watermark"
+
+
+def _gender_hint(*texts) -> str:
+    blob = " ".join(t or "" for t in texts)
+    if _FEMALE.search(blob):
+        return "female"
+    if _MALE.search(blob):
+        return "male"
+    return ""
+
+
+def character_descriptor(c) -> str:
+    """The outgoing image descriptor: explicit gender first, then looks, then the no-text guard.
+    If the appearance itself names no gender, one is inferred from description/persona pronouns."""
+    base = (c["appearance"] or c["description"] or c["persona"] or c["name"]).strip()
+    if not _gender_hint(base):
+        hint = _gender_hint(c["description"], c["persona"], c["name"])
+        if hint:
+            base = f"{hint}, {base}"
+    return f"{base}, {NO_TEXT_GUARD}"
+
+
+def scene_prompt(sc, style: str) -> str:
+    """Scene art prompt: the description with quoted spans stripped (sign names and spoken
+    lines provoke garbled rendered text), plus the world style and the no-text guard."""
+    desc = _QUOTED.sub("", sc["description"] or "").strip() or sc["name"]
+    return ", ".join(x for x in [desc, style, NO_TEXT_GUARD] if x)
+
+
 def _persist(gid: str, src_url, name: str):
     """Download an image from image-api into the per-game folder; return the /media URL.
     Falls back to the original image-api URL if the download fails (still works, not persisted)."""
@@ -56,8 +95,7 @@ def generate_images_for_game(gid: str) -> None:
     for c in chars:
         if repo.character_has_images(c):
             continue
-        descriptor = (c["appearance"] or c["description"] or c["persona"] or c["name"]).strip()
-        result = media.generate_character_images(descriptor, style)
+        result = media.generate_character_images(character_descriptor(c), style)
         if not result:
             continue
         face = _persist(gid, result.get("face_url"), f"char-{c['id']}-face")
@@ -75,7 +113,7 @@ def generate_scene_image(gid: str, scene_id: str) -> None:
         if not sc or not g or sc["image_url"]:
             return
         style = g["art_style"] or g["tone"] or ""
-        prompt = ", ".join(x for x in [sc["description"] or sc["name"], style] if x)
+        prompt = scene_prompt(sc, style)
     result = media.generate_scene_image(prompt)
     if not result:
         return
