@@ -183,6 +183,12 @@ def add_item(conn, gid: str, name: str, description: str = "", qty: int = 1) -> 
     conn.execute("UPDATE player_state SET inventory=? WHERE game_id=?", (json.dumps(inv), gid))
 
 
+def player_has_item(conn, gid: str, key: str) -> bool:
+    """Peek: does the player hold this item (by id or name)? No state change."""
+    p = get_player(conn, gid)
+    return any(_item_matches(it, key) for it in db.loads(p["inventory"], []))
+
+
 def remove_item(conn, gid: str, key: str, qty: int = 1):
     """Remove by item ID or name. Returns the matched item dict (so callers know the real
     name even when called with an ID), or None if the player does not hold it."""

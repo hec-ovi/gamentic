@@ -77,13 +77,40 @@ def _compose(segments) -> tuple[str, list[dict]]:
                 directed.append({"tool": "_address", "args": {"target": target}})
         elif t == "attack":
             parts.append(f"you attack {_display(s, target) if target else 'them'}")
-            directed.append({"tool": "attack", "args": {"target": target, "amount": s.get("amount")}})
+            directed.append({"tool": "attack", "args": {"target": target, "amount": s.get("amount")},
+                             "display": {"target": _display(s, target) if target else "them"}})
         elif t == "give":
             parts.append(f"you give {_display(s, item)} to {_display(s, target) if target else 'them'}")
-            directed.append({"tool": "give_item", "args": {"item": item, "target": target}})
+            directed.append({"tool": "give_item", "args": {"item": item, "target": target},
+                             "display": {"item": _display(s, item),
+                                         "target": _display(s, target) if target else "them"}})
         else:  # do
             parts.append(text or "you wait")
     return "; ".join(p for p in parts if p), directed
+
+
+def _why_impossible(conn, gid, d) -> str | None:
+    """Deterministic pre-check of a mechanical attempt (attack/give). Returns a friendly,
+    in-world reason when the attempt is impossible against current state, else None.
+    Impossible attempts never reach the world (and the narrator is told they failed),
+    so prose can never claim a transfer or a hit that state forbids."""
+    args, disp = d["args"], d.get("display", {})
+    t_disp = disp.get("target") or args.get("target") or "them"
+    kind_t, row = repo.resolve_target(conn, gid, args.get("target") or "")
+    if d["tool"] == "attack" and kind_t is None:
+        return f"There is no {t_disp} here."
+    if kind_t == "character" and row:
+        here = repo.get_player(conn, gid)["location"]
+        if not row["alive"]:
+            return f"{row['name']} is already down."
+        if not row["present"] or row["location"] != here:
+            return f"{row['name']} is not here."
+    if d["tool"] == "give_item":
+        if kind_t is None:
+            return f"There is no {t_disp} here."
+        if not repo.player_has_item(conn, gid, args.get("item") or ""):
+            return f"You don't have {disp.get('item') or args.get('item') or 'that'}."
+    return None
 
 
 def _character_reply(conn, gid, ch, emit, private_with=None):
@@ -139,19 +166,32 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
         action_text, directed = _compose(public) if public else (action_text, [])
         emit("player", None, "action", action_text or "...")
 
+        # Impossible attempts are rejected deterministically with a friendly in-world beat,
+        # BEFORE anything is applied, and the narrator is told they failed (so its prose
+        # cannot claim a transfer or a hit that state forbids).
+        failures: list[str] = []
         for d in directed:
             if d["tool"] == "_address":
                 kind_t, row = repo.resolve_target(conn, gid, d["args"].get("target", ""))
                 if kind_t == "character" and row:
                     enqueue([row["id"]])
                 continue
+            why = _why_impossible(conn, gid, d)
+            if why:
+                failures.append(why)
+                emit("system", None, "system", why)
+                continue
             out = tools.apply_tool(conn, gid, d["tool"], d["args"], actor=None)
             if out["kind"] == "state" and out["text"]:
                 emit("system", None, "system", out["text"])
             enqueue(out["reactions"])
 
+        narrator_action = action_text
+        if failures:
+            narrator_action = f"{action_text} (failed: {' '.join(failures)})"
+
         reply = llm.chat(
-            prompts.build_narrator_messages(conn, gid, action_text, settings.HISTORY_BEATS, settings.LORE_BUDGET),
+            prompts.build_narrator_messages(conn, gid, narrator_action, settings.HISTORY_BEATS, settings.LORE_BUDGET),
             tools=tools.NARRATOR_TOOLS, tool_choice="auto",
             temperature=settings.NARRATOR_TEMPERATURE, max_tokens=settings.NARRATOR_MAX_TOKENS,
         )
@@ -176,7 +216,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
             will_speak = bool(cues) or bool(queue)
             if state_notes or not will_speak:
                 resolve = llm.chat(
-                    prompts.build_narrator_resolve_messages(conn, gid, action_text, state_notes),
+                    prompts.build_narrator_resolve_messages(conn, gid, narrator_action, state_notes),
                     temperature=settings.NARRATOR_TEMPERATURE,
                     max_tokens=settings.NARRATOR_RESOLVE_MAX_TOKENS,
                 )
