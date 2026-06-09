@@ -40,6 +40,8 @@ def world_rules() -> str:
         f"- Story status: {' | '.join(GAME_STATUSES)} (set_game_status).\n"
         "- The player begins with NO goal. Give them a current goal with set_goal once their "
         "purpose emerges, and update it as the story turns.\n"
+        "- TIME is fictional story time. Each action costs a few minutes automatically; when "
+        "the fiction skips ahead (a rest, a journey, nightfall), jump it with advance_time.\n"
         "- A scene has at most 3 exits (add_exit), 6 items (place_item), and 3 player actions; "
         "a character carries at most 3 items and offers at most 3 actions. Items can be placed "
         "hidden and revealed later (reveal_item) when the player discovers them. Offer a one-off "

@@ -85,8 +85,10 @@ def _state_block(conn, gid: str) -> str:
     scene_items = repo.narrator_items(sc["items"]) or "nothing in view"
     new_flag = "" if repo.scene_is_established(sc) else "   <- NEW PLACE: describe it, set its mood, reveal a way onward"
 
+    t = repo.game_time(conn, gid)
     lines = [
         f"CURRENT GOAL: {g['current_goal'] or 'none yet'}",
+        f"TIME: {t['label']} (story time; advance_time when the fiction skips ahead)",
         f"LOCATION: {pd['location']}  (scene mood: {sc['status']}){new_flag}",
         f"SCENE DESCRIPTION: {sc['description'] or '(not described yet)'}",
         f"PLAYER LIFE: {pd['life']}/{pd['max_life']}    POINTS: {pd['points']}",

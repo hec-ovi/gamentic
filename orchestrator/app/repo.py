@@ -393,6 +393,39 @@ def set_context_used(conn, gid: str, used: int) -> None:
     conn.execute("UPDATE games SET context_used=? WHERE id=?", (int(used or 0), gid))
 
 
+# ---------- fictional time (narrator-driven story clock, never the wall clock) ----------
+
+def advance_time(conn, gid: str, minutes: int) -> int:
+    """Advance the story clock by a fictional duration. Returns the new total minutes."""
+    g = get_game(conn, gid)
+    new = max(0, (g["time_minutes"] or 0) + int(minutes))
+    conn.execute("UPDATE games SET time_minutes=? WHERE id=?", (new, gid))
+    return new
+
+
+def _part_of_day(hour: int) -> str:
+    if 5 <= hour < 12:
+        return "morning"
+    if 12 <= hour < 18:
+        return "afternoon"
+    if 18 <= hour < 22:
+        return "evening"
+    return "night"
+
+
+def game_time(conn, gid: str) -> dict:
+    """The fictional clock, derived from elapsed minutes + the story's start hour:
+    {minutes, day, hour, part, label} with label like 'Day 2, afternoon'."""
+    g = get_game(conn, gid)
+    minutes = g["time_minutes"] or 0
+    absolute = settings.DAY_START_HOUR * 60 + minutes
+    day = absolute // 1440 + 1
+    hour = (absolute // 60) % 24
+    part = _part_of_day(hour)
+    return {"minutes": minutes, "day": day, "hour": hour, "part": part,
+            "label": f"Day {day}, {part}"}
+
+
 def set_character_description(conn, cid: str, description: str) -> None:
     conn.execute("UPDATE characters SET description=? WHERE id=?", (description, cid))
 
@@ -679,6 +712,7 @@ def game_state(conn, gid: str) -> dict:
         "narrator_voice_id": g["narrator_voice_id"],
         "context": {"used": g["context_used"] or 0, "max": settings.LLM_CONTEXT_SIZE},
         "images_enabled": settings.IMAGE_ENABLED,  # FE: if true and an image_url is null, show a loader
+        "time": game_time(conn, gid),              # fictional story clock {minutes, day, hour, part, label}
         "player": player_dict(p),
         "quests": quests,
         "characters": chars,

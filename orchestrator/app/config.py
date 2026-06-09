@@ -28,6 +28,12 @@ class Settings:
     TURN_MAX_ACTOR_STEPS = int(os.getenv("TURN_MAX_ACTOR_STEPS", "6"))   # total character beats per turn
     TURN_MAX_PER_CHARACTER = int(os.getenv("TURN_MAX_PER_CHARACTER", "2"))  # times one char can act per turn
 
+    # FICTIONAL story time (hybrid): every turn auto-ticks a few minutes so the clock never
+    # freezes, and the narrator jumps it with advance_time (hours/days). Never wall clock.
+    TURN_TIME_MINUTES = int(os.getenv("TURN_TIME_MINUTES", "5"))
+    DAY_START_HOUR = int(os.getenv("DAY_START_HOUR", "8"))     # in-fiction hour at story start
+    TIME_ADVANCE_CAP_DAYS = int(os.getenv("TIME_ADVANCE_CAP_DAYS", "30"))  # max one advance_time jump
+
     # Scene/inventory/action caps (the fixed slot counts; single source of truth for the UI grids)
     SCENE_EXIT_CAP = int(os.getenv("SCENE_EXIT_CAP", "3"))
     SCENE_INVENTORY_CAP = int(os.getenv("SCENE_INVENTORY_CAP", "6"))

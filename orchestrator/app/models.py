@@ -164,6 +164,7 @@ class GameState(BaseModel):
     narrator_voice_id: Optional[str] = None
     context: dict = Field(default_factory=dict)   # {used, max} prompt-token usage meter
     images_enabled: bool = True                   # if true and an image_url is null, art is still coming (show a loader)
+    time: dict = Field(default_factory=dict)      # fictional story clock {minutes, day, hour, part, label}
     player: PlayerStateOut
     quests: list[QuestOut]
     characters: list[CharacterOut]

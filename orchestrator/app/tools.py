@@ -194,6 +194,15 @@ NARRATOR_TOOLS = [
             "item": {"type": "string"}, "target": {"type": "string"}},
             "required": ["item", "target"]}}},
     {"type": "function", "function": {
+        "name": "advance_time",
+        "description": "Jump the STORY clock forward when the fiction skips ahead (a rest, a "
+                       "journey, 'the next morning'). Small per-action time passes automatically; "
+                       "use this only for real jumps.",
+        "parameters": {"type": "object", "properties": {
+            "amount": {"type": "integer", "description": "How much time passes (positive)."},
+            "unit": {"type": "string", "enum": ["minutes", "hours", "days"]},
+        }, "required": ["amount", "unit"]}}},
+    {"type": "function", "function": {
         "name": "reject_attempt",
         "description": "Veto one numbered PLAYER ATTEMPT with an in-world reason (shown to the "
                        "player), e.g. 'Mara steps back, refusing the coin.' Attempts you neither "
@@ -405,6 +414,18 @@ def apply_tool(conn, gid: str, name: str, args: dict, actor=None) -> dict:
             label = (args.get("label") or "").strip()
             ok = repo.offer_scene_action(conn, gid, label, settings.SCENE_ACTION_CAP)
             return _result("state") if ok else _invalid(f"offer_scene_action: scene already has {settings.SCENE_ACTION_CAP} actions")
+        if name == "advance_time":
+            amount = int(args.get("amount", 0) or 0)
+            unit = (args.get("unit") or "").strip().lower()
+            per = {"minutes": 1, "hours": 60, "days": 1440}.get(unit)
+            if per is None:
+                return _invalid(f"advance_time: unit '{unit}' not in minutes|hours|days")
+            if amount <= 0:
+                return _invalid("advance_time: amount must be positive")
+            minutes = min(amount * per, settings.TIME_ADVANCE_CAP_DAYS * 1440)
+            repo.advance_time(conn, gid, minutes)
+            t = repo.game_time(conn, gid)
+            return _result("state", f"Time passes. It is now {t['label']}.")
         if name == "reject_attempt":
             reason = (args.get("reason") or "").strip() or "It does not happen."
             return {"kind": "reject", "text": reason,

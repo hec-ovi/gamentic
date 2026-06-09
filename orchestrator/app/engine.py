@@ -172,6 +172,10 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
     public = [s for s in segments if (s.get("type") or "").lower() != "whisper"]
     has_public = bool(public) or bool(action_text)
 
+    # Hybrid story clock: every turn costs a few fictional minutes automatically, so time
+    # never freezes; the narrator jumps it with advance_time for rests/journeys/nightfall.
+    repo.advance_time(conn, gid, settings.TURN_TIME_MINUTES)
+
     # ---- public turn (narrator + cascade) ----
     if has_public:
         action_text, directed = _compose(public) if public else (action_text, [])
