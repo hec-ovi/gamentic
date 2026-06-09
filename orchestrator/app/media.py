@@ -56,11 +56,14 @@ def fetch_image_bytes(url: str | None) -> bytes | None:
         return None
 
 
-def generate_scene_image(prompt: str, seed: int | None = None) -> dict | None:
-    """Returns {image_url, ...} or None. Optional; off the turn hot-path by default."""
+def generate_scene_image(prompt: str, seed: int | None = None,
+                         width: int | None = None, height: int | None = None) -> dict | None:
+    """Returns {image_url, ...} or None. Optional; off the turn hot-path by default.
+    width/height override the scene defaults (the 'See' snapshot uses a landscape frame)."""
     if not settings.IMAGE_ENABLED or not prompt.strip():
         return None
-    body: dict = {"prompt": prompt, "width": settings.IMAGE_SCENE_W, "height": settings.IMAGE_SCENE_H}
+    body: dict = {"prompt": prompt, "width": width or settings.IMAGE_SCENE_W,
+                  "height": height or settings.IMAGE_SCENE_H}
     if seed is not None:
         body["seed"] = seed
     try:

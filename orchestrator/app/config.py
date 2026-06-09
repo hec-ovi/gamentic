@@ -54,6 +54,10 @@ class Settings:
     # Benchmarked on the box: 768x768 renders in ~5.6s, so scenes default to real quality.
     IMAGE_SCENE_W = int(os.getenv("IMAGE_SCENE_W", "768"))
     IMAGE_SCENE_H = int(os.getenv("IMAGE_SCENE_H", "768"))
+    # The 'See' snapshot (scene WITH present characters) is a wide landscape shot so full
+    # figures fit side by side. 1152x768 benchmarks like the tall body size (~7.6s).
+    IMAGE_VIEW_W = int(os.getenv("IMAGE_VIEW_W", "1152"))
+    IMAGE_VIEW_H = int(os.getenv("IMAGE_VIEW_H", "768"))
     # Per-turn VISUAL budget so the screen does not get noisy. These cap how many images
     # are shown in a single turn, not how many exist. Character references are generated
     # ONCE at creation and reused; this only limits display.
