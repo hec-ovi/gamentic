@@ -58,6 +58,7 @@ services:
     build:
       context: ./comfyui
     image: gamentic-comfyui-strix:latest
+    pull_policy: build
     container_name: gamentic-image
     restart: unless-stopped
     # ComfyUI on ROCm needs full GPU access on Strix Halo
@@ -102,6 +103,7 @@ services:
     build:
       context: ./image-api
     image: gamentic-image-api:latest
+    pull_policy: build
     container_name: gamentic-image-api
     restart: unless-stopped
     depends_on:
@@ -178,6 +180,7 @@ services:
     build:
       context: ../voice-api
     image: gamentic-voice-api:latest
+    pull_policy: build
     container_name: gamentic-voice-api
     restart: unless-stopped
     environment:
@@ -205,6 +208,7 @@ services:
     build:
       context: ../orchestrator
     image: gamentic-orchestrator:latest
+    pull_policy: build
     container_name: gamentic-orchestrator
     restart: unless-stopped
     depends_on:
@@ -237,6 +241,7 @@ services:
     build:
       context: ../frontend
     image: gamentic-frontend:latest
+    pull_policy: build
     container_name: gamentic-frontend
     restart: unless-stopped
     depends_on:
