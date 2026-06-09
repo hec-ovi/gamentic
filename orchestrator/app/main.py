@@ -10,9 +10,9 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from . import db, repo, engine, creator, integrate
+from . import db, repo, engine, creator, integrate, prompts, llm
 from .config import settings
-from .models import WorldSheet, ActionIn, CreateMessageIn, GameState, TurnOut, ViewIn
+from .models import WorldSheet, ActionIn, CreateMessageIn, GameState, TurnOut, ViewIn, ExplainIn
 
 
 @asynccontextmanager
@@ -151,6 +151,21 @@ def view_scene(gid: str, body: ViewIn | None = None):
     if not beat:
         raise HTTPException(502, "image generation unavailable")
     return {"beat": beat, "image_url": beat["image_url"]}
+
+
+@app.post("/games/{gid}/explain")
+def explain(gid: str, body: ExplainIn):
+    """'Ask what this is': in-world explanation of a tapped thing (item, character, scene,
+    quest, goal, or a system beat), generated from PLAYER-VISIBLE facts only (spoiler-safe).
+    One short LLM call (~1-2s); 404 when nothing visible matches the tap."""
+    with db.get_conn() as conn:
+        if not repo.get_game(conn, gid):
+            raise HTTPException(404, "game not found")
+        messages = prompts.build_explain_messages(conn, gid, body.kind, body.key, body.beat_id)
+    if not messages:
+        raise HTTPException(404, "nothing like that in sight")
+    reply = llm.chat(messages, temperature=0.6, max_tokens=160)
+    return {"text": (reply.content or "").strip() or "There is little more to say about it."}
 
 
 @app.post("/create/message")

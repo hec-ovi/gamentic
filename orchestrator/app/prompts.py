@@ -200,6 +200,86 @@ def build_character_messages(conn, gid: str, character, scene_limit: int) -> lis
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
+# ---------- 'ask what this is' (tap-to-explain) ----------
+
+def _explain_facts(conn, gid: str, kind: str, key: str, beat_id: str | None) -> str | None:
+    """PLAYER-VISIBLE facts about the tapped thing, or None if nothing visible matches.
+    Spoiler-safe by construction: only revealed items, public bios, known state. Never
+    character knowledge/persona, never hidden items."""
+    pd = repo.player_dict(repo.get_player(conn, gid))
+    sc = repo.current_scene(conn, gid)
+    if kind == "item":
+        places = [("in your pack", pd["inventory"]),
+                  ("here in the scene", repo.visible_items(sc["items"]))]
+        for c in repo.present_characters(conn, gid, pd["location"]):
+            places.append((f"carried by {c['name']}", repo.visible_items(c["inventory"])))
+        for where, items in places:
+            for it in items:
+                if repo._item_matches(it, key):
+                    qty = it.get("qty", 1)
+                    fixed = " It is part of the place and cannot be carried." if it.get("fixed") else ""
+                    return (f"- {it['name']}{f' x{qty}' if qty and qty > 1 else ''}, {where}: "
+                            f"{it.get('description') or 'nothing more is known about it yet'}.{fixed}")
+        return None
+    if kind == "character":
+        kt, row = repo.resolve_target(conn, gid, key)
+        if kt != "character" or not row:
+            return None
+        held = ", ".join(i["name"] for i in repo.visible_items(row["inventory"])) or "nothing you have seen"
+        here = "here with you" if row["present"] and row["location"] == pd["location"] \
+            else f"elsewhere (at {row['location']})"
+        return (f"- {row['name']}: {row['description'] or 'no public description yet'}\n"
+                f"- toward you: {row['disposition']}; "
+                f"{'traveling with you' if row['following'] else 'not following you'}; {here}\n"
+                f"- life: {row['life']}/{row['max_life']}{'' if row['alive'] else ' (dead)'}\n"
+                f"- visibly carrying: {held}")
+    if kind == "scene":
+        items = ", ".join(i["name"] for i in repo.visible_items(sc["items"])) or "nothing in view"
+        exits = ", ".join(e["label"] for e in repo.db.loads(sc["exits"], [])) or "no way out revealed"
+        t = repo.game_time(conn, gid)
+        return (f"- {sc['name']} (mood: {sc['status']}), {t['label']}\n"
+                f"- {sc['description'] or 'not yet described'}\n"
+                f"- in view: {items}\n- ways out: {exits}")
+    if kind in ("quest", "objective"):
+        for q in repo.get_quests(conn, gid):
+            qd = repo.quest_dict(conn, q)
+            ids = {q["id"], (q["title"] or "").lower()} | {o["id"] for o in qd["objectives"]}
+            if key and key.lower() not in {i.lower() if isinstance(i, str) else i for i in ids}:
+                continue
+            obs = "\n".join(f"  - [{'x' if o['done'] else ' '}] {o['text']}"
+                            + (f" ({o['progress']})" if o.get("progress") else "")
+                            for o in qd["objectives"])
+            return f"- quest: {q['title']} ({qd['status']}): {q['description']}\n{obs}"
+        return None
+    if kind == "goal":
+        g = repo.get_game(conn, gid)
+        return f"- your current goal: {g['current_goal'] or 'none set yet'}"
+    if kind == "beat":
+        row = conn.execute("SELECT * FROM beats WHERE id=? AND game_id=?",
+                           (beat_id or key, gid)).fetchone()
+        if not row:
+            return None
+        around = conn.execute(
+            "SELECT * FROM beats WHERE game_id=? AND private_with IS NULL "
+            "AND turn_index BETWEEN ? AND ? ORDER BY turn_index, seq",
+            (gid, row["turn_index"] - 1, row["turn_index"])).fetchall()
+        ctx = "\n".join(_render_beat(b) for b in around[-8:])
+        return (f"- the moment they tapped: \"{row['text']}\"\n"
+                f"- what was happening around it:\n{ctx}")
+    return None
+
+
+def build_explain_messages(conn, gid: str, kind: str, key: str | None = None,
+                           beat_id: str | None = None) -> list[dict] | None:
+    facts = _explain_facts(conn, gid, (kind or "").strip().lower(), (key or "").strip(), beat_id)
+    if not facts:
+        return None
+    return [
+        {"role": "system", "content": render("explain.system.md")},
+        {"role": "user", "content": render("explain.user.md", kind=kind, facts=facts)},
+    ]
+
+
 # ---------- agentic input interpreter ----------
 
 INTERPRET_TOOL = [{

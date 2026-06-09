@@ -93,6 +93,15 @@ class ViewIn(BaseModel):
     focus: Optional[str] = None
 
 
+class ExplainIn(BaseModel):
+    """'Ask what this is': the player taps a thing and the model explains it in-world,
+    from PLAYER-VISIBLE facts only. kind: item | character | scene | quest | goal | beat.
+    key: id or name of the thing (beats may use beat_id instead)."""
+    kind: str
+    key: Optional[str] = None
+    beat_id: Optional[str] = None
+
+
 class CreateMessageIn(BaseModel):
     session_id: str
     message: str

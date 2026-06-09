@@ -138,9 +138,15 @@ CREATE INDEX IF NOT EXISTS idx_lore_game ON lore(game_id);
 
 
 def connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(settings.DB_PATH)
+    # A turn holds its transaction for seconds (LLM calls happen inside it), while
+    # background tasks (image persists) write concurrently. WAL lets readers proceed
+    # and the long busy timeout makes writers QUEUE instead of raising
+    # "database is locked" (seen live when a scene-art persist hit a running turn).
+    conn = sqlite3.connect(settings.DB_PATH, timeout=60)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 60000")
     return conn
 
 
