@@ -20,6 +20,16 @@ from .config import settings
 
 _CHAR_TAG = re.compile(r"\[(say|do)\]", re.I)
 _CHAR_CLOSE = re.compile(r"\[/?(?:say|do)\]", re.I)
+# Hygiene for small-model artifacts seen live: a pseudo tool call leaked as text
+# ("[attack{amount:10,target: \"player\"}]") and stray tag debris ("*]", trailing "*").
+_PSEUDO_TOOL = re.compile(r"\[\w+\s*\{[^\[\]]*\}\s*\]?")
+_TAG_DEBRIS = re.compile(r"(\*+\]|\[+\*+|[\[\]*]+$)")
+
+
+def _clean_segment(text: str) -> str:
+    text = _PSEUDO_TOOL.sub("", text)
+    text = _TAG_DEBRIS.sub("", text)
+    return text.strip()
 
 
 def parse_character_output(text: str) -> list[tuple[str, str]]:
@@ -31,16 +41,17 @@ def parse_character_output(text: str) -> list[tuple[str, str]]:
         return []
     matches = list(_CHAR_TAG.finditer(text))
     if not matches:
-        return [("say", text)]
+        cleaned = _clean_segment(text)
+        return [("say", cleaned)] if cleaned else []
     segs: list[tuple[str, str]] = []
-    lead = text[: matches[0].start()].strip()
+    lead = _clean_segment(text[: matches[0].start()])
     if lead:
         segs.append(("do", lead))
     for i, m in enumerate(matches):
         kind = m.group(1).lower()
         start = m.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-        content = _CHAR_CLOSE.sub("", text[start:end]).strip()
+        content = _clean_segment(_CHAR_CLOSE.sub("", text[start:end]))
         if content:
             segs.append((kind, content))
     return segs

@@ -144,6 +144,24 @@ def test_character_say_do_tags_split_into_beats(client, fake_llm):
     assert "*" not in do["text"]                                        # no asterisks
 
 
+def test_character_output_hygiene_strips_live_artifacts(client, fake_llm):
+    """Exact artifacts observed live against the real model: tag debris '*]' trailing a
+    [do] segment, and a pseudo tool call leaked as text. Both must never reach a beat."""
+    gid = _new(client, [_char("Mara")])
+    fake_llm.narrator = llm.LLMReply(content="Mara reacts.",
+                                     tool_calls=[llm.ToolCall("cue_character", {"name": "Mara"})])
+    fake_llm.character_replies = {"Mara": llm.LLMReply(content=(
+        '[say]"You\'ll regret that strike!"[/say]'
+        '[do]She lunges forward, attempting to strike you.[attack{amount:10,target: "player"}][/do]'
+        '[do]She grips the hilt of her blade, her gaze piercing.*][/do]'))}
+    beats = client.post(f"/games/{gid}/action", json={"action": "I strike Mara."}).json()["beats"]
+    mara = [b for b in beats if b["speaker_name"] == "Mara"]
+    assert any("regret that strike" in b["text"] for b in mara)
+    for b in mara:
+        assert "attack{" not in b["text"] and "*]" not in b["text"]
+        assert not b["text"].endswith("*") and not b["text"].endswith("]")
+
+
 def test_untagged_character_output_is_dialogue(client, fake_llm):
     gid = _new(client, [_char("Mara")])
     fake_llm.narrator = llm.LLMReply(content="Mara nods.",
