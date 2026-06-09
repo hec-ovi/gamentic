@@ -135,6 +135,28 @@ def test_move_creates_return_exit_so_you_cannot_get_stuck(client, fake_llm):
     assert any(c["name"] == "Mara" and c["location"] == "hall" for c in s["characters"])  # she's there
 
 
+def test_location_name_drift_maps_to_one_scene(client, fake_llm):
+    """Seen live: the model wrote 'crypt_entrance' returning to 'crypt entrance', which
+    created a duplicate scene and stranded the original's items. Underscore/space drift
+    must resolve to ONE scene."""
+    gid = _new(client, start="crypt entrance")
+    fake_llm.narrator = _nar(T("place_item", target="scene", name="Rusty Key"))
+    client.post(f"/games/{gid}/action", json={"action": "I spot a key."})
+    # leave, then come back under the drifted name
+    fake_llm.narrator = _nar(T("move_location", location="inner_chamber"))
+    client.post(f"/games/{gid}/action", json={"action": "I go deeper."})
+    fake_llm.narrator = _nar(T("move_location", location="crypt_entrance"))
+    client.post(f"/games/{gid}/action", json={"action": "I go back."})
+    s = _state(client, gid)
+    assert s["scene"]["name"] == "crypt entrance"             # the SAME scene, not a twin
+    assert any(i["name"] == "Rusty Key" for i in s["scene"]["items"])  # items still here
+    # and the inner chamber's return exit points at the canonical name (no dupes)
+    fake_llm.narrator = _nar(T("move_location", location="inner chamber"))
+    client.post(f"/games/{gid}/action", json={"action": "I head in again."})
+    exits = _state(client, gid)["scene"]["exits"]
+    assert [e["target"] for e in exits].count("crypt entrance") == 1
+
+
 def test_scene_persistence_of_items(client, fake_llm):
     gid = _new(client, start="bar")
     fake_llm.narrator = _nar(T("place_item", target="scene", name="ledger"))

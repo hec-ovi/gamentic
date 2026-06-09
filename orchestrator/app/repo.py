@@ -4,6 +4,7 @@ Functions take an open sqlite3.Connection so the engine controls the
 transaction boundary (one turn = one commit).
 """
 import json
+import re
 import uuid
 
 from . import db
@@ -44,10 +45,18 @@ def _id() -> str:
     return uuid.uuid4().hex[:12]
 
 
+def norm_location(s: str) -> str:
+    """Canonical scene key. The model drifts between 'crypt entrance', 'crypt_entrance'
+    and stray spacing; if those map to different scene rows, items and characters get
+    stranded in unreachable duplicates. One canonical form for every write and lookup."""
+    return re.sub(r"[_\s]+", " ", (s or "")).strip()
+
+
 # ---------- creation ----------
 
 def create_game(conn, sheet: WorldSheet) -> str:
     gid = _id()
+    start = norm_location(sheet.start_location)
     conn.execute(
         "INSERT INTO games (id, title, setting, tone, art_style, narrator_voice_id, "
         "narrator_persona, opening_scenario) VALUES (?,?,?,?,?,?,?,?)",
@@ -56,7 +65,7 @@ def create_game(conn, sheet: WorldSheet) -> str:
     )
     conn.execute(
         "INSERT INTO player_state (game_id, life, max_life, location) VALUES (?,?,?,?)",
-        (gid, sheet.player_life, sheet.player_life, sheet.start_location),
+        (gid, sheet.player_life, sheet.player_life, start),
     )
     for c in sheet.characters:
         conn.execute(
@@ -64,7 +73,7 @@ def create_game(conn, sheet: WorldSheet) -> str:
             "voice_id, color, talkativeness, location, life, max_life, disposition, following) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (_id(), gid, c.name, c.persona, c.description, c.knowledge, c.appearance,
-             c.voice_id, c.color, c.talkativeness, sheet.start_location, c.life, c.max_life,
+             c.voice_id, c.color, c.talkativeness, start, c.life, c.max_life,
              c.disposition, 1 if c.following else 0),
         )
     for q in sheet.quests:
@@ -83,7 +92,7 @@ def create_game(conn, sheet: WorldSheet) -> str:
             "INSERT INTO lore (id, game_id, keys, content, constant, priority) VALUES (?,?,?,?,?,?)",
             (_id(), gid, json.dumps(lo.keys), lo.content, int(lo.constant), lo.priority),
         )
-    get_or_create_scene(conn, gid, sheet.start_location, sheet.setting or sheet.opening_scenario)
+    get_or_create_scene(conn, gid, start, sheet.setting or sheet.opening_scenario)
     # Seed an opening goal so the player always has a current purpose from turn 0
     # (the narrator updates it as the story turns). Prefer the first quest's first objective.
     if sheet.quests:
@@ -93,7 +102,7 @@ def create_game(conn, sheet: WorldSheet) -> str:
             conn.execute("UPDATE games SET current_goal=? WHERE id=?", (goal, gid))
     if sheet.opening_scenario:
         add_beat(conn, gid, "narrator", "Narrator", "narration",
-                 sheet.opening_scenario, sheet.start_location)
+                 sheet.opening_scenario, start)
     return gid
 
 
@@ -209,16 +218,18 @@ def _ensure_exit(conn, gid: str, scene_name: str, label: str, target: str) -> No
     sc = get_scene(conn, gid, scene_name)
     if not sc:
         return
+    target = norm_location(target)
     exits = db.loads(sc["exits"], [])
-    if any(e["target"].lower() == target.lower() for e in exits):
+    if any(norm_location(e["target"]).lower() == target.lower() for e in exits):
         return
     exits.append({"id": _id(), "label": label, "target": target})
     conn.execute("UPDATE scenes SET exits=? WHERE id=?", (json.dumps(exits), sc["id"]))
 
 
 def set_location(conn, gid: str, location: str) -> None:
+    location = norm_location(location)
     prev = get_player(conn, gid)["location"]
-    moved = bool(prev) and prev.lower() != location.lower()
+    moved = bool(prev) and norm_location(prev).lower() != location.lower()
     now = get_game(conn, gid)["time_minutes"] or 0
     if moved:
         # Draft layer: stamp the scene being LEFT with the story clock, so a return can
@@ -385,8 +396,7 @@ def spawn_character(conn, gid: str, name: str, persona: str, appearance: str = "
                     knowledge: str = "", location: str | None = None,
                     life: int = 10) -> str:
     """Add a character to the game on the fly (dynamic narrator)."""
-    if location is None:
-        location = get_player(conn, gid)["location"]
+    location = norm_location(location) if location else get_player(conn, gid)["location"]
     cid = _id()
     conn.execute(
         "INSERT INTO characters (id, game_id, name, persona, knowledge, appearance, "
@@ -497,12 +507,15 @@ def available_actions(conn, c, cap_total: int) -> list[dict]:
 # ---------- scenes (the main card) ----------
 
 def get_scene(conn, gid: str, name: str):
-    return conn.execute("SELECT * FROM scenes WHERE game_id=? AND lower(name)=lower(?)",
-                        (gid, name)).fetchone()
+    # replace() in SQL covers legacy rows stored before normalization existed
+    return conn.execute(
+        "SELECT * FROM scenes WHERE game_id=? AND lower(replace(name,'_',' '))=lower(?)",
+        (gid, norm_location(name))).fetchone()
 
 
 def get_or_create_scene(conn, gid: str, name: str, description: str = ""):
     from .constants import SCENE_STATUS_DEFAULT
+    name = norm_location(name)
     sc = get_scene(conn, gid, name)
     if sc:
         return sc
@@ -533,8 +546,9 @@ def set_scene_description(conn, gid: str, description: str) -> None:
 
 def add_exit(conn, gid: str, label: str, target: str, cap: int) -> str:
     sc = current_scene(conn, gid)
+    target = norm_location(target)
     exits = db.loads(sc["exits"], [])
-    if any(e["target"].lower() == target.lower() for e in exits):
+    if any(norm_location(e["target"]).lower() == target.lower() for e in exits):
         return "exists"
     if len(exits) >= cap:
         return "full"
