@@ -221,6 +221,13 @@ services:
       # voice-api listens on 8080 inside the container (host maps 9002->8080)
       - VOICE_API_URL=http://gamentic-voice-api:8080
       - DB_PATH=/data/gamentic.db
+      # orchestrator-owned image knobs (scene + view snapshot sizes, agentic prompts)
+      - IMAGE_SCENE_W=${IMAGE_SCENE_W:-768}
+      - IMAGE_SCENE_H=${IMAGE_SCENE_H:-768}
+      - IMAGE_VIEW_W=${IMAGE_VIEW_W:-1152}
+      - IMAGE_VIEW_H=${IMAGE_VIEW_H:-768}
+      - IMAGE_AGENTIC_PROMPTS=${IMAGE_AGENTIC_PROMPTS:-false}
+      - INTERPRET_FREE_TEXT=${INTERPRET_FREE_TEXT:-true}
     volumes:
       - ../orchestrator/data:/data
     ports:
