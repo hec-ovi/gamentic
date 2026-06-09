@@ -711,16 +711,21 @@ def all_beats(conn, gid: str, since_turn: int = 0):
     return rows
 
 
+# Model-facing transcript windows exclude kind='image' (a snapshot beat is a URL for the
+# UI; to the model it is an empty line that wastes a slot of the history budget).
+
 def recent_beats(conn, gid: str, limit: int):
     rows = conn.execute(
-        "SELECT * FROM beats WHERE game_id=? ORDER BY turn_index DESC, seq DESC LIMIT ?",
+        "SELECT * FROM beats WHERE game_id=? AND kind!='image' "
+        "ORDER BY turn_index DESC, seq DESC LIMIT ?",
         (gid, limit)).fetchall()
     return list(reversed(rows))
 
 
 def recent_beats_at(conn, gid: str, location: str, limit: int):
     rows = conn.execute(
-        "SELECT * FROM beats WHERE game_id=? AND location=? ORDER BY turn_index DESC, seq DESC LIMIT ?",
+        "SELECT * FROM beats WHERE game_id=? AND location=? AND kind!='image' "
+        "ORDER BY turn_index DESC, seq DESC LIMIT ?",
         (gid, location, limit)).fetchall()
     return list(reversed(rows))
 
@@ -729,7 +734,8 @@ def scene_beats_for_character(conn, gid: str, location: str, char_id: str, limit
     """A character's POV: public beats at the location PLUS private beats addressed to THEM.
     Private beats meant for other characters are excluded (knowledge stays where it belongs)."""
     rows = conn.execute(
-        "SELECT * FROM beats WHERE game_id=? AND location=? AND (private_with IS NULL OR private_with=?) "
+        "SELECT * FROM beats WHERE game_id=? AND location=? AND kind!='image' "
+        "AND (private_with IS NULL OR private_with=?) "
         "ORDER BY turn_index DESC, seq DESC LIMIT ?",
         (gid, location, char_id, limit)).fetchall()
     return list(reversed(rows))

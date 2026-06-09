@@ -73,6 +73,20 @@ def test_view_of_an_empty_scene_is_a_plain_wide_shot(client, fake_llm, monkeypat
     assert "full-body" not in captured["prompt"]
 
 
+def test_image_beats_stay_out_of_model_transcripts(client, fake_llm, monkeypatch, tmp_path):
+    """The snapshot beat is for the UI (a URL); the model-facing history windows must skip
+    it (an empty line that would waste a slot of the beat budget). The story log keeps it."""
+    captured = {}
+    _enable(monkeypatch, tmp_path, captured)
+    gid = client.post("/games", json=WORLD).json()["game_id"]
+    client.post(f"/games/{gid}/view")
+    with db.get_conn() as conn:
+        assert all(b["kind"] != "image" for b in repo.recent_beats(conn, gid, 50))
+        assert all(b["kind"] != "image" for b in
+                   repo.scene_beats_for_character(conn, gid, "harbor", "whoever", 50))
+        assert any(b["kind"] == "image" for b in repo.all_beats(conn, gid))   # FE still gets it
+
+
 def test_view_refuses_when_images_are_disabled(client, fake_llm):
     gid = client.post("/games", json=WORLD).json()["game_id"]
     assert client.post(f"/games/{gid}/view").status_code == 409     # IMAGE_ENABLED=false in tests
