@@ -658,6 +658,7 @@ def game_state(conn, gid: str) -> dict:
         "scene": scene,
         "narrator_voice_id": g["narrator_voice_id"],
         "context": {"used": g["context_used"] or 0, "max": settings.LLM_CONTEXT_SIZE},
+        "images_enabled": settings.IMAGE_ENABLED,  # FE: if true and an image_url is null, show a loader
         "player": player_dict(p),
         "quests": quests,
         "characters": chars,

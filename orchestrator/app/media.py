@@ -28,7 +28,11 @@ def generate_character_images(descriptor: str, style: str = "", seed: int | None
     """Returns {face_url, body_front_url, body_side_url, seed} or None."""
     if not settings.IMAGE_ENABLED or not descriptor.strip():
         return None
-    body: dict = {"descriptor": descriptor, "style": style}
+    # Character art is generated at the configured portrait size (tall full-body for the
+    # vertical character cards). The exact numbers live in IMAGE_BODY_W / IMAGE_BODY_H so
+    # they can be tuned without code changes.
+    body: dict = {"descriptor": descriptor, "style": style,
+                  "width": settings.IMAGE_BODY_W, "height": settings.IMAGE_BODY_H}
     if seed is not None:
         body["seed"] = seed
     try:

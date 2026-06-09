@@ -169,6 +169,16 @@ def test_context_usage_defaults_zero_before_any_turn(client, fake_llm):
 
 # ---------- image generation is optional ----------
 
+def test_state_exposes_images_enabled_flag(client, fake_llm, monkeypatch):
+    # FE uses this to decide whether a null image_url means "loading" (show a loader) or
+    # "off" (static placeholder).
+    gid = _new(client)
+    monkeypatch.setattr(settings, "IMAGE_ENABLED", True)
+    assert _state(client, gid)["images_enabled"] is True
+    monkeypatch.setattr(settings, "IMAGE_ENABLED", False)
+    assert _state(client, gid)["images_enabled"] is False
+
+
 def test_images_not_scheduled_when_disabled(client, fake_llm, monkeypatch):
     calls = []
     monkeypatch.setattr(integrate, "generate_images_for_game", lambda gid: calls.append(gid))

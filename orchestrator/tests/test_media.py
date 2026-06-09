@@ -45,6 +45,29 @@ def test_images_persisted_served_and_deleted(client, fake_llm, monkeypatch, tmp_
     assert client.get(f"/media/{gid}/{name}").status_code == 404
 
 
+def test_character_generation_sends_portrait_dimensions(monkeypatch):
+    """The orchestrator drives character art size (tall full-body for the cards) by sending
+    IMAGE_BODY_W/H to image-api. The image layer (ComfyUI/FLUX) is not touched."""
+    from app.config import settings
+    monkeypatch.setattr(settings, "IMAGE_ENABLED", True)
+    captured = {}
+
+    class _Resp:
+        def raise_for_status(self): pass
+        def json(self): return {"face_url": "f", "body_front_url": "bf", "body_side_url": "bs", "seed": 1}
+
+    def _post(url, json=None, timeout=None):
+        captured["url"], captured["body"] = url, json
+        return _Resp()
+
+    monkeypatch.setattr(media.httpx, "post", _post)
+    out = media.generate_character_images("a scarred knight", style="oil painting")
+    assert captured["url"].endswith("/image/character")
+    assert captured["body"]["width"] == settings.IMAGE_BODY_W
+    assert captured["body"]["height"] == settings.IMAGE_BODY_H
+    assert out["body_front_url"] == "bf"
+
+
 def test_persist_falls_back_when_download_fails(client, fake_llm, monkeypatch, tmp_path):
     """If the image bytes can't be fetched, we fall back to the image-api URL (still works)."""
     from app.config import settings

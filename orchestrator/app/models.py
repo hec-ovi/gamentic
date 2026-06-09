@@ -154,6 +154,7 @@ class GameState(BaseModel):
     scene: SceneOut               # the main card
     narrator_voice_id: Optional[str] = None
     context: dict = Field(default_factory=dict)   # {used, max} prompt-token usage meter
+    images_enabled: bool = True                   # if true and an image_url is null, art is still coming (show a loader)
     player: PlayerStateOut
     quests: list[QuestOut]
     characters: list[CharacterOut]
