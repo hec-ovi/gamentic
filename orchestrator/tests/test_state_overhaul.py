@@ -94,6 +94,28 @@ def test_narration_present_is_not_overridden(client, fake_llm):
     assert all("SHOULD-NOT-APPEAR" not in t for t in texts)
 
 
+# ---------- internal state-transition reasoning (in the prompt, never in output) ----------
+
+def test_narrator_prompt_has_internal_transition_reasoning(client, fake_llm):
+    # The narrator reasons about the transition (state now -> what happened -> what the player
+    # did -> next state: changes/kept/transitions) INTERNALLY. The scaffold must be in the
+    # system prompt and framed as silent (never printed to the player).
+    gid = _new(client)
+    client.post(f"/games/{gid}/action", json={"action": "I look around."})
+    sys = fake_llm.narrator_calls()[-1]["system"]
+    assert "NEXT state" in sys
+    assert "what CHANGES" in sys and "what is KEPT" in sys and "TRANSITIONS" in sys
+    assert "Never print these questions" in sys  # the questions guide tools/prose, not output
+
+
+def test_internal_questions_do_not_leak_into_beats(client, fake_llm):
+    # A normal turn's player-visible beats never contain the internal scaffold text.
+    gid = _new(client)
+    out = client.post(f"/games/{gid}/action", json={"action": "I look around."}).json()
+    for b in out["beats"]:
+        assert "NEXT state" not in b["text"] and "Never print" not in b["text"]
+
+
 # ---------- the NEW-place signal in the narrator's context ----------
 
 def test_new_place_is_flagged_to_narrator(client, fake_llm):
