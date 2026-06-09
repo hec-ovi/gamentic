@@ -33,14 +33,50 @@ try:
 except FileNotFoundError:
     _template = None
 
-# Per-view prompt suffixes for the character reference set. Same descriptor + same seed
-# across the three keeps them reading as one person (shared-seed consistency); the views
-# differ only by framing. See docs/image-service.md for the consistency method.
-CHARACTER_VIEWS: dict[str, str] = {
-    "face": "head-and-shoulders portrait, face clearly visible, looking at the camera, neutral background",
-    "body_front": "full body, standing, front view, facing the camera, whole figure in frame, neutral background",
-    "body_side": "full body, standing, side profile view, whole figure in frame, neutral background",
-}
+# Per-view config for the character reference set. Same descriptor + same seed across the
+# three keeps them reading as one person (shared-seed consistency); the views differ by
+# framing AND aspect: the face is square (1:1 avatar), the bodies are tall full-body
+# (stand-up cards, head-to-toe, no crop). Sizes come from config (image-api owns them, the
+# orchestrator does not dictate them). See docs/image-service.md for the method.
+#
+# Body framing prompts push the whole figure into frame with headroom + foot space and a
+# clean/black background, so the frontend can downscale into a tall card (and cut out later).
+_BODY_FRAMING = (
+    "full body shot, head to toe fully visible, entire figure in frame, "
+    "centered with headroom above the head and space below the feet, "
+    "natural standing pose, plain solid black background"
+)
+
+
+class _View:
+    __slots__ = ("suffix", "width", "height")
+
+    def __init__(self, suffix: str, width: int, height: int) -> None:
+        self.suffix = suffix
+        self.width = width
+        self.height = height
+
+
+def _character_views() -> dict[str, _View]:
+    """Per-view framing + size, read from config at call time so env tuning needs no rebuild."""
+    return {
+        "face": _View(
+            "head-and-shoulders portrait, face clearly visible, looking at the camera, "
+            "plain neutral background",
+            config.CHAR_FACE_WIDTH,
+            config.CHAR_FACE_HEIGHT,
+        ),
+        "body_front": _View(
+            f"{_BODY_FRAMING}, front view, facing the camera",
+            config.CHAR_BODY_WIDTH,
+            config.CHAR_BODY_HEIGHT,
+        ),
+        "body_side": _View(
+            f"{_BODY_FRAMING}, side profile view",
+            config.CHAR_BODY_WIDTH,
+            config.CHAR_BODY_HEIGHT,
+        ),
+    }
 
 
 class GenerateRequest(BaseModel):
@@ -66,9 +102,10 @@ class CharacterRequest(BaseModel):
     descriptor: str = Field(..., min_length=1)  # full appearance description
     style: str = ""  # world art style/theme, prepended to every view
     seed: int | None = None
-    width: int | None = None
-    height: int | None = None
     steps: int | None = None
+    # NOTE: no width/height here on purpose. Per-view sizes are owned by image-api
+    # (face square, body tall) and configured via env, so one request size can't fit
+    # both framings. See _character_views() / config.CHAR_*.
 
 
 class CharacterResponse(BaseModel):
@@ -168,21 +205,20 @@ async def generate(req: GenerateRequest) -> GenerateResponse:
 @app.post("/image/character", response_model=CharacterResponse)
 async def character(req: CharacterRequest) -> CharacterResponse:
     """Generate a character's 3-image reference set (face, body front, body side) as a
-    coherent set. v1 consistency = shared seed + shared descriptor, per-view framing only.
+    coherent set. Per-view framing AND aspect: face square, bodies tall full-body, sizes
+    owned by image-api (config.CHAR_*). v1 consistency = shared seed + shared descriptor.
     See docs/image-service.md for the method and the planned reference-conditioned upgrade.
     """
-    width = _clamp_dim(req.width or config.DEFAULT_WIDTH)
-    height = _clamp_dim(req.height or config.DEFAULT_HEIGHT)
     seed = req.seed if req.seed is not None else random.randint(0, 2**32 - 1)
     steps = req.steps or config.DEFAULT_STEPS
 
     urls: dict[str, str] = {}
-    for view, suffix in CHARACTER_VIEWS.items():
+    for view, spec in _character_views().items():
         _, ref = await _render(
-            prompt=_compose(req.style, req.descriptor, suffix),
+            prompt=_compose(req.style, req.descriptor, spec.suffix),
             negative_prompt="",
-            width=width,
-            height=height,
+            width=_clamp_dim(spec.width),
+            height=_clamp_dim(spec.height),
             seed=seed,  # shared across views for same-person consistency
             steps=steps,
         )

@@ -62,7 +62,7 @@ def test_generate_returns_image_url():
     body = resp.json()
     assert body["prompt_id"] == "pid-123"
     assert body["image_url"].startswith("/image/file?filename=gamentic_00001_.png")
-    assert body["width"] == 1024 and body["height"] == 1024
+    assert body["width"] == 768 and body["height"] == 768  # scene default
     assert isinstance(body["seed"], int)
     assert body["image_b64"] is None
 
@@ -188,6 +188,70 @@ def test_character_set_returns_three_views_with_shared_seed():
     assert any("front view" in p for p in prompts)
     assert any("side profile" in p for p in prompts)
     assert any("portrait" in p for p in prompts)
+
+
+@respx.mock
+def test_character_face_is_square_and_bodies_are_tall():
+    """The contract's core ask: face comes back square (1:1), body views tall full-body."""
+    from app import config
+
+    route = respx.post(f"{COMFY}/prompt").mock(
+        return_value=httpx.Response(200, json={"prompt_id": "pid-d"})
+    )
+    respx.get(f"{COMFY}/history/pid-d").mock(
+        return_value=httpx.Response(200, json=_history_ok("pid-d"))
+    )
+
+    resp = client.post("/image/character", json={"descriptor": "an elf ranger", "seed": 1})
+    assert resp.status_code == 200, resp.text
+
+    # Map each sent graph to its view by the framing words in the positive prompt, then
+    # assert the per-view aspect: face square, bodies tall (height > width).
+    sizes_by_view = {}
+    for call in route.calls:
+        graph = json.loads(call.request.content)["prompt"]
+        text = _node_by_title(graph, "Positive Prompt")["inputs"]["text"]
+        latent = _node_by_title(graph, "Latent Image")["inputs"]
+        sched = _node_by_title(graph, "Scheduler")["inputs"]
+        # latent and scheduler must agree on the dimensions
+        assert (latent["width"], latent["height"]) == (sched["width"], sched["height"])
+        if "portrait" in text and "full body" not in text:
+            sizes_by_view["face"] = (latent["width"], latent["height"])
+        elif "front view" in text:
+            sizes_by_view["body_front"] = (latent["width"], latent["height"])
+        elif "side profile" in text:
+            sizes_by_view["body_side"] = (latent["width"], latent["height"])
+
+    assert sizes_by_view["face"] == (config.CHAR_FACE_WIDTH, config.CHAR_FACE_HEIGHT)
+    fw, fh = sizes_by_view["face"]
+    assert fw == fh, "face must be square"
+    for key in ("body_front", "body_side"):
+        bw, bh = sizes_by_view[key]
+        assert (bw, bh) == (config.CHAR_BODY_WIDTH, config.CHAR_BODY_HEIGHT)
+        assert bh > bw, f"{key} must be tall (height > width)"
+
+
+@respx.mock
+def test_character_body_prompts_request_full_figure_framing():
+    route = respx.post(f"{COMFY}/prompt").mock(
+        return_value=httpx.Response(200, json={"prompt_id": "pid-e"})
+    )
+    respx.get(f"{COMFY}/history/pid-e").mock(
+        return_value=httpx.Response(200, json=_history_ok("pid-e"))
+    )
+
+    resp = client.post("/image/character", json={"descriptor": "a knight"})
+    assert resp.status_code == 200, resp.text
+
+    body_prompts = [
+        _node_by_title(json.loads(c.request.content)["prompt"], "Positive Prompt")["inputs"]["text"]
+        for c in route.calls
+        if "full body" in _node_by_title(json.loads(c.request.content)["prompt"], "Positive Prompt")["inputs"]["text"]
+    ]
+    assert len(body_prompts) == 2  # front + side
+    for p in body_prompts:
+        assert "head to toe" in p
+        assert "black background" in p
 
 
 def test_character_requires_descriptor():
