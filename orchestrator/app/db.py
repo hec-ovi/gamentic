@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS characters (
     inventory TEXT DEFAULT '[]',      -- characters can hold/receive items (JSON list)
     disposition TEXT DEFAULT 'neutral',  -- friendly | neutral | hostile | unknown (FSM)
     following INTEGER DEFAULT 0,      -- moves with the player between scenes
-    offers TEXT DEFAULT '[]'          -- narrator-offered contextual actions (JSON list of {id,label})
+    offers TEXT DEFAULT '[]',         -- narrator-offered contextual actions (JSON list of {id,label})
+    context_used INTEGER DEFAULT 0    -- this character agent's last prompt size (own context meter)
 );
 
 CREATE TABLE IF NOT EXISTS quests (
@@ -148,6 +149,7 @@ _MIGRATIONS = {
         "following": "INTEGER DEFAULT 0",
         "description": "TEXT DEFAULT ''",
         "offers": "TEXT DEFAULT '[]'",       # narrator-offered contextual actions (JSON)
+        "context_used": "INTEGER DEFAULT 0",
     },
     "games": {
         "scene_status": "TEXT DEFAULT 'calm'",

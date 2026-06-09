@@ -167,6 +167,32 @@ def test_context_usage_defaults_zero_before_any_turn(client, fake_llm):
     assert _state(client, gid)["context"] == {"used": 0, "max": settings.LLM_CONTEXT_SIZE}
 
 
+def test_character_calls_feed_their_own_and_the_turn_meter(client, fake_llm):
+    """Each character agent has its OWN context. Its prompt size is reported per character
+    (state.characters[].context) and folded into the global meter when it is the biggest
+    context of the turn."""
+    gid = _new(client, chars=[{"name": "Mara", "persona": "a scout"}])
+    fake_llm.narrator = llm.LLMReply(content="Mara stirs.", usage={"prompt_tokens": 9000},
+                                     tool_calls=[llm.ToolCall("cue_character", {"name": "Mara"})])
+    fake_llm.character_replies = {
+        "Mara": llm.LLMReply(content='[say]"Here."[/say]', usage={"prompt_tokens": 12000})}
+    client.post(f"/games/{gid}/action", json={"action": "I call for Mara."})
+    st = _state(client, gid)
+    assert st["context"]["used"] == 12000                       # the character was the biggest
+    mara = next(c for c in st["characters"] if c["name"] == "Mara")
+    assert mara["context"] == {"used": 12000, "max": settings.LLM_CONTEXT_SIZE}
+
+
+def test_whisper_only_turn_still_updates_the_meter(client, fake_llm):
+    """A private exchange skips the narrator, but the character call still measures."""
+    gid = _new(client, chars=[{"name": "Mara", "persona": "a scout"}])
+    fake_llm.character_replies = {
+        "Mara": llm.LLMReply(content='[say]"Quietly."[/say]', usage={"prompt_tokens": 7000})}
+    client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "whisper", "text": "Meet me later.", "target": "Mara"}]})
+    assert _state(client, gid)["context"]["used"] == 7000
+
+
 # ---------- image generation is optional ----------
 
 def test_state_exposes_images_enabled_flag(client, fake_llm, monkeypatch):

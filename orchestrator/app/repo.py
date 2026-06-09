@@ -431,6 +431,11 @@ def set_context_used(conn, gid: str, used: int) -> None:
     conn.execute("UPDATE games SET context_used=? WHERE id=?", (int(used or 0), gid))
 
 
+def set_character_context(conn, char_id: str, used: int) -> None:
+    """Each character agent has its OWN context; record its last prompt size."""
+    conn.execute("UPDATE characters SET context_used=? WHERE id=?", (int(used or 0), char_id))
+
+
 # ---------- fictional time (narrator-driven story clock, never the wall clock) ----------
 
 def advance_time(conn, gid: str, minutes: int) -> int:
@@ -745,6 +750,7 @@ def game_state(conn, gid: str) -> dict:
          "face_url": c["face_url"], "body_url": c["body_front_url"],
          "body_front_url": c["body_front_url"], "body_side_url": c["body_side_url"],
          "inventory": visible_items(c["inventory"]),
+         "context": {"used": c["context_used"] or 0, "max": settings.LLM_CONTEXT_SIZE},
          "available_actions": available_actions(conn, c, settings.CHAR_ACTION_CAP)}
         for c in get_characters(conn, gid)
     ]

@@ -124,13 +124,20 @@ def _why_impossible(conn, gid, d) -> str | None:
     return None
 
 
-def _character_reply(conn, gid, ch, emit, private_with=None):
-    """Run one character turn (POV + tools). Returns the reaction targets to enqueue."""
+def _character_reply(conn, gid, ch, emit, private_with=None, track=None):
+    """Run one character turn (POV + tools). Returns the reaction targets to enqueue.
+    `track` is the turn's context-meter accumulator: each character agent has its OWN
+    context, so its prompt size is recorded per character and folded into the turn max."""
     creply = llm.chat(
         prompts.build_character_messages(conn, gid, ch, settings.SCENE_BEATS),
         tools=tools.CHARACTER_TOOLS, tool_choice="auto",
         temperature=settings.CHARACTER_TEMPERATURE, max_tokens=settings.CHARACTER_MAX_TOKENS,
     )
+    tok = (creply.usage or {}).get("prompt_tokens", 0) or 0
+    if tok:
+        repo.set_character_context(conn, ch["id"], tok)
+        if track is not None:
+            track["ctx"] = max(track["ctx"], tok)
     for kind, txt in parse_character_output(creply.content):
         # [say] -> dialogue (speech bubble); [do] -> action (a character's physical action)
         emit(ch["id"], ch["name"], "dialogue" if kind == "say" else "action", txt,
@@ -149,7 +156,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
     seq = 0
     new_beats: list[dict] = []
     spawned: list[str] = []
-    ctx_used = 0  # max prompt tokens seen this turn -> the context-usage meter
+    track = {"ctx": 0}  # max prompt tokens seen this turn (any agent) -> the context meter
 
     def emit(speaker, name, kind, text, private_with=None):
         nonlocal seq
@@ -229,7 +236,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
             tools=tools.narrator_tools(adjudicating=bool(pending)), tool_choice="auto",
             temperature=settings.NARRATOR_TEMPERATURE, max_tokens=settings.NARRATOR_MAX_TOKENS,
         )
-        ctx_used = max(ctx_used, (reply.usage or {}).get("prompt_tokens", 0) or 0)
+        track["ctx"] = max(track["ctx"], (reply.usage or {}).get("prompt_tokens", 0) or 0)
 
         def _mark_handled(name, args):
             """An accepting tool call (apply_damage/attack/give_item) covers the matching
@@ -286,7 +293,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
                     temperature=settings.NARRATOR_TEMPERATURE,
                     max_tokens=settings.NARRATOR_RESOLVE_MAX_TOKENS,
                 )
-                ctx_used = max(ctx_used, (resolve.usage or {}).get("prompt_tokens", 0) or 0)
+                track["ctx"] = max(track["ctx"], (resolve.usage or {}).get("prompt_tokens", 0) or 0)
                 if resolve.content:
                     emit("narrator", "Narrator", "narration", resolve.content)
         for note in state_notes:
@@ -305,7 +312,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
                 continue
             acted[cid] = acted.get(cid, 0) + 1
             steps += 1
-            enqueue(_character_reply(conn, gid, ch, emit))
+            enqueue(_character_reply(conn, gid, ch, emit, track=track))
 
     # ---- private channel (1:1; other characters never see it) ----
     # The private modal stacks say AND do segments at one character. Consecutive private
@@ -331,10 +338,10 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
             else:
                 emit("player", None, "action",
                      f'you whisper to {row["name"]}: "{text}"', private_with=row["id"])
-        _character_reply(conn, gid, row, emit, private_with=row["id"])
+        _character_reply(conn, gid, row, emit, private_with=row["id"], track=track)
 
     if arrival_at_start:
         repo.clear_arrival_note(conn, gid)
-    if ctx_used:
-        repo.set_context_used(conn, gid, ctx_used)
+    if track["ctx"]:
+        repo.set_context_used(conn, gid, track["ctx"])
     return {"beats": new_beats, "state": repo.game_state(conn, gid), "spawned": spawned}
