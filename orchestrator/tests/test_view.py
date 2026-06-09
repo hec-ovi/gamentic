@@ -47,7 +47,7 @@ def test_view_renders_present_characters_from_state(client, fake_llm, monkeypatc
     assert body["image_url"].startswith(f"/media/{gid}/")
 
     p = captured["prompt"]
-    assert p.startswith("Wide full-body shot of two people in Crowded stone quay.")
+    assert p.startswith("Wide full-body shot of two people in harbor. Crowded stone quay.")
     assert "On the left, female, tall, scarred" in p     # gender net applies per character
     assert "On the right, male, broad-shouldered" in p   # one anchored sentence each
     assert "The Salt Star" not in p                      # quoted sign text stripped
@@ -68,8 +68,8 @@ def test_view_of_an_empty_scene_is_a_plain_wide_shot(client, fake_llm, monkeypat
     world = dict(WORLD, characters=[])
     gid = client.post("/games", json=world).json()["game_id"]
     assert client.post(f"/games/{gid}/view").status_code == 200
-    # the start scene's description is seeded from the setting at creation
-    assert captured["prompt"].startswith("Wide shot of a port town.")
+    # the start scene is seeded from the OPENING SCENARIO (the place), name leading
+    assert captured["prompt"].startswith("Wide shot of harbor. Gulls wheel overhead.")
     assert "full-body" not in captured["prompt"]
 
 
@@ -167,7 +167,8 @@ def test_creator_finalize_also_schedules_opening_scene_art(client, fake_llm, mon
         "start_location": "cove", "characters": [], "quests": [{"title": "x"}], "lore": []})])
     r = client.post("/create/finalize", json={"session_id": "art"})
     assert r.status_code == 200
-    assert "pirate cove" in captured.get("prompt", "")       # opening-scene art was generated
+    # opening-scene art was generated, seeded from the opening scenario, name leading
+    assert captured.get("prompt", "").startswith("cove. Waves crash.")
 
 
 def test_view_refuses_when_images_are_disabled(client, fake_llm):

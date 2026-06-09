@@ -128,8 +128,23 @@ def test_scene_prompt_strips_quoted_signs_and_bans_text(client, fake_llm, monkey
     prompt = prompts[-1]
     assert "Gilded Goose" not in prompt                      # quoted sign text never reaches the model
     assert "timber tavern interior" in prompt
+    assert prompt.startswith("studio. ")                     # the scene NAME anchors the subject
     assert "oil painting" in prompt                          # world style still composed in
     assert integrate.NO_TEXT_GUARD in prompt
+
+
+def test_scene_prompt_anchors_on_the_place_not_the_cosmology(client, fake_llm, monkeypatch, tmp_path):
+    """Live-found: a scene whose description was world-level prose ('a multiverse of dying
+    worlds...') produced a multi-city montage with rendered text. The prompt must lead with
+    the scene NAME (the concrete place) and strip single-quoted names ('Star-Strider')."""
+    from app import integrate
+    sc = {"name": "A desolate, high-gravity wasteland planet",
+          "description": "You land the 'Star-Strider' here. A multiverse of diverse, dying worlds.",
+          "status": "tense"}
+    p = integrate.scene_prompt(sc, "gritty sci-fi realism")
+    assert p.startswith("A desolate, high-gravity wasteland planet. You land the  here.")
+    assert "Star-Strider" not in p                           # single-quoted name stripped
+    assert integrate.NO_TEXT_GUARD in p
 
 
 def test_persist_falls_back_when_download_fails(client, fake_llm, monkeypatch, tmp_path):

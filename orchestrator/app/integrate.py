@@ -58,6 +58,24 @@ def _slug(s: str) -> str:
 _FEMALE = re.compile(r"\b(woman|women|female|girl|lady|she|her|hers)\b", re.I)
 _MALE = re.compile(r"\b(man|men|male|boy|guy|gentleman|he|him|his)\b", re.I)
 _QUOTED = re.compile(r'["“”][^"“”]*["“”]')   # "..." spans (incl. curly quotes)
+# standalone '...' spans (a ship name like 'Star-Strider') but never apostrophes in words
+_SQUOTED = re.compile(r"(?<!\w)'[^'\n]{1,80}'(?!\w)")
+
+
+def _strip_quoted(s: str) -> str:
+    return _SQUOTED.sub("", _QUOTED.sub("", s or "")).strip()
+
+
+def _place_text(sc) -> str:
+    """The art subject for a scene: its NAME (the concrete place) leading its description,
+    quoted spans stripped. Description alone can be world-level prose; the name anchors it."""
+    desc = _strip_quoted(sc["description"])
+    name = (sc["name"] or "").strip()
+    if not desc:
+        return name
+    if name and name.lower() not in desc.lower():
+        return f"{name}. {desc}"
+    return desc
 # FLUX has no negative prompt and negation phrasing backfires ("no text" invites text);
 # per the official BFL prompting guide, exclusions are phrased as the positive visual
 # that occupies the space. https://docs.bfl.ai/guides/prompting_guide_t2i_negative
@@ -90,10 +108,9 @@ def character_descriptor(c) -> str:
 
 
 def scene_prompt(sc, style: str) -> str:
-    """Scene art prompt: the description with quoted spans stripped (sign names and spoken
-    lines provoke garbled rendered text), plus the world style and the no-text guard."""
-    desc = _QUOTED.sub("", sc["description"] or "").strip() or sc["name"]
-    return ", ".join(x for x in [desc, style, NO_TEXT_GUARD] if x)
+    """Scene art prompt: the place (name + description, quoted spans stripped since sign
+    and ship names provoke garbled rendered text), the world style, the no-text guard."""
+    return ", ".join(x for x in [_place_text(sc), style, NO_TEXT_GUARD] if x)
 
 
 # ---------- the 'See' snapshot (scene + present characters, grounded in state) ----------
@@ -120,7 +137,7 @@ def view_prompt(conn, gid: str) -> str:
     pd = repo.get_player(conn, gid)
     sc = repo.current_scene(conn, gid)
     chars = list(repo.present_characters(conn, gid, pd["location"]))[:3]
-    env = _clip(_QUOTED.sub("", sc["description"] or "").strip() or sc["name"], 20)
+    env = _clip(_place_text(sc), 20)
     if chars:
         count = ("one person", "two people", "three people")[len(chars) - 1]
         lead = f"Wide full-body shot of {count} in {env}"
@@ -161,7 +178,7 @@ def _image_context(conn, gid: str, include_chars: bool) -> str:
     pd = repo.get_player(conn, gid)
     sc = repo.current_scene(conn, gid)
     t = repo.game_time(conn, gid)
-    lines = [f"PLACE: {sc['description'] or sc['name']}",
+    lines = [f"PLACE: {_place_text(sc)}",
              f"TIME OF DAY: {t.get('part') or 'day'}    MOOD: {sc['status']}"]
     if include_chars:
         chars = list(repo.present_characters(conn, gid, pd["location"]))[:3]

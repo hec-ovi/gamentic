@@ -92,7 +92,11 @@ def create_game(conn, sheet: WorldSheet) -> str:
             "INSERT INTO lore (id, game_id, keys, content, constant, priority) VALUES (?,?,?,?,?,?)",
             (_id(), gid, json.dumps(lo.keys), lo.content, int(lo.constant), lo.priority),
         )
-    get_or_create_scene(conn, gid, start, sheet.setting or sheet.opening_scenario)
+    # Seed the opening scene from the OPENING SCENARIO (the actual place and moment),
+    # not the setting: the setting is the whole world's cosmology ("a multiverse of
+    # dying worlds"), and seeding it here made the opening scene art depict the
+    # universe instead of the place the player is standing in (live-found).
+    get_or_create_scene(conn, gid, start, sheet.opening_scenario or sheet.setting)
     # Seed an opening goal so the player always has a current purpose from turn 0
     # (the narrator updates it as the story turns). Prefer the first quest's first objective.
     if sheet.quests:
