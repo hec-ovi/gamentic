@@ -48,8 +48,9 @@ class Settings:
     IMAGE_FACE_H = int(os.getenv("IMAGE_FACE_H", "320"))
     IMAGE_BODY_W = int(os.getenv("IMAGE_BODY_W", "320"))
     IMAGE_BODY_H = int(os.getenv("IMAGE_BODY_H", "512"))
-    IMAGE_SCENE_W = int(os.getenv("IMAGE_SCENE_W", "512"))
-    IMAGE_SCENE_H = int(os.getenv("IMAGE_SCENE_H", "512"))
+    # Benchmarked on the box: 768x768 renders in ~5.6s, so scenes default to real quality.
+    IMAGE_SCENE_W = int(os.getenv("IMAGE_SCENE_W", "768"))
+    IMAGE_SCENE_H = int(os.getenv("IMAGE_SCENE_H", "768"))
     # Per-turn VISUAL budget so the screen does not get noisy. These cap how many images
     # are shown in a single turn, not how many exist. Character references are generated
     # ONCE at creation and reused; this only limits display.
