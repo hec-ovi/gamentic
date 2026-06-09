@@ -28,11 +28,10 @@ def generate_character_images(descriptor: str, style: str = "", seed: int | None
     """Returns {face_url, body_front_url, body_side_url, seed} or None."""
     if not settings.IMAGE_ENABLED or not descriptor.strip():
         return None
-    # Character art is generated at the configured portrait size (tall full-body for the
-    # vertical character cards). The exact numbers live in IMAGE_BODY_W / IMAGE_BODY_H so
-    # they can be tuned without code changes.
-    body: dict = {"descriptor": descriptor, "style": style,
-                  "width": settings.IMAGE_BODY_W, "height": settings.IMAGE_BODY_H}
+    # Character view sizing (square face vs tall full-body) is owned by the image-api per view,
+    # configured on its side. The orchestrator only describes the character; it does not dictate
+    # sizes here (that would force one size on all views). See docs/image-agent-contract.md.
+    body: dict = {"descriptor": descriptor, "style": style}
     if seed is not None:
         body["seed"] = seed
     try:

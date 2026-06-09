@@ -45,9 +45,10 @@ def test_images_persisted_served_and_deleted(client, fake_llm, monkeypatch, tmp_
     assert client.get(f"/media/{gid}/{name}").status_code == 404
 
 
-def test_character_generation_sends_portrait_dimensions(monkeypatch):
-    """The orchestrator drives character art size (tall full-body for the cards) by sending
-    IMAGE_BODY_W/H to image-api. The image layer (ComfyUI/FLUX) is not touched."""
+def test_character_generation_lets_image_api_own_per_view_sizing(monkeypatch):
+    """The orchestrator only describes the character; per-view sizing (square face vs tall
+    full-body) is owned by the image-api. So the orchestrator must NOT send width/height to
+    /image/character (that would force one size on all three views). See image-agent-contract."""
     from app.config import settings
     monkeypatch.setattr(settings, "IMAGE_ENABLED", True)
     captured = {}
@@ -63,8 +64,8 @@ def test_character_generation_sends_portrait_dimensions(monkeypatch):
     monkeypatch.setattr(media.httpx, "post", _post)
     out = media.generate_character_images("a scarred knight", style="oil painting")
     assert captured["url"].endswith("/image/character")
-    assert captured["body"]["width"] == settings.IMAGE_BODY_W
-    assert captured["body"]["height"] == settings.IMAGE_BODY_H
+    assert captured["body"]["descriptor"] == "a scarred knight" and captured["body"]["style"] == "oil painting"
+    assert "width" not in captured["body"] and "height" not in captured["body"]  # image-api owns per-view size
     assert out["body_front_url"] == "bf"
 
 
