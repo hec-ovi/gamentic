@@ -181,3 +181,20 @@ def test_creator_message_and_finalize(client, fake_llm):
 def test_finalize_unknown_session_409(client, fake_llm):
     r = client.post("/create/finalize", json={"session_id": "nope"})
     assert r.status_code == 409
+
+
+def test_creator_sessions_persist_in_db_and_are_inspectable(client, fake_llm):
+    """Sessions live in SQLite (an orchestrator restart no longer kills an in-progress
+    creation) and GET /create/{id} exposes the chat so far (FE refresh-restore, debugging)."""
+    client.post("/create/message", json={"session_id": "s2", "message": "A pirate cove."})
+    client.post("/create/message", json={"session_id": "s2", "message": "Make it grim."})
+
+    h = client.get("/create/s2").json()["history"]
+    assert [m["content"] for m in h if m["role"] == "user"] == ["A pirate cove.", "Make it grim."]
+    assert len(h) == 4 and h[1]["role"] == "assistant"
+
+    # survives a "restart": a FRESH process would re-read the same DB; nothing is in memory
+    from app import creator, db
+    with db.get_conn() as conn:
+        assert creator.get_session(conn, "s2")          # straight from SQLite
+    assert client.get("/create/never-existed").status_code == 404

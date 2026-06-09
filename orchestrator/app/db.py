@@ -123,6 +123,12 @@ CREATE TABLE IF NOT EXISTS scenes (
     created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS creator_sessions (
+    id TEXT PRIMARY KEY,              -- client-chosen session id
+    history TEXT DEFAULT '[]',        -- the interview chat (JSON list of {role, content})
+    updated_at TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_scenes_game ON scenes(game_id, name);
 CREATE INDEX IF NOT EXISTS idx_beats_game ON beats(game_id, turn_index, seq);
 CREATE INDEX IF NOT EXISTS idx_chars_game ON characters(game_id);

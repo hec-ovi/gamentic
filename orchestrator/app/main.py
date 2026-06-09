@@ -150,6 +150,17 @@ def create_message(body: CreateMessageIn):
     return creator.message(body.session_id, body.message)
 
 
+@app.get("/create/{session_id}")
+def create_session(session_id: str):
+    """The creator chat so far (sessions persist in the DB and survive restarts).
+    Lets the frontend restore an in-progress creation after a refresh."""
+    with db.get_conn() as conn:
+        history = creator.get_session(conn, session_id)
+    if history is None:
+        raise HTTPException(404, "unknown creator session")
+    return {"session_id": session_id, "history": history}
+
+
 @app.post("/create/finalize")
 def create_finalize(body: dict, background_tasks: BackgroundTasks):
     session_id = body.get("session_id")
