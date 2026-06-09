@@ -87,4 +87,21 @@ Being honest about where it stands today:
 - 🖼️ **Images can be small or plain,** and scene art is still being wired into the UI cleanly.
 - 🧠 **Some limits are model-based.** A 12B Q4 model on local hardware will occasionally miss a tool call, repeat itself, or under-furnish a scene. The brain adds structure to fight this: a no-dead-air narration pass, bounded state, and explicit transition reasoning.
 - 🛠️ We are actively optimizing all of this, to make it as good as the local model and hardware allow.
+
+## 📜 Models and licenses
+
+Gamentic is just the harness. It does NOT distribute, host, or bundle any model weights. You bring your own, downloaded from their official sources, and each model stays the property of its authors under its own license and terms, which you are responsible for following. Read them at the source:
+
+- 📝 **Text, Gemma (Google).** The game runs a community uncensored finetune of Google's Gemma. Gemma and its derivatives are governed by Google's own terms, not by this repository:
+  - Gemma Terms of Use: https://ai.google.dev/gemma/terms
+  - Gemma Prohibited Use Policy: https://ai.google.dev/gemma/prohibited_use_policy
+  - The specific finetune used: https://huggingface.co/igorls/gemma-4-12B-it-heretic-GGUF
+- 🖼️ **Image, FLUX.2 [klein] 4B (Black Forest Labs),** under Apache-2.0:
+  - Model: https://huggingface.co/black-forest-labs/FLUX.2-klein-4B
+  - Black Forest Labs licensing: https://bfl.ai/licensing
+- 🔊 **Voice, Kokoro-82M (hexgrad),** under Apache-2.0:
+  - https://huggingface.co/hexgrad/Kokoro-82M
+- ⚙️ **Runtimes** are used as-is under their own licenses: llama.cpp (MIT) and ComfyUI (GPL-3.0).
+
+Nothing in this repository grants you any rights to those models. If you swap in a different model, follow that model's license. Gamentic simply orchestrates whatever local models you point it at.
 </content>
