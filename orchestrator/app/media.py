@@ -85,13 +85,18 @@ def fetch_image_bytes(url: str | None) -> bytes | None:
 
 
 def generate_scene_image(prompt: str, seed: int | None = None,
-                         width: int | None = None, height: int | None = None) -> dict | None:
+                         width: int | None = None, height: int | None = None,
+                         references: list[str] | None = None) -> dict | None:
     """Returns {image_url, ...} or None. Optional; off the turn hot-path by default.
-    width/height override the scene defaults (the 'See' snapshot uses a landscape frame)."""
+    width/height override the scene defaults (the 'See' snapshot uses a landscape frame).
+    references are fetchable image URLs (characters' stored views): the image-api
+    conditions the render on them so existing characters keep their identity."""
     if not settings.IMAGE_ENABLED or not prompt.strip():
         return None
     body: dict = {"prompt": prompt, "width": width or settings.IMAGE_SCENE_W,
                   "height": height or settings.IMAGE_SCENE_H}
+    if references:
+        body["references"] = references
     if seed is not None:
         body["seed"] = seed
     try:

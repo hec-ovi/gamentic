@@ -26,8 +26,8 @@ def _enable(monkeypatch, tmp_path, captured):
     monkeypatch.setattr(settings, "GAMES_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(media, "generate_character_images", lambda descriptor, style="", seed=None: None)
 
-    def _gen(prompt, seed=None, width=None, height=None):
-        captured.update(prompt=prompt, width=width, height=height)
+    def _gen(prompt, seed=None, width=None, height=None, references=None):
+        captured.update(prompt=prompt, width=width, height=height, references=references)
         return {"image_url": "/image/file?filename=v"}
     monkeypatch.setattr(media, "generate_scene_image", _gen)
     monkeypatch.setattr(media, "fetch_image_bytes", lambda url: b"PNG")
@@ -71,6 +71,32 @@ def test_view_of_an_empty_scene_is_a_plain_wide_shot(client, fake_llm, monkeypat
     # the start scene's description is seeded from the setting at creation
     assert captured["prompt"].startswith("Wide shot of a port town.")
     assert "full-body" not in captured["prompt"]
+
+
+def test_view_sends_character_identity_references(client, fake_llm, monkeypatch, tmp_path):
+    """Present characters' stored full-body views ride along as fetchable reference URLs,
+    so the image service conditions the snapshot on their actual look (same person as the
+    card). Characters without art yet contribute nothing; none at all = no references."""
+    from app.config import settings
+    captured = {}
+    _enable(monkeypatch, tmp_path, captured)
+    gid = client.post("/games", json=WORLD).json()["game_id"]
+    st = client.get(f"/games/{gid}/state").json()
+    vex_id = next(c["id"] for c in st["characters"] if c["name"] == "Vex")
+    with db.get_conn() as conn:                       # Vex has art; Bron not yet
+        repo.set_character_images(conn, vex_id, face_url=f"/media/{gid}/f.png",
+                                  body_front_url=f"/media/{gid}/char-{vex_id}-front.png",
+                                  body_side_url=None)
+
+    client.post(f"/games/{gid}/view")
+    assert captured["references"] == [
+        f"{settings.MEDIA_INTERNAL_BASE}/media/{gid}/char-{vex_id}-front.png"]
+
+    # strip the art -> no references key sent at all
+    with db.get_conn() as conn:
+        repo.set_character_images(conn, vex_id)
+    client.post(f"/games/{gid}/view")
+    assert captured["references"] is None
 
 
 def test_agentic_mode_lets_the_model_write_the_prompt_with_guards(client, fake_llm, monkeypatch, tmp_path):
@@ -137,7 +163,8 @@ def test_view_refuses_when_images_are_disabled(client, fake_llm):
 def test_view_fails_soft_when_generation_is_down(client, fake_llm, monkeypatch, tmp_path):
     captured = {}
     _enable(monkeypatch, tmp_path, captured)
-    monkeypatch.setattr(media, "generate_scene_image", lambda prompt, seed=None, width=None, height=None: None)
+    monkeypatch.setattr(media, "generate_scene_image",
+                        lambda prompt, seed=None, width=None, height=None, references=None: None)
     gid = client.post("/games", json=WORLD).json()["game_id"]
     r = client.post(f"/games/{gid}/view")
     assert r.status_code == 502                                     # explicit, FE can toast it

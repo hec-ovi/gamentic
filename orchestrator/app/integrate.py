@@ -188,10 +188,24 @@ def _agentic_prompt(context: str, fallback: str) -> str:
     return _harden_image_prompt(text) if text else fallback
 
 
+def _reference_url(stored: str | None) -> str | None:
+    """Absolutize a character image URL so the image-api can fetch it (our /media files
+    via the compose-internal hostname; its own /image/file paths via IMAGE_API_URL)."""
+    if not stored:
+        return None
+    if stored.startswith("http"):
+        return stored
+    if stored.startswith("/media/"):
+        return f"{settings.MEDIA_INTERNAL_BASE}{stored}"
+    return f"{settings.IMAGE_API_URL}{stored}"
+
+
 def generate_view_snapshot(gid: str) -> dict | None:
     """The 'See' button: render the scene WITH the characters present in it, as it is NOW.
     Synchronous (the player watches a loader); persists the image and lands it as an image
-    beat in the story flow. Returns the beat dict, or None when generation is unavailable."""
+    beat in the story flow. Returns the beat dict, or None when generation is unavailable.
+    Present characters' stored full-body views ride along as identity references, so the
+    snapshot shows THE SAME people as their cards, not text-prompt re-rolls."""
     with db.get_conn() as conn:
         if not repo.get_game(conn, gid):
             return None
@@ -199,10 +213,13 @@ def generate_view_snapshot(gid: str) -> dict | None:
         context = _image_context(conn, gid, include_chars=True) \
             if settings.IMAGE_AGENTIC_PROMPTS else ""
         loc = repo.get_player(conn, gid)["location"]
+        chars = list(repo.present_characters(conn, gid, loc))[:3]
+        refs = [u for u in (_reference_url(c["body_front_url"]) for c in chars) if u]
     if context:
         prompt = _agentic_prompt(context, fallback=prompt)   # LLM call outside the DB conn
     result = media.generate_scene_image(prompt, width=settings.IMAGE_VIEW_W,
-                                        height=settings.IMAGE_VIEW_H)
+                                        height=settings.IMAGE_VIEW_H,
+                                        references=refs or None)
     if not result or not result.get("image_url"):
         return None
     with db.get_conn() as conn:

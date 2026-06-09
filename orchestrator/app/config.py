@@ -58,6 +58,9 @@ class Settings:
     # figures fit side by side. 1152x768 benchmarks like the tall body size (~7.6s).
     IMAGE_VIEW_W = int(os.getenv("IMAGE_VIEW_W", "1152"))
     IMAGE_VIEW_H = int(os.getenv("IMAGE_VIEW_H", "768"))
+    # Where the image-api can fetch OUR persisted /media files from (compose-internal
+    # hostname). Used to absolutize character reference URLs for identity conditioning.
+    MEDIA_INTERNAL_BASE = os.getenv("MEDIA_INTERNAL_BASE", "http://gamentic-orchestrator:8000")
     # Agentic image prompts: the text model writes the scene/view image prompt from live
     # context (poses and the just-happened action included) instead of the code template.
     # Adds one LLM call per image (a few seconds, and it shares the single llama.cpp
