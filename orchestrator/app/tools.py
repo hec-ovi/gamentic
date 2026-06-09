@@ -221,9 +221,10 @@ def apply_tool(conn, gid: str, name: str, args: dict, actor=None) -> dict:
             return _result("state", f"Obtained: {nm}.")
         if name == "remove_item":
             nm = (args.get("name") or "").strip()
-            if not repo.remove_item(conn, gid, nm, int(args.get("qty", 1) or 1)):
+            removed = repo.remove_item(conn, gid, nm, int(args.get("qty", 1) or 1))
+            if not removed:
                 return _invalid(f"remove_item: '{nm}' not in inventory")
-            return _result("state", f"Lost: {nm}.")
+            return _result("state", f"Lost: {removed['name']}.")
         if name == "award_points":
             amount = int(args.get("amount", 0))
             new = repo.add_points(conn, gid, amount)
@@ -436,19 +437,24 @@ def _give(conn, gid, args, actor):
     kind_t, row = repo.resolve_target(conn, gid, args.get("target") or "")
     if kind_t is None:
         return _invalid(f"give: unknown target '{args.get('target')}'")
+    # item may be an ID (entity chip) or a name; the removed dict carries the real name,
+    # so the recipient receives a properly named item either way.
     if actor is None:
-        if not repo.remove_item(conn, gid, item):
+        moved = repo.remove_item(conn, gid, item)
+        if not moved:
             return _invalid(f"give: you don't have '{item}'")
         giver = "You give"
     else:
-        if not repo.character_remove_item(conn, actor["id"], item):
+        moved = repo.character_remove_item(conn, actor["id"], item)
+        if not moved:
             return _invalid(f"give: {actor['name']} has no '{item}'")
         giver = f"{actor['name']} gives"
+    nm, desc = moved["name"], moved.get("description", "")
     if kind_t == "player":
-        repo.add_item(conn, gid, item)
-        return _result("state", f"{giver} {item} to you.")
-    repo.character_add_item(conn, row["id"], item)
-    return _result("state", f"{giver} {item} to {row['name']}.", reactions=[row["id"]])
+        repo.add_item(conn, gid, nm, desc)
+        return _result("state", f"{giver} {nm} to you.")
+    repo.character_add_item(conn, row["id"], nm, desc)
+    return _result("state", f"{giver} {nm} to {row['name']}.", reactions=[row["id"]])
 
 
 def _spawn(conn, gid, args):

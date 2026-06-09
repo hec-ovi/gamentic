@@ -178,21 +178,24 @@ def add_item(conn, gid: str, name: str, description: str = "", qty: int = 1) -> 
             it["qty"] = it.get("qty", 1) + qty
             break
     else:
-        inv.append({"name": name, "description": description, "qty": qty})
+        # ids let the UI's entity chips reference player items precisely (give/transfer)
+        inv.append({"id": _id(), "name": name, "description": description, "qty": qty})
     conn.execute("UPDATE player_state SET inventory=? WHERE game_id=?", (json.dumps(inv), gid))
 
 
-def remove_item(conn, gid: str, name: str, qty: int = 1) -> bool:
+def remove_item(conn, gid: str, key: str, qty: int = 1):
+    """Remove by item ID or name. Returns the matched item dict (so callers know the real
+    name even when called with an ID), or None if the player does not hold it."""
     p = get_player(conn, gid)
     inv = db.loads(p["inventory"], [])
     for it in inv:
-        if it["name"].lower() == name.lower():
+        if _item_matches(it, key):
             it["qty"] = it.get("qty", 1) - qty
             if it["qty"] <= 0:
                 inv.remove(it)
             conn.execute("UPDATE player_state SET inventory=? WHERE game_id=?", (json.dumps(inv), gid))
-            return True
-    return False  # nothing removed; caller decides how to handle
+            return it
+    return None  # nothing removed; caller decides how to handle
 
 
 def _ensure_exit(conn, gid: str, scene_name: str, label: str, target: str) -> None:
@@ -271,15 +274,25 @@ def get_character(conn, cid: str):
 
 
 def resolve_target(conn, gid: str, name: str):
-    """Map a target name to ('player', None) | ('character', row) | (None, None)."""
+    """Map a target to ('player', None) | ('character', row) | (None, None).
+    Accepts a character ID (what the UI's entity chips send) or a name (what the
+    model writes); ID is tried first so renames/duplicate names cannot misroute."""
     n = (name or "").strip().lower()
     if n in ("player", "you", "me", "the player", "hero", "protagonist"):
         return ("player", None)
     if not n:
         return (None, None)
-    ch = conn.execute("SELECT * FROM characters WHERE game_id=? AND lower(name)=lower(?)",
-                      (gid, n)).fetchone()
+    ch = conn.execute("SELECT * FROM characters WHERE game_id=? AND id=?", (gid, n)).fetchone()
+    if not ch:
+        ch = conn.execute("SELECT * FROM characters WHERE game_id=? AND lower(name)=lower(?)",
+                          (gid, n)).fetchone()
     return ("character", ch) if ch else (None, None)
+
+
+def _item_matches(it: dict, key: str) -> bool:
+    """An inventory item matches by ID (entity chips) or by case-insensitive name (the model)."""
+    k = (key or "").strip().lower()
+    return bool(k) and (it.get("id") == k or it["name"].lower() == k)
 
 
 def set_character_life(conn, cid: str, delta: int):
@@ -320,17 +333,18 @@ def character_reveal_item(conn, cid: str, name: str) -> bool:
     return False
 
 
-def character_remove_item(conn, cid: str, name: str, qty: int = 1) -> bool:
+def character_remove_item(conn, cid: str, key: str, qty: int = 1):
+    """Remove by item ID or name; returns the matched item dict or None (see remove_item)."""
     c = get_character(conn, cid)
     inv = db.loads(c["inventory"], [])
     for it in inv:
-        if it["name"].lower() == name.lower():
+        if _item_matches(it, key):
             it["qty"] = it.get("qty", 1) - qty
             if it["qty"] <= 0:
                 inv.remove(it)
             conn.execute("UPDATE characters SET inventory=? WHERE id=?", (json.dumps(inv), cid))
-            return True
-    return False
+            return it
+    return None
 
 
 def spawn_character(conn, gid: str, name: str, persona: str, appearance: str = "",
@@ -475,13 +489,13 @@ def reveal_scene_item(conn, gid: str, name: str) -> bool:
     return False
 
 
-def take_scene_item(conn, gid: str, name: str) -> str:
-    """Move a REVEALED, non-fixed scene item into the player's inventory.
-    Returns 'ok' | 'fixed' (scenery, can't be pocketed) | 'missing'."""
+def take_scene_item(conn, gid: str, key: str) -> str:
+    """Move a REVEALED, non-fixed scene item into the player's inventory. Accepts item
+    ID (entity chips) or name. Returns 'ok' | 'fixed' (scenery) | 'missing'."""
     sc = current_scene(conn, gid)
     items = db.loads(sc["items"], [])
     for it in items:
-        if it["name"].lower() == name.lower() and not it.get("hidden"):
+        if _item_matches(it, key) and not it.get("hidden"):
             if it.get("fixed"):
                 return "fixed"
             items.remove(it)
