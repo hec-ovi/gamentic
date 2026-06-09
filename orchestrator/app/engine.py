@@ -46,6 +46,15 @@ def parse_character_output(text: str) -> list[tuple[str, str]]:
     return segs
 
 
+def _display(s: dict, key: str) -> str:
+    """The human name for an id carried by this segment's entity chips (refs). Chips send
+    {kind, id, name}, so the readable action text never leaks raw ids to the model/player."""
+    for r in s.get("refs") or []:
+        if r.get("id") and r["id"] == key and r.get("name"):
+            return r["name"]
+    return key
+
+
 def _compose(segments) -> tuple[str, list[dict]]:
     """Render tagged segments into a readable action string + the directed actions to apply."""
     parts, directed = [], []
@@ -55,14 +64,22 @@ def _compose(segments) -> tuple[str, list[dict]]:
         target = (s.get("target") or "").strip()
         item = (s.get("item") or "").strip()
         if t == "say":
-            parts.append(f'you say "{text}"' + (f" to {target}" if target else ""))
+            # A character chip inside the text IS the addressing: tagging someone in a say
+            # directs the line at them even without an explicit target.
+            if not target:
+                chip = next((r for r in s.get("refs") or []
+                             if (r.get("kind") or "") == "character" and (r.get("id") or r.get("name"))),
+                            None)
+                if chip:
+                    target = chip.get("id") or chip.get("name")
+            parts.append(f'you say "{text}"' + (f" to {_display(s, target)}" if target else ""))
             if target:
                 directed.append({"tool": "_address", "args": {"target": target}})
         elif t == "attack":
-            parts.append(f"you attack {target or 'them'}")
+            parts.append(f"you attack {_display(s, target) if target else 'them'}")
             directed.append({"tool": "attack", "args": {"target": target, "amount": s.get("amount")}})
         elif t == "give":
-            parts.append(f"you give {item} to {target or 'them'}")
+            parts.append(f"you give {_display(s, item)} to {_display(s, target) if target else 'them'}")
             directed.append({"tool": "give_item", "args": {"item": item, "target": target}})
         else:  # do
             parts.append(text or "you wait")

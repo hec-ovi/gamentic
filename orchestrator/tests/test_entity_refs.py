@@ -67,6 +67,38 @@ def test_give_by_item_id_and_target_id_moves_named_item(client, fake_llm):
                for b in out["beats"] if b["kind"] == "system")
 
 
+def test_character_chip_in_say_text_directs_the_line(client, fake_llm):
+    # say "hello [Mara] how are you?" - the chip itself is the addressing, no explicit target
+    gid = _new(client, [{"name": "Mara", "persona": "a guard"}])
+    cid = _char(_state(client, gid), "Mara")["id"]
+    fake_llm.character = llm.LLMReply(content='[say]"Well met."[/say]')
+    out = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "say", "text": "hello Mara, how are you?",
+         "refs": [{"kind": "character", "id": cid, "name": "Mara"}]}]}).json()
+    assert any(b["kind"] == "dialogue" and b["speaker_name"] == "Mara" for b in out["beats"])
+    # the player's echoed action shows the name, not the raw id
+    echo = next(b for b in out["beats"] if b["speaker"] == "player")
+    assert "Mara" in echo["text"] and cid not in echo["text"]
+
+
+def test_give_echo_uses_chip_names_not_ids(client, fake_llm):
+    gid = _new(client, [{"name": "Mara", "persona": "a guard"}])
+    fake_llm.narrator = llm.LLMReply(content="...", tool_calls=[
+        llm.ToolCall("add_item", {"name": "brass key"})])
+    client.post(f"/games/{gid}/action", json={"action": "I pick up the key."})
+    s = _state(client, gid)
+    item_id = s["player"]["inventory"][0]["id"]
+    cid = _char(s, "Mara")["id"]
+    fake_llm.narrator = llm.LLMReply(content="Done.")
+    out = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "give", "item": item_id, "target": cid,
+         "refs": [{"kind": "item", "id": item_id, "name": "brass key"},
+                  {"kind": "character", "id": cid, "name": "Mara"}]}]}).json()
+    echo = next(b for b in out["beats"] if b["speaker"] == "player")
+    assert "brass key" in echo["text"] and "Mara" in echo["text"]
+    assert item_id not in echo["text"] and cid not in echo["text"]
+
+
 def test_name_resolution_still_works(client, fake_llm):
     # the model (and free text) keeps using names; nothing regressed
     gid = _new(client, [{"name": "Mara", "persona": "a guard", "life": 8, "max_life": 8}])

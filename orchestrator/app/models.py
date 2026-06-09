@@ -61,14 +61,23 @@ class WorldSheet(BaseModel):
     player_life: int = 20
 
 
+class EntityRef(BaseModel):
+    """An entity chip embedded in a segment: a clickable, non-editable reference the
+    player tagged into their text (a character or an item), carrying the real id."""
+    kind: str = "character"        # character | item
+    id: Optional[str] = None
+    name: Optional[str] = None
+
+
 class Segment(BaseModel):
-    """One tagged piece of a player turn. type in: say | do | attack | give.
-    A turn can chain several: [do] go to the table, [say] "nice beer", [attack] X, [give] key -> X."""
+    """One tagged piece of a player turn. type in: say | do | attack | give | whisper.
+    A turn can stack several: [do] go to the table, [say] "nice beer", [attack] X, [give] key -> X."""
     type: str = "do"
     text: str = ""
-    target: Optional[str] = None   # for attack/give/directed say: a character name (or "player")
-    item: Optional[str] = None     # for give
+    target: Optional[str] = None   # for attack/give/directed say: a character id or name (or "player")
+    item: Optional[str] = None     # for give: an item id or name
     amount: Optional[int] = None   # for attack (damage)
+    refs: Optional[list[EntityRef]] = None  # entity chips tagged inside this segment's text
 
 
 class ActionIn(BaseModel):
