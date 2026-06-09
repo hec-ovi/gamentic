@@ -43,11 +43,8 @@ class Settings:
     # --- Image integration (orchestrator -> image-api, server to server) ---
     IMAGE_API_URL = os.getenv("IMAGE_API_URL", "http://localhost:9001")
     IMAGE_ENABLED = os.getenv("IMAGE_ENABLED", "true").lower() == "true"
-    # Default sizes (configurable per call). Characters/scenes are kept small to stay fast.
-    IMAGE_FACE_W = int(os.getenv("IMAGE_FACE_W", "320"))
-    IMAGE_FACE_H = int(os.getenv("IMAGE_FACE_H", "320"))
-    IMAGE_BODY_W = int(os.getenv("IMAGE_BODY_W", "320"))
-    IMAGE_BODY_H = int(os.getenv("IMAGE_BODY_H", "512"))
+    # Scene size is orchestrator-owned (sent to /image/generate). Character per-view sizing
+    # (square face vs tall body) is image-api-owned; see docs/image-agent-contract.md.
     # Benchmarked on the box: 768x768 renders in ~5.6s, so scenes default to real quality.
     IMAGE_SCENE_W = int(os.getenv("IMAGE_SCENE_W", "768"))
     IMAGE_SCENE_H = int(os.getenv("IMAGE_SCENE_H", "768"))
