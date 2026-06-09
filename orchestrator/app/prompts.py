@@ -200,6 +200,46 @@ def build_character_messages(conn, gid: str, character, scene_limit: int) -> lis
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
+# ---------- agentic input interpreter ----------
+
+INTERPRET_TOOL = [{
+    "type": "function",
+    "function": {
+        "name": "submit_segments",
+        "description": "Submit the player's message as ordered action segments.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "segments": {"type": "array", "items": {"type": "object", "properties": {
+                    "type": {"type": "string", "enum": ["say", "do", "attack", "give", "whisper"]},
+                    "text": {"type": "string"},
+                    "target": {"type": "string", "description": "Character name, when directed."},
+                    "item": {"type": "string", "description": "For give: the item handed over."},
+                    "amount": {"type": "integer", "description": "For attack: only if force is named."},
+                    "mode": {"type": "string", "enum": ["say", "do"],
+                             "description": "For whisper: words or a discreet act."},
+                }, "required": ["type"]}},
+            },
+            "required": ["segments"],
+        },
+    },
+}]
+
+
+def build_interpret_messages(conn, gid: str, message: str) -> list[dict]:
+    """The interpreter 'skill' is loaded ONLY for this one call (resolver doctrine):
+    parse a freeform typed action into structured segments, grounded in who is present
+    and what the player carries so names resolve."""
+    pd = repo.get_player(conn, gid)
+    chars = ", ".join(c["name"] for c in repo.present_characters(conn, gid, pd["location"])) or "no one"
+    inv = ", ".join(i["name"] for i in repo.db.loads(pd["inventory"], [])) or "nothing"
+    return [
+        {"role": "system", "content": render("interpret.system.md")},
+        {"role": "user", "content": render("interpret.user.md", characters=chars,
+                                           inventory=inv, message=message)},
+    ]
+
+
 # ---------- agentic image prompts ----------
 
 def build_image_prompt_messages(context: str) -> list[dict]:

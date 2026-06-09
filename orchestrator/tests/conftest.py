@@ -34,6 +34,9 @@ class FakeLLM:
         self.finalize = llm.LLMReply(content="", tool_calls=[])
         self.creator_text = llm.LLMReply(content="What kind of world do you imagine?")
         self.image_prompt = llm.LLMReply(content="Wide shot of a place. plain unmarked surfaces, no signage.")
+        # default: interpreter yields nothing -> engine falls back to the raw action text,
+        # so existing free-text tests behave exactly as before
+        self.interpret = llm.LLMReply(content="", tool_calls=[])
         self.calls = []
 
     def __call__(self, messages, tools=None, tool_choice="auto", temperature=0.8,
@@ -43,6 +46,8 @@ class FakeLLM:
         self.calls.append({"messages": messages, "tools": tools, "system": sys, "names": names})
         if "save_world" in names:
             return self.finalize
+        if "submit_segments" in names:               # input interpreter
+            return self.interpret
         if "cue_character" in names:                 # narrator toolset
             if self.narrator_script:
                 return self.narrator_script.pop(0)

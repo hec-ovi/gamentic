@@ -151,6 +151,47 @@ def _character_reply(conn, gid, ch, emit, private_with=None, track=None):
     return reactions
 
 
+_SEGMENT_TYPES = {"say", "do", "attack", "give", "whisper"}
+
+
+def interpret_action(conn, gid: str, text: str) -> list[dict] | None:
+    """Agentic input interpreter: parse a freeform typed action into structured segments
+    (one small LLM call, the 'skill' loaded only for this call), so typing freely gets
+    the same directed routing and adjudication as the composer buttons. Returns validated
+    segments, or None on any failure (the caller falls back to the raw text)."""
+    if not settings.INTERPRET_FREE_TEXT:
+        return None
+    try:
+        reply = llm.chat(prompts.build_interpret_messages(conn, gid, text),
+                         tools=prompts.INTERPRET_TOOL, tool_choice="auto",
+                         temperature=0.2, max_tokens=settings.INTERPRET_MAX_TOKENS)
+    except Exception:
+        return None
+    call = next((tc for tc in reply.tool_calls if tc.name == "submit_segments"), None)
+    raw = (call.arguments or {}).get("segments") if call else None
+    if not isinstance(raw, list):
+        return None
+    segs = []
+    for s in raw[:6]:                                  # bounded, like the composer
+        if not isinstance(s, dict) or (s.get("type") or "").lower() not in _SEGMENT_TYPES:
+            continue
+        t = s["type"].lower()
+        seg = {"type": t, "text": (s.get("text") or "").strip(),
+               "target": (s.get("target") or "").strip() or None,
+               "item": (s.get("item") or "").strip() or None,
+               "amount": s.get("amount"), "mode": (s.get("mode") or "").strip() or None}
+        if t in ("say", "do") and not seg["text"]:
+            continue
+        if t == "attack" and not seg["target"]:
+            continue
+        if t == "give" and not (seg["item"] and seg["target"]):
+            continue
+        if t == "whisper" and not (seg["target"] and seg["text"]):
+            continue
+        segs.append(seg)
+    return segs or None
+
+
 def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
     turn = repo.next_turn_index(conn, gid)
     seq = 0

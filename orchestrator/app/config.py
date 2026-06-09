@@ -17,6 +17,12 @@ class Settings:
     # Follow-up "resolve" narration pass: when the narrator changed state via tools but wrote
     # no prose, a short second pass voices the outcome so no turn is dead air.
     NARRATOR_RESOLVE_MAX_TOKENS = int(os.getenv("NARRATOR_RESOLVE_MAX_TOKENS", "180"))
+    # Agentic input interpreter: freeform typed actions are parsed into structured
+    # say/do/attack/give/whisper segments by one small LLM call before the turn runs,
+    # so typing freely gets directed routing + adjudication like the buttons do.
+    # Falls back to the raw text on any failure. One extra call (~1-2s) per typed turn.
+    INTERPRET_FREE_TEXT = os.getenv("INTERPRET_FREE_TEXT", "true").lower() == "true"
+    INTERPRET_MAX_TOKENS = int(os.getenv("INTERPRET_MAX_TOKENS", "300"))
     CHARACTER_MAX_TOKENS = int(os.getenv("CHARACTER_MAX_TOKENS", "220"))
 
     # Context budgeting

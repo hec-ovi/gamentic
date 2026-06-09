@@ -7,6 +7,7 @@ Notable changes to gamentic, newest first. No version numbers yet: this moves fa
 First public day. The repo went public and everything below landed today.
 
 ### Engine and state machine (the brain)
+- Agentic input interpreter: freeform typed actions are parsed by the model into structured say/do/attack/give/whisper segments (grounded in who is present and what you carry), so plain typing gets the same directed routing, private whispers and adjudication as the composer buttons. Bounded and validated; any failure falls back to the raw text. `INTERPRET_FREE_TEXT` env, on by default.
 - Narrator reasons about every state transition internally (state now, what happened, next state) and changes the world only through validated tools; the database is the single source of truth.
 - Resolver-style prompt dispatch: a lean narrator core, plus situational protocol blocks (furnish a new place, return after an absence) injected only on the turns that trigger them, each carrying a few-shot example. Few-shots also added for adjudication, character tool use, and image description fields.
 - Player attempt adjudication: impossible attempts are rejected deterministically with friendly in-world reasons; valid attack/give attempts go to the narrator to accept, adjust, or veto with a reason; anything left untouched happens as attempted, so no action is ever silently dropped. The veto tool is only offered while attempts are pending.

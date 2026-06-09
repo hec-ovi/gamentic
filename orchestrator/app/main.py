@@ -116,6 +116,13 @@ def action(gid: str, body: ActionIn, background_tasks: BackgroundTasks):
     with db.get_conn() as conn:
         if not repo.get_game(conn, gid):
             raise HTTPException(404, "game not found")
+        if text and not segments:
+            # typed freeform: the agentic interpreter structures it (say/do/attack/give/
+            # whisper with targets) so it gets routing + adjudication; raw text on failure
+            segments = engine.interpret_action(conn, gid, text)
+            if segments:
+                text = ""    # the segments ARE the action now (else a whisper-only
+                             # message would still open a public turn with the raw text)
         result = engine.run_turn(conn, gid, action_text=text, segments=segments)
         if result.get("spawned"):
             integrate.assign_voices_for_game(conn, gid)      # voice for the newcomer (inline)
