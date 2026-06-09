@@ -76,9 +76,12 @@ def get_state(gid: str):
 def delete_game(gid: str):
     """Wipe an entire game session (and all its characters, scenes, quests, history)."""
     with db.get_conn() as conn:
+        char_ids = ([c["id"] for c in repo.get_characters(conn, gid)]
+                    if repo.get_game(conn, gid) else [])
         if not repo.delete_game(conn, gid):
             raise HTTPException(404, "game not found")
     integrate.delete_game_images(gid)        # wipe the per-game image folder too
+    integrate.release_game_voices(char_ids)  # free their voice-registry entries too
     return {"deleted": gid}
 
 

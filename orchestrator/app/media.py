@@ -22,6 +22,34 @@ def list_voice_ids() -> list[str]:
         return []
 
 
+def register_character_voice(char_id: str, name: str, description: str,
+                             gender: str = "") -> str | None:
+    """Maya1 registry: one character = one stored, DESIGNED voice, composed from the sheet
+    (gender, age, pitch, tone, accent) and spaced from voices already in use. Idempotent
+    per id (re-posting never reshuffles). Returns the composed voice_id, or None."""
+    if not settings.VOICE_ENABLED or not (description or name).strip():
+        return None
+    body = {"id": char_id, "name": name, "description": description}
+    if gender:
+        body["gender"] = gender
+    try:
+        r = httpx.post(f"{settings.VOICE_API_URL}/characters", json=body, timeout=10)
+        r.raise_for_status()
+        return r.json().get("voice_id")
+    except Exception:
+        return None
+
+
+def delete_character_voice(char_id: str) -> None:
+    """Release a character's registry entry (called on game wipe). Best-effort."""
+    if not settings.VOICE_ENABLED:
+        return
+    try:
+        httpx.delete(f"{settings.VOICE_API_URL}/characters/{char_id}", timeout=5)
+    except Exception:
+        pass
+
+
 # ---------- image-api ----------
 
 def generate_character_images(descriptor: str, style: str = "", seed: int | None = None) -> dict | None:

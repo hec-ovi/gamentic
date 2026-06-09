@@ -15,17 +15,34 @@ from .config import settings
 
 
 def assign_voices_for_game(conn, gid: str) -> None:
-    """Give the narrator and each character a distinct voice_id from /voices."""
-    voices = media.list_voice_ids()
-    if not voices:
+    """The narrator gets a preset; each character gets a DESIGNED voice from the Maya1
+    registry, composed from their sheet at creation (the same moment their image
+    descriptor is fixed), so gender/age/tone always match the character. One character =
+    one stored voice (idempotent). Falls back to preset round-robin if the registry is
+    unavailable. Best-effort throughout."""
+    if not settings.VOICE_ENABLED:
         return
+    voices = media.list_voice_ids()
     g = repo.get_game(conn, gid)
-    if not g["narrator_voice_id"]:
-        repo.set_narrator_voice(conn, gid, voices[0])
+    if not g["narrator_voice_id"] and voices:
+        repo.set_narrator_voice(conn, gid, "narrator" if "narrator" in voices else voices[0])
     for i, c in enumerate(repo.get_characters(conn, gid)):
         if c["voice_id"]:
             continue
-        repo.set_character_voice(conn, c["id"], voices[(i + 1) % len(voices)])
+        sheet = " ".join(x for x in (c["description"], c["persona"]) if x).strip() or c["name"]
+        vid = media.register_character_voice(
+            c["id"], c["name"], sheet,
+            gender=_gender_hint(c["description"], c["persona"], c["appearance"], c["name"]))
+        if not vid and voices:
+            vid = voices[(i + 1) % len(voices)]
+        if vid:
+            repo.set_character_voice(conn, c["id"], vid)
+
+
+def release_game_voices(char_ids: list[str]) -> None:
+    """Free the registry entries of a wiped game's characters (best-effort)."""
+    for cid in char_ids:
+        media.delete_character_voice(cid)
 
 
 def _slug(s: str) -> str:

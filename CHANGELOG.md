@@ -25,6 +25,7 @@ First public day. The repo went public and everything below landed today.
 
 ### Voice
 - Voice stack replaced: Kokoro-82M is out, Maya1-3B is in (GGUF on llama.cpp Vulkan, SNAC decode to 24 kHz on CPU). Each character gets a designed voice composed from their sheet (gender, age, pitch, tone, accent) and stored in a persistent registry, which fixes the wrong-gender voice problem by design. 20+ inline emotion tags, a streaming endpoint with ~0.3s to first audio, and a request-hash audio cache.
+- The game brain now registers every character in that voice registry at creation (and on spawn), at the same moment their image descriptor is fixed, with the same gender net feeding both. Presets remain the fallback when the registry is down; wiping a game releases its voice entries.
 
 ### Image service
 - Per-view character sizing: square face, tall full-body, independently env-configurable; scene dimensions configurable too. Defaults validated by an on-box benchmark (768x768 about 5.6s, 768x1152 about 7.6s).
