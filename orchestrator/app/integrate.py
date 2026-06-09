@@ -10,7 +10,7 @@ game is unaffected and fully playable text-only.
 import os
 import re
 
-from . import repo, media, db
+from . import repo, media, db, llm, prompts
 from .config import settings
 
 
@@ -124,6 +124,53 @@ def view_prompt(conn, gid: str) -> str:
     return " ".join(x for x in (lead, people, tail) if x)
 
 
+# ---------- agentic image prompts (optional, settings.IMAGE_AGENTIC_PROMPTS) ----------
+# Hybrid: the text model writes the prompt from live context (it can express poses and
+# the just-happened moment, which a template cannot), then CODE enforces the invariants
+# (quoted words become rendered lettering, length kills klein, the no-text tail). Any
+# failure falls back to the deterministic template prompt.
+
+def _harden_image_prompt(text: str) -> str:
+    text = text.strip().strip('"').strip()
+    text = _QUOTED.sub("", text).strip()
+    text = _clip(text, 90)
+    if NO_TEXT_GUARD.lower() not in text.lower():
+        text = text.rstrip(".") + ". " + NO_TEXT_GUARD + "."
+    return text
+
+
+def _image_context(conn, gid: str, include_chars: bool) -> str:
+    g = repo.get_game(conn, gid)
+    pd = repo.get_player(conn, gid)
+    sc = repo.current_scene(conn, gid)
+    t = repo.game_time(conn, gid)
+    lines = [f"PLACE: {sc['description'] or sc['name']}",
+             f"TIME OF DAY: {t.get('part') or 'day'}    MOOD: {sc['status']}"]
+    if include_chars:
+        chars = list(repo.present_characters(conn, gid, pd["location"]))[:3]
+        if chars:
+            lines.append("CHARACTERS PRESENT (depict them):")
+            lines += [f"- {c['name']}: {_gendered_base(c)}" for c in chars]
+        recent = [b for b in repo.recent_beats_at(conn, gid, pd["location"], 6)
+                  if not b["private_with"]]
+        if recent:
+            lines.append("JUST HAPPENED (use for poses and action):")
+            lines += [f"- {b['text']}" for b in recent]
+    lines.append(f"STYLE: {g['art_style'] or g['tone'] or 'cinematic'}")
+    return "\n".join(lines)
+
+
+def _agentic_prompt(context: str, fallback: str) -> str:
+    """One LLM call that writes the image prompt; guarded, with the template as the net."""
+    try:
+        reply = llm.chat(prompts.build_image_prompt_messages(context),
+                         temperature=0.4, max_tokens=140)
+        text = (reply.content or "").strip()
+    except Exception:
+        return fallback
+    return _harden_image_prompt(text) if text else fallback
+
+
 def generate_view_snapshot(gid: str) -> dict | None:
     """The 'See' button: render the scene WITH the characters present in it, as it is NOW.
     Synchronous (the player watches a loader); persists the image and lands it as an image
@@ -132,7 +179,11 @@ def generate_view_snapshot(gid: str) -> dict | None:
         if not repo.get_game(conn, gid):
             return None
         prompt = view_prompt(conn, gid)
+        context = _image_context(conn, gid, include_chars=True) \
+            if settings.IMAGE_AGENTIC_PROMPTS else ""
         loc = repo.get_player(conn, gid)["location"]
+    if context:
+        prompt = _agentic_prompt(context, fallback=prompt)   # LLM call outside the DB conn
     result = media.generate_scene_image(prompt, width=settings.IMAGE_VIEW_W,
                                         height=settings.IMAGE_VIEW_H)
     if not result or not result.get("image_url"):
@@ -187,6 +238,13 @@ def generate_scene_image(gid: str, scene_id: str) -> None:
             return
         style = g["art_style"] or g["tone"] or ""
         prompt = scene_prompt(sc, style)
+        # agentic context only if this is still the CURRENT scene (this runs in the
+        # background; the player may have moved on, and the context follows the player)
+        context = _image_context(conn, gid, include_chars=False) \
+            if settings.IMAGE_AGENTIC_PROMPTS \
+            and sc["id"] == repo.current_scene(conn, gid)["id"] else ""
+    if context:
+        prompt = _agentic_prompt(context, fallback=prompt)   # LLM call outside the DB conn
     result = media.generate_scene_image(prompt)
     if not result:
         return

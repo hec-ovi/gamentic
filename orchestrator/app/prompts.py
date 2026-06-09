@@ -200,6 +200,17 @@ def build_character_messages(conn, gid: str, character, scene_limit: int) -> lis
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
+# ---------- agentic image prompts ----------
+
+def build_image_prompt_messages(context: str) -> list[dict]:
+    """The image-prompt 'skill': loaded ONLY for this one call (the FLUX recipe + a worked
+    example), never present in any story context. See integrate._agentic_prompt."""
+    return [
+        {"role": "system", "content": render("imageprompt.system.md")},
+        {"role": "user", "content": render("imageprompt.user.md", context=context)},
+    ]
+
+
 # ---------- story creator ----------
 
 def build_creator_messages(history: list[dict], message: str) -> list[dict]:

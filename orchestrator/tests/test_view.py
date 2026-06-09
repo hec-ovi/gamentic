@@ -73,6 +73,47 @@ def test_view_of_an_empty_scene_is_a_plain_wide_shot(client, fake_llm, monkeypat
     assert "full-body" not in captured["prompt"]
 
 
+def test_agentic_mode_lets_the_model_write_the_prompt_with_guards(client, fake_llm, monkeypatch, tmp_path):
+    """IMAGE_AGENTIC_PROMPTS=true: the text model writes the image prompt from live context
+    (looks, mood, the just-happened action), and CODE still enforces the invariants
+    (quotes stripped, no-text tail appended)."""
+    from app import llm as llmmod
+    from app.config import settings
+    captured = {}
+    _enable(monkeypatch, tmp_path, captured)
+    monkeypatch.setattr(settings, "IMAGE_AGENTIC_PROMPTS", True)
+    fake_llm.image_prompt = llmmod.LLMReply(
+        content='"Wide full-body shot of two people on a stone quay, the woman offering a coin."')
+    gid = client.post("/games", json=WORLD).json()["game_id"]
+
+    assert client.post(f"/games/{gid}/view").status_code == 200
+    p = captured["prompt"]
+    assert p.startswith("Wide full-body shot of two people on a stone quay")  # quotes stripped
+    assert integrate.NO_TEXT_GUARD in p                                       # tail enforced by code
+
+    # the prompt-writing call carried the real context and ONLY then the skill (never in story calls)
+    call = [c for c in fake_llm.calls
+            if c["system"].startswith("You write a single image-generation prompt")][-1]
+    user = call["messages"][1]["content"]
+    assert "female, tall, scarred" in user            # gender-netted looks
+    assert "Gulls wheel overhead." in user            # the just-happened beat for poses
+    assert "painterly dark-fantasy illustration" in user
+    nar = [c for c in fake_llm.calls if "cue_character" in c["names"]]
+    assert all("image-generation prompt" not in c["system"] for c in nar)
+
+
+def test_agentic_mode_falls_back_to_the_template(client, fake_llm, monkeypatch, tmp_path):
+    from app import llm as llmmod
+    from app.config import settings
+    captured = {}
+    _enable(monkeypatch, tmp_path, captured)
+    monkeypatch.setattr(settings, "IMAGE_AGENTIC_PROMPTS", True)
+    fake_llm.image_prompt = llmmod.LLMReply(content="")          # the model whiffed
+    gid = client.post("/games", json=WORLD).json()["game_id"]
+    assert client.post(f"/games/{gid}/view").status_code == 200
+    assert captured["prompt"].startswith("Wide full-body shot of two people in")  # template net
+
+
 def test_image_beats_stay_out_of_model_transcripts(client, fake_llm, monkeypatch, tmp_path):
     """The snapshot beat is for the UI (a URL); the model-facing history windows must skip
     it (an empty line that would waste a slot of the beat budget). The story log keeps it."""

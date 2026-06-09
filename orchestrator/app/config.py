@@ -58,6 +58,11 @@ class Settings:
     # figures fit side by side. 1152x768 benchmarks like the tall body size (~7.6s).
     IMAGE_VIEW_W = int(os.getenv("IMAGE_VIEW_W", "1152"))
     IMAGE_VIEW_H = int(os.getenv("IMAGE_VIEW_H", "768"))
+    # Agentic image prompts: the text model writes the scene/view image prompt from live
+    # context (poses and the just-happened action included) instead of the code template.
+    # Adds one LLM call per image (a few seconds, and it shares the single llama.cpp
+    # server with turns). Deterministic guards + template fallback still apply. A/B this.
+    IMAGE_AGENTIC_PROMPTS = os.getenv("IMAGE_AGENTIC_PROMPTS", "false").lower() == "true"
     # Per-turn VISUAL budget so the screen does not get noisy. These cap how many images
     # are shown in a single turn, not how many exist. Character references are generated
     # ONCE at creation and reused; this only limits display.

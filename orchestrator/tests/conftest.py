@@ -33,6 +33,7 @@ class FakeLLM:
         self.character_replies = {}        # name -> LLMReply
         self.finalize = llm.LLMReply(content="", tool_calls=[])
         self.creator_text = llm.LLMReply(content="What kind of world do you imagine?")
+        self.image_prompt = llm.LLMReply(content="Wide shot of a place. plain unmarked surfaces, no signage.")
         self.calls = []
 
     def __call__(self, messages, tools=None, tool_choice="auto", temperature=0.8,
@@ -48,6 +49,8 @@ class FakeLLM:
             return self.narrator
         if sys.startswith("You narrate the immediate outcome"):  # resolve narration pass
             return self.resolve
+        if sys.startswith("You write a single image-generation prompt"):  # agentic image prompt
+            return self.image_prompt
         if sys.startswith("You are a warm"):         # story-creator chat
             return self.creator_text
         # otherwise a character call (may carry CHARACTER_TOOLS attack/give, or none)

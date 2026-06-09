@@ -21,6 +21,7 @@ First public day. The repo went public and everything below landed today.
 - Character reference sets (square face plus tall full-body views) and scene art generated in the background via FLUX.2 Klein 4B on ComfyUI, persisted per game, fully optional (the game is playable text-only).
 - Image prompts hardened: every character descriptor leads with explicit sex and age (with a deterministic gender net when the model forgets), quoted sign text is stripped from scene prompts, and exclusions are phrased positively because FLUX has no negative prompts.
 - "See" button: `POST /games/{id}/view` renders the current scene with the characters present in it, grounded in live state (looks, time of day, mood, art style), and lands in the story log as an image beat.
+- Optional agentic image prompts (`IMAGE_AGENTIC_PROMPTS=true`): the text model writes the scene/view image prompt from live context (including the just-happened action, so poses reflect the moment), with deterministic guards on top and the code template as fallback. Off by default; adds one LLM call per image.
 
 ### Frontend and voice
 - Frontend redesign in progress (scene-centric layout, tagged composer with entity chips, character cards).
