@@ -4,7 +4,7 @@ A self-hosted AI dungeon role-playing game you play in the browser, running enti
 
 > Built and tuned for an AMD Strix Halo APU (Ryzen AI Max), on standard containers.
 
-![status](https://img.shields.io/badge/status-work%20in%20progress-orange) ![local](https://img.shields.io/badge/runs-100%25%20local-success) ![model](https://img.shields.io/badge/LLM-Gemma%2012B%20(llama.cpp%2FVulkan)-blue) ![api](https://img.shields.io/badge/backend-FastAPI%20%2B%20SQLite-009688)
+![status](https://img.shields.io/badge/status-work%20in%20progress-orange) ![local](https://img.shields.io/badge/runs-100%25%20local-success) ![model](https://img.shields.io/badge/LLM-Gemma%2012B%20(llama.cpp%2FVulkan)-blue) ![api](https://img.shields.io/badge/backend-FastAPI%20%2B%20SQLite-009688) ![license](https://img.shields.io/badge/license-MIT-green)
 
 ## ✨ What you do
 
@@ -12,6 +12,7 @@ A self-hosted AI dungeon role-playing game you play in the browser, running enti
 - 💬 Talk to characters, each its own AI with its own voice and agenda.
 - ⚔️ Fight, give, take, trade: characters can act on each other and on you, not just talk.
 - 🤫 Pull a character aside for a private word no one else hears.
+- 👁️ Hit "See" to generate an image of the scene with everyone in it, exactly as the world stands right now.
 - 🎯 Chase quests and a goal the story keeps up to date as you play.
 
 ## 🧠 The brain
@@ -28,8 +29,8 @@ What the state tracks:
 - 👤 **Characters:** disposition toward you (friendly / neutral / hostile / unknown), whether they follow you between scenes, HP, and what they carry.
 - 🎒 **Items:** loose loot you can pocket vs fixed scenery you cannot, plus hidden items you only find by searching.
 - 🎯 **Progression:** quests, objectives, points, life, and a current goal.
-- ⏳ **Time** (in progress): the world advances in hours and days, and a place you left is reasoned about when you come back to it.
-- 📓 **Draft / pending layer** (in progress): when you leave a place, the world keeps a draft of how you left it (its items, who was there, the open threads). That snapshot is what makes the world persistent: return later and it is as you left it, and the narrator reasons about what may have changed while you were gone.
+- ⏳ **Time:** a fictional story clock. A few minutes pass with every action, the narrator jumps it for rests and journeys, and days and times of day derive from it.
+- 📓 **Draft / pending layer:** when you leave a place, the world keeps a draft of how you left it (its items, who was there, the open threads). That snapshot is what makes the world persistent: return later and it is as you left it, and the narrator reasons about what plausibly changed while you were gone.
 
 Everything is bounded by caps (max items, characters, exits, actions) on purpose. Bounded state is what keeps the story consistent and the model honest.
 
@@ -110,4 +111,6 @@ Gamentic is just the harness. It does NOT distribute, host, or bundle any model 
 - ⚙️ **Runtimes** are used as-is under their own licenses: llama.cpp (MIT) and ComfyUI (GPL-3.0).
 
 Nothing in this repository grants you any rights to those models. If you swap in a different model, follow that model's license. Gamentic simply orchestrates whatever local models you point it at.
+
+Gamentic's own code is **MIT licensed** (see [LICENSE](LICENSE)). Changes are tracked in the [CHANGELOG](CHANGELOG.md).
 </content>
