@@ -28,7 +28,8 @@ What the state tracks:
 - 👤 **Characters:** disposition toward you (friendly / neutral / hostile / unknown), whether they follow you between scenes, HP, and what they carry.
 - 🎒 **Items:** loose loot you can pocket vs fixed scenery you cannot, plus hidden items you only find by searching.
 - 🎯 **Progression:** quests, objectives, points, life, and a current goal.
-- ⏳ **Time** (in progress): the world advances, and a place you left is reasoned about when you come back to it.
+- ⏳ **Time** (in progress): the world advances in hours and days, and a place you left is reasoned about when you come back to it.
+- 📓 **Draft / pending layer** (in progress): when you leave a place, the world keeps a draft of how you left it (its items, who was there, the open threads). That snapshot is what makes the world persistent: return later and it is as you left it, and the narrator reasons about what may have changed while you were gone.
 
 Everything is bounded by caps (max items, characters, exits, actions) on purpose. Bounded state is what keeps the story consistent and the model honest.
 
@@ -36,12 +37,13 @@ Everything is bounded by caps (max items, characters, exits, actions) on purpose
 
 The text model is an uncensored ("heretic") finetune of Gemma (`igorls/gemma-4-12B-it-heretic`, GGUF Q4) on llama.cpp with Vulkan. It was chosen deliberately: a dungeon needs characters that can genuinely act (attack, betray, scheme, make morally grey choices) and a narrator that stays inside the fiction instead of refusing or moralizing. The uncensored variant buys that creative freedom and keeps characters in character.
 
-## 🖼️ Images and 🔊 voice (optional)
+## 🖼️ Image (optional)
 
-- 🖼️ **Image:** ComfyUI (FLUX) behind a small REST adapter, for scene and character art.
-- 🔊 **Voice:** Kokoro-82M text-to-speech on CPU, a distinct voice per character.
+ComfyUI (FLUX) behind a small REST adapter, generating scene and character art. Optional: the game is fully playable text-only, and art fills in as it is generated.
 
-Both are optional. The game is fully playable text-only, and art and voice fill in as they generate.
+## 🔊 Voice (optional)
+
+Kokoro-82M text-to-speech on CPU, giving the narrator and each character a distinct voice. Optional, synthesized on demand. (See the known issues below; the voice layer is still rough.)
 
 ## 🚀 Run it
 
@@ -53,12 +55,13 @@ cd infra
 docker compose up -d
 ```
 
-| Service | URL |
-|---|---|
-| 🎮 Frontend | http://localhost:5173 |
-| 🧠 Orchestrator (game API) | http://localhost:8000 |
-| 📝 Text model (llama.cpp) | http://localhost:8080 |
-| 🖼️ Image / 🔊 Voice | http://localhost:9001 / http://localhost:9002 |
+| Service | URL | Tech stack |
+|---|---|---|
+| 🎮 Frontend | http://localhost:5173 | Vanilla HTML / CSS / JS, served by nginx |
+| 🧠 Orchestrator (game API) | http://localhost:8000 | FastAPI, SQLite, httpx, Python 3.12 |
+| 📝 Text model | http://localhost:8080 | llama.cpp (Vulkan), Gemma 12B GGUF Q4 |
+| 🖼️ Image | http://localhost:9001 | ComfyUI + FLUX, FastAPI REST adapter |
+| 🔊 Voice | http://localhost:9002 | Kokoro-82M (ONNX) on CPU, FastAPI |
 
 Open the frontend, create a world by chatting with the story creator, and play.
 
