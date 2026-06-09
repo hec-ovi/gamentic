@@ -60,7 +60,62 @@ def test_attack_character_in_another_scene_is_rejected(client, fake_llm):
 
 
 def test_valid_attempt_still_applies(client, fake_llm):
+    # the narrator (FakeLLM default) says nothing about the attempt -> default-accepted
     gid = _new(client, [{"name": "Brute", "persona": "a thug"}])
     out = client.post(f"/games/{gid}/action", json={"segments": [
         {"type": "attack", "target": "Brute", "amount": 4}]}).json()
     assert _char(out["state"], "Brute")["life"] == 6
+
+
+# ---- 7b: the narrator adjudicates valid attempts ----
+
+def test_attempts_are_listed_for_adjudication(client, fake_llm):
+    gid = _new(client, [{"name": "Brute", "persona": "a thug"}])
+    client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "attack", "target": "Brute", "amount": 4}]})
+    user = fake_llm.narrator_calls()[-1]["messages"][-1]["content"]
+    assert "THE PLAYER ATTEMPTS" in user and "1. attack Brute (4 damage)" in user
+    # and the block is absent on a plain free-text turn
+    client.post(f"/games/{gid}/action", json={"action": "I look around."})
+    assert "THE PLAYER ATTEMPTS" not in fake_llm.narrator_calls()[-1]["messages"][-1]["content"]
+
+
+def test_narrator_can_veto_an_attempt(client, fake_llm):
+    gid = _new(client, [{"name": "Mara", "persona": "a guard"}])
+    fake_llm.narrator = llm.LLMReply(content="...", tool_calls=[
+        llm.ToolCall("add_item", {"name": "coin"})])
+    client.post(f"/games/{gid}/action", json={"action": "I pick up a coin."})
+    fake_llm.narrator = llm.LLMReply(
+        content="Mara folds her arms.",
+        tool_calls=[llm.ToolCall("reject_attempt",
+                                 {"attempt": 1, "reason": "Mara steps back, refusing the coin."})])
+    out = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "give", "item": "coin", "target": "Mara"}]}).json()
+    # vetoed: nothing transferred, and the in-world reason reaches the player
+    assert any("refusing the coin" in b["text"] for b in out["beats"] if b["kind"] == "system")
+    assert all(i["name"] != "coin" for i in _char(out["state"], "Mara")["inventory"])
+    assert any(i["name"] == "coin" for i in out["state"]["player"]["inventory"])  # still held
+
+
+def test_narrator_accepting_with_a_tool_prevents_double_apply(client, fake_llm):
+    gid = _new(client, [{"name": "Brute", "persona": "a thug"}])
+    # the narrator resolves the attack itself, with a modified amount (2 instead of 4)
+    fake_llm.narrator = llm.LLMReply(
+        content="Your blow glances off his shoulder plate.",
+        tool_calls=[llm.ToolCall("apply_damage", {"target": "Brute", "amount": 2})])
+    out = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "attack", "target": "Brute", "amount": 4}]}).json()
+    assert _char(out["state"], "Brute")["life"] == 8       # 10-2, NOT 10-2-4
+
+
+def test_narrator_give_item_tool_transfers_from_player(client, fake_llm):
+    # free-text handovers now work too: the narrator has give_item (player -> character)
+    gid = _new(client, [{"name": "Mara", "persona": "a guard"}])
+    fake_llm.narrator = llm.LLMReply(content="...", tool_calls=[
+        llm.ToolCall("add_item", {"name": "map"})])
+    client.post(f"/games/{gid}/action", json={"action": "I take the map."})
+    fake_llm.narrator = llm.LLMReply(content="She takes it.", tool_calls=[
+        llm.ToolCall("give_item", {"item": "map", "target": "Mara"})])
+    out = client.post(f"/games/{gid}/action", json={"action": "I hand Mara the map."}).json()
+    assert any(i["name"] == "map" for i in _char(out["state"], "Mara")["inventory"])
+    assert all(i["name"] != "map" for i in out["state"]["player"]["inventory"])

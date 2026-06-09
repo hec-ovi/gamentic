@@ -170,6 +170,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
         # BEFORE anything is applied, and the narrator is told they failed (so its prose
         # cannot claim a transfer or a hit that state forbids).
         failures: list[str] = []
+        pending: list[dict] = []
         for d in directed:
             if d["tool"] == "_address":
                 kind_t, row = repo.resolve_target(conn, gid, d["args"].get("target", ""))
@@ -181,24 +182,52 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
                 failures.append(why)
                 emit("system", None, "system", why)
                 continue
-            out = tools.apply_tool(conn, gid, d["tool"], d["args"], actor=None)
-            if out["kind"] == "state" and out["text"]:
-                emit("system", None, "system", out["text"])
-            enqueue(out["reactions"])
+            # Valid mechanical attempt: NOT applied yet. The narrator adjudicates it
+            # (accept via the matching tool / veto via reject_attempt); anything it leaves
+            # untouched is default-applied after the reply, so nothing is silently lost.
+            kind_t, row = repo.resolve_target(conn, gid, d["args"].get("target") or "")
+            disp = d.get("display", {})
+            if d["tool"] == "attack":
+                amt = d["args"].get("amount")
+                line = f"attack {disp.get('target')}" + (f" ({amt} damage)" if amt else "")
+                family = "attack"
+            else:
+                line = f"give {disp.get('item')} to {disp.get('target')}"
+                family = "give"
+            pending.append({"d": d, "family": family, "line": line,
+                            "tid": "player" if kind_t == "player" else (row["id"] if row else None),
+                            "handled": False, "rejected": False})
 
         narrator_action = action_text
         if failures:
             narrator_action = f"{action_text} (failed: {' '.join(failures)})"
 
         reply = llm.chat(
-            prompts.build_narrator_messages(conn, gid, narrator_action, settings.HISTORY_BEATS, settings.LORE_BUDGET),
+            prompts.build_narrator_messages(conn, gid, narrator_action, settings.HISTORY_BEATS,
+                                            settings.LORE_BUDGET,
+                                            attempts=[p["line"] for p in pending]),
             tools=tools.NARRATOR_TOOLS, tool_choice="auto",
             temperature=settings.NARRATOR_TEMPERATURE, max_tokens=settings.NARRATOR_MAX_TOKENS,
         )
         ctx_used = max(ctx_used, (reply.usage or {}).get("prompt_tokens", 0) or 0)
+
+        def _mark_handled(name, args):
+            """An accepting tool call (apply_damage/attack/give_item) covers the matching
+            pending attempt: same family, same resolved target."""
+            fam = "give" if name == "give_item" else "attack"
+            tname = (args or {}).get("target") or ("" if name == "give_item" else "player")
+            kt, rw = repo.resolve_target(conn, gid, tname)
+            tid = "player" if kt == "player" else (rw["id"] if rw else None)
+            for p in pending:
+                if not p["handled"] and not p["rejected"] and p["family"] == fam and p["tid"] == tid:
+                    p["handled"] = True
+                    return
+
         cues, state_notes = [], []
         for tc in reply.tool_calls:
             out = tools.apply_tool(conn, gid, tc.name, tc.arguments, actor=None)
+            if tc.name in ("apply_damage", "attack", "give_item") and out["kind"] == "state":
+                _mark_handled(tc.name, tc.arguments)
             if out["kind"] == "cue" and out["cue"]:
                 cues.append(out["cue"])
             elif out["kind"] == "spawn":
@@ -206,8 +235,25 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
                 if out["text"]:
                     state_notes.append(out["text"])
                 cues.append(out["cue"])
+            elif out["kind"] == "reject":
+                n = (out["cue"] or {}).get("attempt")
+                victim = (pending[n - 1] if isinstance(n, int) and 1 <= n <= len(pending)
+                          else next((p for p in pending if not p["handled"] and not p["rejected"]), None))
+                if victim and not victim["handled"]:
+                    victim["rejected"] = True
+                    state_notes.append(out["text"])
             elif out["kind"] in ("state", "kill") and out["text"]:
                 state_notes.append(out["text"])
+            enqueue(out["reactions"])
+
+        # Default-accept: anything the narrator neither applied nor vetoed happens as attempted.
+        for p in pending:
+            if p["handled"] or p["rejected"]:
+                continue
+            out = tools.apply_tool(conn, gid, p["d"]["tool"], p["d"]["args"], actor=None)
+            if out["kind"] == "state" and out["text"]:
+                state_notes.append(out["text"])
+            enqueue(out["reactions"])
         if reply.content:
             emit("narrator", "Narrator", "narration", reply.content)
         else:

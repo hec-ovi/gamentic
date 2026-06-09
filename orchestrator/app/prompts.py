@@ -121,7 +121,8 @@ def _lore_block(conn, gid: str, focus_text: str, budget: int) -> str:
 
 # ---------- message builders ----------
 
-def build_narrator_messages(conn, gid: str, action: str, history_limit: int, lore_budget: int) -> list[dict]:
+def build_narrator_messages(conn, gid: str, action: str, history_limit: int, lore_budget: int,
+                            attempts: list[str] | None = None) -> list[dict]:
     g = repo.get_game(conn, gid)
     history = repo.recent_beats(conn, gid, history_limit)
     focus = action + " " + " ".join(_render_beat(b) for b in history[-4:])
@@ -135,7 +136,14 @@ def build_narrator_messages(conn, gid: str, action: str, history_limit: int, lor
         state=_state_block(conn, gid),
         lore=_lore_block(conn, gid, focus, lore_budget),
     )
-    user = render("narrator.user.md", transcript=_transcript(history), action=action)
+    # The player's mechanical attempts (attack/give), numbered for adjudication. Only
+    # rendered when there are any; the engine default-accepts whatever goes unaddressed.
+    attempts_block = ""
+    if attempts:
+        lines = "\n".join(f"{i + 1}. {a}" for i, a in enumerate(attempts))
+        attempts_block = "\n" + render("narrator.attempts.md", attempts=lines) + "\n"
+    user = render("narrator.user.md", transcript=_transcript(history), action=action,
+                  attempts_block=attempts_block)
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 

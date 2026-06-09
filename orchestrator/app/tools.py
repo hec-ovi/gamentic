@@ -186,6 +186,22 @@ NARRATOR_TOOLS = [
                        "e.g. 'Pray at the altar'. A scene offers at most 3 actions total.",
         "parameters": {"type": "object", "properties": {
             "label": {"type": "string"}}, "required": ["label"]}}},
+    {"type": "function", "function": {
+        "name": "give_item",
+        "description": "Transfer an item from the player's inventory to a character (use to "
+                       "accept the player's handover, or when they drop or trade something).",
+        "parameters": {"type": "object", "properties": {
+            "item": {"type": "string"}, "target": {"type": "string"}},
+            "required": ["item", "target"]}}},
+    {"type": "function", "function": {
+        "name": "reject_attempt",
+        "description": "Veto one numbered PLAYER ATTEMPT with an in-world reason (shown to the "
+                       "player), e.g. 'Mara steps back, refusing the coin.' Attempts you neither "
+                       "apply nor veto simply happen as attempted.",
+        "parameters": {"type": "object", "properties": {
+            "attempt": {"type": "integer", "description": "The attempt number from the list."},
+            "reason": {"type": "string", "description": "In-world reason it does not happen."},
+        }, "required": ["attempt", "reason"]}}},
 ]
 
 # Tools a CHARACTER agent may call to act on others. Their speech is the message content;
@@ -389,6 +405,10 @@ def apply_tool(conn, gid: str, name: str, args: dict, actor=None) -> dict:
             label = (args.get("label") or "").strip()
             ok = repo.offer_scene_action(conn, gid, label, settings.SCENE_ACTION_CAP)
             return _result("state") if ok else _invalid(f"offer_scene_action: scene already has {settings.SCENE_ACTION_CAP} actions")
+        if name == "reject_attempt":
+            reason = (args.get("reason") or "").strip() or "It does not happen."
+            return {"kind": "reject", "text": reason,
+                    "cue": {"attempt": args.get("attempt")}, "reactions": []}
         return _invalid(f"unknown tool '{name}'")
     except (ValueError, TypeError) as e:
         return _invalid(f"{name}: bad args ({e})")
