@@ -229,7 +229,11 @@ FINALIZE_TOOL = [{
                     "description": {"type": "string", "description": "One short public line shown in the UI."},
                     "knowledge": {"type": "string"},
                     "appearance": {"type": "string",
-                                   "description": "Visual description for the character reference images."},
+                                   "description": "Visual description for the character reference images. "
+                                                  "Start with explicit sex and rough age ('a young woman "
+                                                  "with...', 'a grizzled old man...') and keep every feature "
+                                                  "unmistakably matching it. Looks only (face, build, hair, "
+                                                  "clothing); never include words, signs or symbols to draw."},
                     "disposition": {"type": "string", "enum": list(constants.DISPOSITIONS),
                                     "description": "How they feel toward the player to start."},
                 }, "required": ["name", "persona", "description"]}},

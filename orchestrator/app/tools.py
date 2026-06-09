@@ -92,7 +92,10 @@ NARRATOR_TOOLS = [
         "parameters": {"type": "object", "properties": {
             "name": {"type": "string"},
             "persona": {"type": "string", "description": "Who they are, how they behave."},
-            "appearance": {"type": "string", "description": "What they look like (for their portrait)."},
+            "appearance": {"type": "string",
+                           "description": "What they look like (for their portrait). Start with explicit "
+                                          "sex and rough age ('a young woman...', 'an old man...'); looks "
+                                          "only, never words or signs to draw."},
             "knowledge": {"type": "string", "description": "Private things only they know."},
             "life": {"type": "integer"},
         }, "required": ["name", "persona"]}}},
