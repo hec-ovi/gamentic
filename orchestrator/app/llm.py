@@ -22,6 +22,7 @@ class LLMReply:
     content: str
     tool_calls: list[ToolCall] = field(default_factory=list)
     finish_reason: str = ""
+    usage: dict = field(default_factory=dict)  # {prompt_tokens, completion_tokens, total_tokens}
 
 
 def chat(
@@ -65,4 +66,5 @@ def chat(
         content=(msg.get("content") or "").strip(),
         tool_calls=calls,
         finish_reason=choice.get("finish_reason", ""),
+        usage=data.get("usage") or {},
     )

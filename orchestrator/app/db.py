@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS games (
     status TEXT DEFAULT 'active',    -- story FSM: active | won | lost
     scene_status TEXT DEFAULT 'calm',  -- current scene mood FSM: calm | tense | dangerous
     current_goal TEXT DEFAULT '',    -- the player's current goal; starts empty, narrator sets it
+    context_used INTEGER DEFAULT 0,  -- last turn's prompt tokens, for the context-usage meter
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -147,6 +148,7 @@ _MIGRATIONS = {
     "games": {
         "scene_status": "TEXT DEFAULT 'calm'",
         "current_goal": "TEXT DEFAULT ''",
+        "context_used": "INTEGER DEFAULT 0",
     },
     "beats": {
         "private_with": "TEXT",

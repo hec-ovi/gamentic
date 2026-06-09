@@ -94,6 +94,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
     seq = 0
     new_beats: list[dict] = []
     spawned: list[str] = []
+    ctx_used = 0  # max prompt tokens seen this turn -> the context-usage meter
 
     def emit(speaker, name, kind, text, private_with=None):
         nonlocal seq
@@ -137,6 +138,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
             tools=tools.NARRATOR_TOOLS, tool_choice="auto",
             temperature=settings.NARRATOR_TEMPERATURE, max_tokens=settings.NARRATOR_MAX_TOKENS,
         )
+        ctx_used = max(ctx_used, (reply.usage or {}).get("prompt_tokens", 0) or 0)
         cues, state_notes = [], []
         for tc in reply.tool_calls:
             out = tools.apply_tool(conn, gid, tc.name, tc.arguments, actor=None)
@@ -161,6 +163,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
                     temperature=settings.NARRATOR_TEMPERATURE,
                     max_tokens=settings.NARRATOR_RESOLVE_MAX_TOKENS,
                 )
+                ctx_used = max(ctx_used, (resolve.usage or {}).get("prompt_tokens", 0) or 0)
                 if resolve.content:
                     emit("narrator", "Narrator", "narration", resolve.content)
         for note in state_notes:
@@ -191,4 +194,6 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
         emit("player", None, "action", f'you whisper to {row["name"]}: "{text}"', private_with=row["id"])
         _character_reply(conn, gid, row, emit, private_with=row["id"])
 
+    if ctx_used:
+        repo.set_context_used(conn, gid, ctx_used)
     return {"beats": new_beats, "state": repo.game_state(conn, gid), "spawned": spawned}

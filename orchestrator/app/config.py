@@ -7,6 +7,8 @@ class Settings:
     LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:8080/v1")
     LLM_MODEL = os.getenv("LLM_MODEL", "gemma-4-12b-heretic")
     LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "180"))
+    # The model's context window, for the context-usage meter (used/max shown in the UI).
+    LLM_CONTEXT_SIZE = int(os.getenv("LLM_CONTEXT_SIZE", "131072"))
 
     # Sampling
     NARRATOR_TEMPERATURE = float(os.getenv("NARRATOR_TEMPERATURE", "0.8"))

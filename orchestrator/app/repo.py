@@ -368,6 +368,11 @@ def set_goal(conn, gid: str, goal: str) -> None:
     conn.execute("UPDATE games SET current_goal=? WHERE id=?", (goal, gid))
 
 
+def set_context_used(conn, gid: str, used: int) -> None:
+    """Record the last turn's prompt-token count for the context-usage meter."""
+    conn.execute("UPDATE games SET context_used=? WHERE id=?", (int(used or 0), gid))
+
+
 def set_character_description(conn, cid: str, description: str) -> None:
     conn.execute("UPDATE characters SET description=? WHERE id=?", (description, cid))
 
@@ -652,6 +657,7 @@ def game_state(conn, gid: str) -> dict:
         "current_goal": g["current_goal"],
         "scene": scene,
         "narrator_voice_id": g["narrator_voice_id"],
+        "context": {"used": g["context_used"] or 0, "max": settings.LLM_CONTEXT_SIZE},
         "player": player_dict(p),
         "quests": quests,
         "characters": chars,

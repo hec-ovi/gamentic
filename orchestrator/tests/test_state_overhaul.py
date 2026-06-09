@@ -149,6 +149,24 @@ def test_characters_elsewhere_shown_to_narrator(client, fake_llm):
     assert "CHARACTERS ELSEWHERE" in sys and "Mara" in sys and "hall" in sys
 
 
+# ---------- context-usage meter ----------
+
+def test_context_usage_reported_and_persisted(client, fake_llm):
+    gid = _new(client)
+    fake_llm.narrator = llm.LLMReply(content="You look around.", usage={"prompt_tokens": 9000})
+    out = client.post(f"/games/{gid}/action", json={"action": "I look."}).json()
+    ctx = out["state"]["context"]
+    assert ctx["max"] == settings.LLM_CONTEXT_SIZE
+    assert ctx["used"] == 9000
+    # persisted, so the meter is also present on a plain /state load
+    assert _state(client, gid)["context"] == {"used": 9000, "max": settings.LLM_CONTEXT_SIZE}
+
+
+def test_context_usage_defaults_zero_before_any_turn(client, fake_llm):
+    gid = _new(client)
+    assert _state(client, gid)["context"] == {"used": 0, "max": settings.LLM_CONTEXT_SIZE}
+
+
 # ---------- image generation is optional ----------
 
 def test_images_not_scheduled_when_disabled(client, fake_llm, monkeypatch):

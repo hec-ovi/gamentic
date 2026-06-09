@@ -153,6 +153,7 @@ class GameState(BaseModel):
     current_goal: str = ""        # the player's current goal (empty until the narrator sets one)
     scene: SceneOut               # the main card
     narrator_voice_id: Optional[str] = None
+    context: dict = Field(default_factory=dict)   # {used, max} prompt-token usage meter
     player: PlayerStateOut
     quests: list[QuestOut]
     characters: list[CharacterOut]
