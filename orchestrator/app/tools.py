@@ -194,6 +194,13 @@ NARRATOR_TOOLS = [
             "item": {"type": "string"}, "target": {"type": "string"}},
             "required": ["item", "target"]}}},
     {"type": "function", "function": {
+        "name": "note_scene",
+        "description": "Leave a draft note on the CURRENT scene (open threads, what was left "
+                       "unresolved, who or what stayed behind), so when the player returns you "
+                       "remember exactly how it was left. Overwrites the previous note.",
+        "parameters": {"type": "object", "properties": {
+            "note": {"type": "string"}}, "required": ["note"]}}},
+    {"type": "function", "function": {
         "name": "advance_time",
         "description": "Jump the STORY clock forward when the fiction skips ahead (a rest, a "
                        "journey, 'the next morning'). Small per-action time passes automatically; "
@@ -414,6 +421,10 @@ def apply_tool(conn, gid: str, name: str, args: dict, actor=None) -> dict:
             label = (args.get("label") or "").strip()
             ok = repo.offer_scene_action(conn, gid, label, settings.SCENE_ACTION_CAP)
             return _result("state") if ok else _invalid(f"offer_scene_action: scene already has {settings.SCENE_ACTION_CAP} actions")
+        if name == "note_scene":
+            note = (args.get("note") or "").strip()
+            repo.set_scene_draft(conn, gid, note)
+            return _result("state")  # silent bookkeeping
         if name == "advance_time":
             amount = int(args.get("amount", 0) or 0)
             unit = (args.get("unit") or "").strip().lower()

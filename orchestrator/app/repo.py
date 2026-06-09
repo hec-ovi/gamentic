@@ -218,15 +218,43 @@ def _ensure_exit(conn, gid: str, scene_name: str, label: str, target: str) -> No
 
 def set_location(conn, gid: str, location: str) -> None:
     prev = get_player(conn, gid)["location"]
+    moved = bool(prev) and prev.lower() != location.lower()
+    now = get_game(conn, gid)["time_minutes"] or 0
+    if moved:
+        # Draft layer: stamp the scene being LEFT with the story clock, so a return can
+        # reason about the elapsed fictional time.
+        prev_sc = get_scene(conn, gid, prev)
+        if prev_sc:
+            conn.execute("UPDATE scenes SET left_at_minutes=? WHERE id=?", (now, prev_sc["id"]))
+    dest_existing = get_scene(conn, gid, location)
     get_or_create_scene(conn, gid, location)   # the destination scene persists
     conn.execute("UPDATE player_state SET location=? WHERE game_id=?", (location, gid))
     # Only FOLLOWING characters travel with the player. Everyone else stays at their scene
     # (and is there again if the player returns) - this is the scene-persistence behaviour.
     conn.execute("UPDATE characters SET location=? WHERE game_id=? AND following=1 AND alive=1",
                  (location, gid))
-    # Always leave a way back so the player can never get stranded.
-    if prev and prev.lower() != location.lower():
+    if moved:
+        # Always leave a way back so the player can never get stranded.
         _ensure_exit(conn, gid, location, label=f"back to {prev}", target=prev)
+        # Returning somewhere previously left: hand the narrator the elapsed time + the
+        # draft note so it can reason about what changed while the player was away.
+        if dest_existing is not None and dest_existing["left_at_minutes"] is not None:
+            ago = elapsed_text(now - dest_existing["left_at_minutes"])
+            then = time_at(dest_existing["left_at_minutes"])["label"]
+            note = f"The player was last here {ago} ago ({then})."
+            draft = (dest_existing["draft"] or "").strip()
+            if draft:
+                note += f" Note from then: {draft}"
+            conn.execute("UPDATE games SET arrival_note=? WHERE id=?", (note, gid))
+
+
+def clear_arrival_note(conn, gid: str) -> None:
+    conn.execute("UPDATE games SET arrival_note='' WHERE id=?", (gid,))
+
+
+def set_scene_draft(conn, gid: str, note: str) -> None:
+    """The narrator's draft of open threads on the CURRENT scene (note_scene tool)."""
+    conn.execute("UPDATE scenes SET draft=? WHERE id=?", (note, current_scene(conn, gid)["id"]))
 
 
 def set_flag(conn, gid: str, key: str, value: str) -> None:
@@ -413,17 +441,29 @@ def _part_of_day(hour: int) -> str:
     return "night"
 
 
-def game_time(conn, gid: str) -> dict:
-    """The fictional clock, derived from elapsed minutes + the story's start hour:
-    {minutes, day, hour, part, label} with label like 'Day 2, afternoon'."""
-    g = get_game(conn, gid)
-    minutes = g["time_minutes"] or 0
-    absolute = settings.DAY_START_HOUR * 60 + minutes
+def time_at(minutes: int) -> dict:
+    """Derive {day, hour, part, label} for a given story-minute stamp."""
+    absolute = settings.DAY_START_HOUR * 60 + (minutes or 0)
     day = absolute // 1440 + 1
     hour = (absolute // 60) % 24
     part = _part_of_day(hour)
-    return {"minutes": minutes, "day": day, "hour": hour, "part": part,
-            "label": f"Day {day}, {part}"}
+    return {"day": day, "hour": hour, "part": part, "label": f"Day {day}, {part}"}
+
+
+def elapsed_text(minutes: int) -> str:
+    """A compact human duration: '2d 3h', '4h 10m', '25m'."""
+    minutes = max(0, int(minutes or 0))
+    d, rem = divmod(minutes, 1440)
+    h, m = divmod(rem, 60)
+    parts = [f"{d}d" if d else "", f"{h}h" if h else "", f"{m}m" if (m and not d) else ""]
+    return " ".join(p for p in parts if p) or "moments"
+
+
+def game_time(conn, gid: str) -> dict:
+    """The fictional clock, derived from elapsed minutes + the story's start hour:
+    {minutes, day, hour, part, label} with label like 'Day 2, afternoon'."""
+    minutes = get_game(conn, gid)["time_minutes"] or 0
+    return {"minutes": minutes, **time_at(minutes)}
 
 
 def set_character_description(conn, cid: str, description: str) -> None:

@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS games (
     current_goal TEXT DEFAULT '',    -- the player's current goal; starts empty, narrator sets it
     context_used INTEGER DEFAULT 0,  -- last turn's prompt tokens, for the context-usage meter
     time_minutes INTEGER DEFAULT 0,  -- FICTIONAL story time elapsed (narrator-driven, never wall clock)
+    arrival_note TEXT DEFAULT '',    -- transient: 'you were last here X ago' shown to the narrator on return
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -116,6 +117,8 @@ CREATE TABLE IF NOT EXISTS scenes (
     items TEXT DEFAULT '[]',         -- JSON list of {id,name,description,image_url,hidden} (max 6)
     offers TEXT DEFAULT '[]',        -- narrator-offered scene actions (JSON list of {id,label}, max 3 total)
     visited INTEGER DEFAULT 1,
+    left_at_minutes INTEGER,         -- story-clock stamp of when the player last left (draft layer)
+    draft TEXT DEFAULT '',           -- narrator's note of open threads left here (note_scene)
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -151,9 +154,14 @@ _MIGRATIONS = {
         "current_goal": "TEXT DEFAULT ''",
         "context_used": "INTEGER DEFAULT 0",
         "time_minutes": "INTEGER DEFAULT 0",
+        "arrival_note": "TEXT DEFAULT ''",   # transient: shown to the narrator on returning somewhere
     },
     "beats": {
         "private_with": "TEXT",
+    },
+    "scenes": {
+        "left_at_minutes": "INTEGER",
+        "draft": "TEXT DEFAULT ''",
     },
 }
 

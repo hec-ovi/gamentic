@@ -99,6 +99,9 @@ def _state_block(conn, gid: str) -> str:
     ]
     if elsewhere_text:
         lines.append(f"CHARACTERS ELSEWHERE: {elsewhere_text}")
+    if (g["arrival_note"] or "").strip():
+        lines.append(f"RETURNING: {g['arrival_note']} Decide what plausibly changed here "
+                     "while the player was away and apply it with tools before narrating.")
     lines.append(f"ACTIVE QUESTS:\n{quest_text}")
     # The narrator is omniscient: it knows each character's secret so it can honor planted
     # facts (a hidden key, a chip under a table) and reveal them when the player earns it.

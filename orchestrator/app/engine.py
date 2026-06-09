@@ -176,6 +176,11 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
     # never freezes; the narrator jumps it with advance_time for rests/journeys/nightfall.
     repo.advance_time(conn, gid, settings.TURN_TIME_MINUTES)
 
+    # The RETURNING note (set when re-entering a previously-left scene) lives for the rest
+    # of the move turn plus one full turn, so the next narrator call (the one with tools)
+    # gets to apply what changed while the player was away; then it expires.
+    arrival_at_start = (repo.get_game(conn, gid)["arrival_note"] or "").strip()
+
     # ---- public turn (narrator + cascade) ----
     if has_public:
         action_text, directed = _compose(public) if public else (action_text, [])
@@ -312,6 +317,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
         emit("player", None, "action", f'you whisper to {row["name"]}: "{text}"', private_with=row["id"])
         _character_reply(conn, gid, row, emit, private_with=row["id"])
 
+    if arrival_at_start:
+        repo.clear_arrival_note(conn, gid)
     if ctx_used:
         repo.set_context_used(conn, gid, ctx_used)
     return {"beats": new_beats, "state": repo.game_state(conn, gid), "spawned": spawned}
