@@ -28,7 +28,8 @@ First public day. The repo went public and everything below landed today.
 - The game brain now registers every character in that voice registry at creation (and on spawn), at the same moment their image descriptor is fixed, with the same gender net feeding both. Presets remain the fallback when the registry is down; wiping a game releases its voice entries.
 
 ### Image service
-- Per-view character sizing: square face, tall full-body, independently env-configurable; scene dimensions configurable too. Defaults validated by an on-box benchmark (768x768 about 5.6s, 768x1152 about 7.6s).
+- Per-view character sizing: square face, tall full-body, independently env-configurable; scene dimensions configurable too. Defaults validated by an on-box benchmark (face 512x512 about 3s, scene 768x768 about 5.6s, body 640x1152 about 8s). Body frames stay 9:16: a wider 2:3 frame makes the model fill the width and crop the feet.
+- Reference conditioning: `/image/generate` accepts optional reference image URLs (a character's stored views) and conditions the render on them via klein multi-reference editing, so an existing character keeps face, hair and outfit in new scenes and poses instead of re-rolling from text. Verified A/B on the box: same prompt and seed without the reference produced a different generic figure; with it, recognizably the same character. Missing or unfetchable references fall back to plain text-to-image, never a failed render.
 
 ### Frontend
 - Frontend redesign in progress (scene-centric layout, tagged composer with entity chips, character cards).

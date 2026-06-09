@@ -79,6 +79,36 @@ class ComfyClient:
                     )
                 await asyncio.sleep(poll_interval)
 
+    async def upload_image(self, data: bytes, filename: str) -> str:
+        """Upload image bytes to ComfyUI's input dir; return the name LoadImage should use.
+
+        We pass overwrite=true with a caller-chosen (content-derived) filename so repeated
+        uploads of the same reference reuse one input file instead of accumulating copies.
+        """
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{self._base_url}/upload/image",
+                data={"type": "input", "overwrite": "true"},
+                files={"image": (filename, data, "image/png")},
+            )
+            if resp.status_code != 200:
+                raise ComfyError(
+                    f"ComfyUI rejected image upload ({resp.status_code}): {resp.text[:500]}"
+                )
+            body = resp.json()
+            name = body.get("name")
+            if not name:
+                raise ComfyError(f"ComfyUI upload returned no name: {resp.text[:300]}")
+            subfolder = body.get("subfolder", "")
+            return f"{subfolder}/{name}" if subfolder else name
+
+    async def download(self, url: str) -> bytes:
+        """GET arbitrary (e.g. orchestrator /media) URL bytes. Raises on any failure."""
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp.content
+
     async def fetch_image(self, ref: ImageRef) -> bytes:
         """Download the rendered PNG bytes from ComfyUI's /view."""
         async with httpx.AsyncClient(timeout=60.0) as client:

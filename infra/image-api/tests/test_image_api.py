@@ -257,3 +257,89 @@ def test_character_body_prompts_request_full_figure_framing():
 def test_character_requires_descriptor():
     resp = client.post("/image/character", json={"style": "noir"})
     assert resp.status_code == 422
+
+
+# --- Phase 2: reference conditioning ---------------------------------------------------
+
+REF_URL = "http://gamentic-orchestrator:8000/media/g1/char-7-front.png"
+REF_BYTES = b"\x89PNG\r\n\x1a\n-reference-image-"
+
+
+def _mock_upload(respx_mock, name: str = "ref_abc.png") -> None:
+    respx_mock.post(f"{COMFY}/upload/image").mock(
+        return_value=httpx.Response(200, json={"name": name, "subfolder": "", "type": "input"})
+    )
+
+
+@respx.mock
+def test_generate_with_reference_conditions_the_graph():
+    route = respx.post(f"{COMFY}/prompt").mock(
+        return_value=httpx.Response(200, json={"prompt_id": "pid-r"})
+    )
+    respx.get(f"{COMFY}/history/pid-r").mock(
+        return_value=httpx.Response(200, json=_history_ok("pid-r"))
+    )
+    respx.get(REF_URL).mock(return_value=httpx.Response(200, content=REF_BYTES))
+    _mock_upload(respx.mock, name="ref_uploaded.png")
+
+    resp = client.post(
+        "/image/generate",
+        json={"prompt": "the dwarf entering a tavern", "references": [REF_URL]},
+    )
+    assert resp.status_code == 200, resp.text
+
+    sent = json.loads(route.calls.last.request.content)["prompt"]
+    # The uploaded filename is loaded, encoded, and chained into the guider's positive.
+    load = _node_by_title(sent, "Reference 0")
+    assert load["class_type"] == "LoadImage"
+    assert load["inputs"]["image"] == "ref_uploaded.png"
+    guider = next(n for n in sent.values() if n["class_type"] == "CFGGuider")
+    assert sent[guider["inputs"]["positive"][0]]["class_type"] == "ReferenceLatent"
+
+
+@respx.mock
+def test_unfetchable_reference_falls_back_to_text_only():
+    route = respx.post(f"{COMFY}/prompt").mock(
+        return_value=httpx.Response(200, json={"prompt_id": "pid-f"})
+    )
+    respx.get(f"{COMFY}/history/pid-f").mock(
+        return_value=httpx.Response(200, json=_history_ok("pid-f"))
+    )
+    # The reference 404s; an upload mock exists but must never be reached.
+    respx.get(REF_URL).mock(return_value=httpx.Response(404))
+    upload = _mock_upload(respx.mock)
+
+    resp = client.post(
+        "/image/generate",
+        json={"prompt": "a lonely tower", "references": [REF_URL]},
+    )
+    # Render still succeeds, just without conditioning.
+    assert resp.status_code == 200, resp.text
+    sent = json.loads(route.calls.last.request.content)["prompt"]
+    assert not any(n["class_type"] == "ReferenceLatent" for n in sent.values())
+    guider = next(n for n in sent.values() if n["class_type"] == "CFGGuider")
+    assert sent[guider["inputs"]["positive"][0]]["_meta"]["title"] == "Positive Prompt"
+
+
+@respx.mock
+def test_reference_upload_uses_content_derived_name():
+    respx.post(f"{COMFY}/prompt").mock(
+        return_value=httpx.Response(200, json={"prompt_id": "pid-h"})
+    )
+    respx.get(f"{COMFY}/history/pid-h").mock(
+        return_value=httpx.Response(200, json=_history_ok("pid-h"))
+    )
+    respx.get(REF_URL).mock(return_value=httpx.Response(200, content=REF_BYTES))
+    upload = respx.post(f"{COMFY}/upload/image").mock(
+        return_value=httpx.Response(200, json={"name": "x.png", "subfolder": "", "type": "input"})
+    )
+
+    resp = client.post("/image/generate", json={"prompt": "x", "references": [REF_URL]})
+    assert resp.status_code == 200, resp.text
+    # Uploaded under a stable sha1-derived name with overwrite, so re-sends reuse one file.
+    body = upload.calls.last.request.content
+    import hashlib
+
+    digest = hashlib.sha1(REF_BYTES).hexdigest()[:16]
+    assert f"ref_{digest}.png".encode() in body
+    assert b"overwrite" in body

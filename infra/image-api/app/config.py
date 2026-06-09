@@ -40,3 +40,7 @@ GENERATE_TIMEOUT: float = float(os.environ.get("IMAGE_GENERATE_TIMEOUT", "120"))
 
 # Clamp requested dimensions so a caller can't ask for a 4k image that blows the budget.
 MAX_DIM: int = int(os.environ.get("IMAGE_MAX_DIM", "1536"))
+
+# Reference conditioning (Phase 2): max reference images to honor on one render. klein
+# multi-reference editing tops out around 4; extra refs in a request are dropped.
+MAX_REFERENCES: int = int(os.environ.get("IMAGE_MAX_REFERENCES", "4"))

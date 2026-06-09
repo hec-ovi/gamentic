@@ -28,6 +28,11 @@ TITLE_SCHEDULER = "Scheduler"
 TITLE_NOISE = "Noise"
 TITLE_SAMPLER = "Sampler"  # KSampler-style fallback: carries both seed and steps
 
+# Class types used to wire reference conditioning (Phase 2). Located by class_type rather
+# than title because they come from the base template unchanged.
+CLASS_GUIDER = "CFGGuider"
+CLASS_VAELOADER = "VAELoader"
+
 
 class WorkflowError(RuntimeError):
     """The template is missing a node the adapter needs to patch."""
@@ -104,4 +109,98 @@ def build_graph(
         if sampler and "seed" in sampler["inputs"]:
             sampler["inputs"]["seed"] = seed
 
+    return graph
+
+
+def _find_id(graph: dict, *, title: str | None = None, class_type: str | None = None) -> str | None:
+    for nid, node in graph.items():
+        if title is not None and node.get("_meta", {}).get("title") == title:
+            return nid
+        if class_type is not None and node.get("class_type") == class_type:
+            return nid
+    return None
+
+
+def build_reference_graph(
+    template: dict,
+    *,
+    prompt: str,
+    negative_prompt: str,
+    width: int,
+    height: int,
+    seed: int,
+    steps: int,
+    reference_filenames: list[str],
+) -> dict:
+    """Like build_graph, but conditions the render on one or more reference images so an
+    existing character keeps its identity (Phase 2, klein multi-reference editing).
+
+    Each reference (already uploaded to ComfyUI's input dir, addressed by filename) is
+    scaled to ~1MP, VAE-encoded, and threaded into the positive conditioning through a
+    chain of ReferenceLatent nodes, which then feeds CFGGuider.positive. The output canvas
+    (EmptyFlux2LatentImage / Flux2Scheduler) keeps the *requested* width/height: references
+    inject identity, they do not dictate the scene size. With no filenames this is just
+    build_graph (the caller should not call it in that case).
+    """
+    graph = build_graph(
+        template,
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        width=width,
+        height=height,
+        seed=seed,
+        steps=steps,
+    )
+    if not reference_filenames:
+        return graph
+
+    pos_id = _find_id(graph, title=TITLE_POSITIVE)
+    guider_id = _find_id(graph, class_type=CLASS_GUIDER)
+    vae_id = _find_id(graph, class_type=CLASS_VAELOADER)
+    missing = [
+        name
+        for name, val in (("Positive Prompt", pos_id), (CLASS_GUIDER, guider_id), (CLASS_VAELOADER, vae_id))
+        if val is None
+    ]
+    if missing:
+        raise WorkflowError(
+            "template cannot do reference conditioning, missing node(s): " + ", ".join(missing)
+        )
+
+    cond_src = [pos_id, 0]  # start the chain at the positive text conditioning
+    for i, filename in enumerate(reference_filenames):
+        load_id, scale_id, enc_id, ref_id = (
+            f"ref_load_{i}",
+            f"ref_scale_{i}",
+            f"ref_enc_{i}",
+            f"ref_latent_{i}",
+        )
+        graph[load_id] = {
+            "class_type": "LoadImage",
+            "_meta": {"title": f"Reference {i}"},
+            "inputs": {"image": filename},
+        }
+        graph[scale_id] = {
+            "class_type": "ImageScaleToTotalPixels",
+            "_meta": {"title": f"Reference {i} scale"},
+            "inputs": {
+                "image": [load_id, 0],
+                "upscale_method": "lanczos",
+                "megapixels": 1.0,
+                "resolution_steps": 1,
+            },
+        }
+        graph[enc_id] = {
+            "class_type": "VAEEncode",
+            "_meta": {"title": f"Reference {i} encode"},
+            "inputs": {"pixels": [scale_id, 0], "vae": [vae_id, 0]},
+        }
+        graph[ref_id] = {
+            "class_type": "ReferenceLatent",
+            "_meta": {"title": f"Reference {i} latent"},
+            "inputs": {"conditioning": cond_src, "latent": [enc_id, 0]},
+        }
+        cond_src = [ref_id, 0]
+
+    graph[guider_id]["inputs"]["positive"] = cond_src
     return graph

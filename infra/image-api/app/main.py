@@ -13,6 +13,8 @@ The orchestrator/frontend only ever talk to this origin; how images are produced
 from __future__ import annotations
 
 import base64
+import hashlib
+import logging
 import random
 import uuid
 from typing import Literal
@@ -22,6 +24,8 @@ from pydantic import BaseModel, Field
 
 from . import config, workflow
 from .comfy_client import ComfyClient, ComfyError, ImageRef
+
+log = logging.getLogger("image-api")
 
 app = FastAPI(title="gamentic image-api", version="1.0.0")
 
@@ -86,6 +90,10 @@ class GenerateRequest(BaseModel):
     height: int | None = None
     seed: int | None = None
     steps: int | None = None
+    # Phase 2: optional identity references (fetchable image URLs, e.g. the orchestrator's
+    # persisted character front ref). When present and fetchable, the render is conditioned
+    # on them so an existing character stays recognizable. Absent/unfetchable -> text-only.
+    references: list[str] = Field(default_factory=list)
     response: Literal["url", "b64"] = "url"
 
 
@@ -133,12 +141,38 @@ def _compose(style: str, descriptor: str, view_suffix: str = "") -> str:
     return ", ".join(parts)
 
 
+async def _prepare_references(urls: list[str]) -> list[str]:
+    """Fetch each reference URL and upload it into ComfyUI; return the input filenames.
+
+    Graceful by contract: a URL that can't be fetched or uploaded is skipped (logged),
+    never raised. So a render with bad refs degrades to text-only rather than failing.
+    The input filename is content-derived so the same reference reuses one upload.
+    """
+    filenames: list[str] = []
+    for url in urls[: config.MAX_REFERENCES]:
+        try:
+            data = await _comfy.download(url)
+            name = f"ref_{hashlib.sha1(data).hexdigest()[:16]}.png"
+            filenames.append(await _comfy.upload_image(data, name))
+        except Exception as exc:  # noqa: BLE001 - any failure must not break the render
+            log.warning("reference skipped (%s): %s", url, exc)
+    return filenames
+
+
 async def _render(
-    *, prompt: str, negative_prompt: str, width: int, height: int, seed: int, steps: int
+    *,
+    prompt: str,
+    negative_prompt: str,
+    width: int,
+    height: int,
+    seed: int,
+    steps: int,
+    reference_filenames: list[str] | None = None,
 ) -> tuple[str, ImageRef]:
     """Build the graph, queue it on ComfyUI, wait for the image. Raises HTTPException.
 
-    Returns (prompt_id, image_ref).
+    With reference_filenames, conditions the render on those uploaded images (Phase 2);
+    otherwise it is plain text-to-image. Returns (prompt_id, image_ref).
     """
     if _template is None:
         raise HTTPException(
@@ -146,15 +180,27 @@ async def _render(
             detail=f"workflow template not found at {config.WORKFLOW_TEMPLATE}",
         )
     try:
-        graph = workflow.build_graph(
-            _template,
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            width=width,
-            height=height,
-            seed=seed,
-            steps=steps,
-        )
+        if reference_filenames:
+            graph = workflow.build_reference_graph(
+                _template,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                width=width,
+                height=height,
+                seed=seed,
+                steps=steps,
+                reference_filenames=reference_filenames,
+            )
+        else:
+            graph = workflow.build_graph(
+                _template,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                width=width,
+                height=height,
+                seed=seed,
+                steps=steps,
+            )
     except workflow.WorkflowError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     try:
@@ -178,6 +224,8 @@ async def generate(req: GenerateRequest) -> GenerateResponse:
     seed = req.seed if req.seed is not None else random.randint(0, 2**32 - 1)
     steps = req.steps or config.DEFAULT_STEPS
 
+    reference_filenames = await _prepare_references(req.references) if req.references else []
+
     prompt_id, ref = await _render(
         prompt=req.prompt,
         negative_prompt=req.negative_prompt,
@@ -185,6 +233,7 @@ async def generate(req: GenerateRequest) -> GenerateResponse:
         height=height,
         seed=seed,
         steps=steps,
+        reference_filenames=reference_filenames,
     )
 
     if req.response == "b64":
