@@ -25,6 +25,7 @@ docs/
 **/PLAN.md
 **/REDESIGN.md
 **/CHANGELOG.md
+!/CHANGELOG.md
 **/SPECS.md
 
 # --- runtime data, generated media, databases ---
