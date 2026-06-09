@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 
 from . import db, repo, engine, creator, integrate
 from .config import settings
-from .models import WorldSheet, ActionIn, CreateMessageIn, GameState, TurnOut
+from .models import WorldSheet, ActionIn, CreateMessageIn, GameState, TurnOut, ViewIn
 
 
 @asynccontextmanager
@@ -137,16 +137,17 @@ def action(gid: str, body: ActionIn, background_tasks: BackgroundTasks):
 
 
 @app.post("/games/{gid}/view")
-def view_scene(gid: str):
+def view_scene(gid: str, body: ViewIn | None = None):
     """The 'See' button: generate an image of the current scene WITH the characters present
     in it, grounded in actual state. Synchronous (5-10s; the frontend shows a loader). The
-    image also lands as an image beat in the story flow, so it persists with the game."""
+    image also lands as an image beat in the story flow, so it persists with the game.
+    Optional body {focus}: what the player wants to look at steers the shot."""
     with db.get_conn() as conn:
         if not repo.get_game(conn, gid):
             raise HTTPException(404, "game not found")
     if not settings.IMAGE_ENABLED:
         raise HTTPException(409, "images are disabled")
-    beat = integrate.generate_view_snapshot(gid)
+    beat = integrate.generate_view_snapshot(gid, focus=body.focus if body else None)
     if not beat:
         raise HTTPException(502, "image generation unavailable")
     return {"beat": beat, "image_url": beat["image_url"]}

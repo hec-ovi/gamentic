@@ -87,6 +87,12 @@ class ActionIn(BaseModel):
     segments: Optional[list[Segment]] = None
 
 
+class ViewIn(BaseModel):
+    """The 'See' button payload. focus is optional: what the player wants to look at
+    ("what Layla is doing", "that ship on the horizon"); empty = the whole scene."""
+    focus: Optional[str] = None
+
+
 class CreateMessageIn(BaseModel):
     session_id: str
     message: str

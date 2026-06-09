@@ -130,15 +130,35 @@ def _clip(s: str, words: int) -> str:
     return " ".join((s or "").split()[:words])
 
 
-def view_prompt(conn, gid: str) -> str:
+def _focus_character(conn, gid: str, focus: str):
+    """The present character the focus text names, if any."""
+    pd = repo.get_player(conn, gid)
+    low = (focus or "").lower()
+    for c in repo.present_characters(conn, gid, pd["location"]):
+        if c["name"] and c["name"].lower() in low:
+            return c
+    return None
+
+
+def view_prompt(conn, gid: str, focus: str | None = None) -> str:
     """Compose the snapshot prompt from ACTUAL state: scene, present characters, story
-    time of day, scene mood, world style."""
+    time of day, scene mood, world style. A focus ("what Layla is doing", "that ship")
+    becomes THE subject instead of the whole-scene group shot."""
     g = repo.get_game(conn, gid)
     pd = repo.get_player(conn, gid)
     sc = repo.current_scene(conn, gid)
     chars = list(repo.present_characters(conn, gid, pd["location"]))[:3]
     env = _clip(_place_text(sc), 20)
-    if chars:
+    focus = _clip(_strip_quoted(focus or ""), 20).rstrip(".")
+    if focus:
+        fc = _focus_character(conn, gid, focus)
+        if fc:
+            lead = f"Full-body shot of {_clip(_gendered_base(fc), 18).rstrip('.')}, {focus}, in {env}"
+        else:
+            lead = f"Detailed shot of {focus}, in {env}"
+        lead += "" if lead.rstrip().endswith(".") else "."
+        people = ""
+    elif chars:
         count = ("one person", "two people", "three people")[len(chars) - 1]
         lead = f"Wide full-body shot of {count} in {env}"
         lead += "" if lead.rstrip().endswith(".") else "."
@@ -173,13 +193,15 @@ def _harden_image_prompt(text: str) -> str:
     return text
 
 
-def _image_context(conn, gid: str, include_chars: bool) -> str:
+def _image_context(conn, gid: str, include_chars: bool, focus: str | None = None) -> str:
     g = repo.get_game(conn, gid)
     pd = repo.get_player(conn, gid)
     sc = repo.current_scene(conn, gid)
     t = repo.game_time(conn, gid)
     lines = [f"PLACE: {_place_text(sc)}",
              f"TIME OF DAY: {t.get('part') or 'day'}    MOOD: {sc['status']}"]
+    if (focus or "").strip():
+        lines.append(f"THE PLAYER WANTS TO LOOK AT: {_clip(_strip_quoted(focus), 25)}")
     if include_chars:
         chars = list(repo.present_characters(conn, gid, pd["location"]))[:3]
         if chars:
@@ -217,20 +239,25 @@ def _reference_url(stored: str | None) -> str | None:
     return f"{settings.IMAGE_API_URL}{stored}"
 
 
-def generate_view_snapshot(gid: str) -> dict | None:
+def generate_view_snapshot(gid: str, focus: str | None = None) -> dict | None:
     """The 'See' button: render the scene WITH the characters present in it, as it is NOW.
     Synchronous (the player watches a loader); persists the image and lands it as an image
-    beat in the story flow. Returns the beat dict, or None when generation is unavailable.
-    Present characters' stored full-body views ride along as identity references, so the
-    snapshot shows THE SAME people as their cards, not text-prompt re-rolls."""
+    beat in the story flow (the focus, when given, becomes the beat's caption text).
+    Identity references follow the subject: looking at a named character sends ONLY their
+    stored view; looking at a thing sends none; no focus sends every present character's."""
+    focus = (focus or "").strip()
     with db.get_conn() as conn:
         if not repo.get_game(conn, gid):
             return None
-        prompt = view_prompt(conn, gid)
-        context = _image_context(conn, gid, include_chars=True) \
+        prompt = view_prompt(conn, gid, focus=focus or None)
+        context = _image_context(conn, gid, include_chars=True, focus=focus or None) \
             if settings.IMAGE_AGENTIC_PROMPTS else ""
         loc = repo.get_player(conn, gid)["location"]
-        chars = list(repo.present_characters(conn, gid, loc))[:3]
+        if focus:
+            fc = _focus_character(conn, gid, focus)
+            chars = [fc] if fc else []
+        else:
+            chars = list(repo.present_characters(conn, gid, loc))[:3]
         refs = [u for u in (_reference_url(c["body_front_url"]) for c in chars) if u]
     if context:
         prompt = _agentic_prompt(context, fallback=prompt)   # LLM call outside the DB conn
@@ -242,7 +269,7 @@ def generate_view_snapshot(gid: str) -> dict | None:
     with db.get_conn() as conn:
         turn = repo.next_turn_index(conn, gid)
         url = _persist(gid, result["image_url"], f"view-t{turn}")
-        return repo.add_beat(conn, gid, "narrator", None, "image", "", loc,
+        return repo.add_beat(conn, gid, "narrator", None, "image", focus, loc,
                              turn_index=turn, image_url=url)
 
 

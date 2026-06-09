@@ -62,6 +62,48 @@ def test_view_renders_present_characters_from_state(client, fake_llm, monkeypatc
     assert len(img) == 1 and img[0]["image_url"] == body["image_url"]
 
 
+def test_view_focus_steers_the_shot_and_the_references(client, fake_llm, monkeypatch, tmp_path):
+    """The eye button accepts a focus: looking at a NAMED character makes them the subject
+    (their reference only, their gendered base in the prompt); looking at a THING drops all
+    identity references; the focus becomes the image beat's caption."""
+    from app.config import settings
+    captured = {}
+    _enable(monkeypatch, tmp_path, captured)
+    gid = client.post("/games", json=WORLD).json()["game_id"]
+    st = client.get(f"/games/{gid}/state").json()
+    vex_id = next(c["id"] for c in st["characters"] if c["name"] == "Vex")
+    with db.get_conn() as conn:
+        repo.set_character_images(conn, vex_id, face_url=None,
+                                  body_front_url=f"/media/{gid}/char-{vex_id}-front.png",
+                                  body_side_url=None)
+
+    # focus on a character: single-subject shot, only her reference rides along
+    r = client.post(f"/games/{gid}/view", json={"focus": "what Vex is doing"}).json()
+    assert captured["prompt"].startswith("Full-body shot of female, tall, scarred")
+    assert "what Vex is doing" in captured["prompt"]
+    assert captured["references"] == [
+        f"{settings.MEDIA_INTERNAL_BASE}/media/{gid}/char-{vex_id}-front.png"]
+    assert r["beat"]["text"] == "what Vex is doing"          # the caption
+
+    # focus on a thing: detail shot, NO identity references
+    client.post(f"/games/{gid}/view", json={"focus": "that black ship on the horizon"})
+    assert captured["prompt"].startswith("Detailed shot of that black ship on the horizon")
+    assert captured["references"] is None
+    assert "On the left" not in captured["prompt"]           # no group composition
+
+
+def test_view_focus_reaches_the_agentic_composer(client, fake_llm, monkeypatch, tmp_path):
+    from app.config import settings
+    captured = {}
+    _enable(monkeypatch, tmp_path, captured)
+    monkeypatch.setattr(settings, "IMAGE_AGENTIC_PROMPTS", True)
+    gid = client.post("/games", json=WORLD).json()["game_id"]
+    client.post(f"/games/{gid}/view", json={"focus": "the rusted crane above the quay"})
+    call = [c for c in fake_llm.calls
+            if c["system"].startswith("You write a single image-generation prompt")][-1]
+    assert "THE PLAYER WANTS TO LOOK AT: the rusted crane above the quay" in call["messages"][1]["content"]
+
+
 def test_view_of_an_empty_scene_is_a_plain_wide_shot(client, fake_llm, monkeypatch, tmp_path):
     captured = {}
     _enable(monkeypatch, tmp_path, captured)
