@@ -19,6 +19,12 @@ export const defaultHandlers = [
   http.post(`${API}/games/:id/action`, () =>
     HttpResponse.json({ beats: [makeBeat({ text: "Nothing happens." })], state: makeState() }),
   ),
+  http.post(`${API}/games/:id/view`, () =>
+    HttpResponse.json({
+      beat: makeBeat({ id: "img1", kind: "image", text: "", image_url: "/media/g-test/view1.png" }),
+      image_url: "/media/g-test/view1.png",
+    }),
+  ),
   http.post(`${API}/voice/speak`, () => HttpResponse.json({ audio_url: "/audio/x.wav" })),
   // swallow anything else (media etc.) so a stray request never hard-fails a test
   http.all("*", () => new HttpResponse(null, { status: 404 })),

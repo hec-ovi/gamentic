@@ -38,6 +38,9 @@ export function mapGameState(state = {}) {
     alive: c.alive !== false,
     disposition: c.disposition || "unknown",
     following: Boolean(c.following),
+    // each character is its own agent context on the shared model; 0 until
+    // they first speak. Rendered as a small meter on the card / private modal.
+    context: mapContext(c.context),
     faceUrl: c.face_url || null,
     bodyUrl: c.body_url || c.body_front_url || null,
     bodyFrontUrl: c.body_front_url || null,
@@ -54,6 +57,12 @@ export function mapGameState(state = {}) {
     sceneStatus: state.scene_status || (state.scene && state.scene.status) || null,
     currentGoal: state.current_goal || "",
     narratorVoiceId: state.narrator_voice_id || null,
+    // prompt-token usage -> the header context meter (green -> amber -> red)
+    context: mapContext(state.context),
+    // true + null image_url = art still generating (loader); false = images off (static placeholder)
+    imagesEnabled: Boolean(state.images_enabled),
+    // fictional story clock; render `label` in the header
+    time: mapTime(state.time),
     scene: mapScene(state.scene),
     player: {
       life: num(player.life),
@@ -61,6 +70,7 @@ export function mapGameState(state = {}) {
       points: num(player.points),
       location: player.location || null,
       inventory: (player.inventory || []).slice(0, PLAYER_INV_SLOTS).map((it) => ({
+        id: it.id || null, // inventory items carry ids now (preferred for give/refs)
         name: it.name || "Item",
         description: it.description || "",
         imageUrl: it.image_url || null,
@@ -103,6 +113,27 @@ function mapScene(scene) {
     })),
     items: (scene.items || []).slice(0, SCENE_ITEM_SLOTS).map(mapItem),
     actions: (scene.available_actions || []).slice(0, ACTION_SLOTS).map(mapAction),
+  };
+}
+
+// { used, max } prompt-token usage, plus the precomputed ratio for the meter.
+// Null when the backend does not send it (hide the meter).
+function mapContext(ctx) {
+  if (!ctx || typeof ctx !== "object") return null;
+  const used = num(ctx.used);
+  const max = num(ctx.max);
+  return { used, max, ratio: max > 0 ? Math.min(1, used / max) : 0 };
+}
+
+// Fictional story clock. `label` is what the header shows ("Day 1, morning").
+function mapTime(t) {
+  if (!t || typeof t !== "object" || !t.label) return null;
+  return {
+    label: String(t.label),
+    day: num(t.day, 1),
+    hour: num(t.hour),
+    part: t.part || "",
+    minutes: num(t.minutes),
   };
 }
 

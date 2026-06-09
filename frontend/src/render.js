@@ -12,16 +12,17 @@
 
 import { icon } from "./icons.js";
 import { presentCharacters } from "./adapters.js";
+import { describeSegment } from "./composer.js";
 
 export const HELP = {
   menu: "The main deck. Play drops you into your saved worlds, New forges a fresh adventure, and Settings tunes sound and the backend. Everything else is just light.",
-  hud: "Your vitals. The heart bar is your life; if it empties the story turns against you. Points are story score earned by clever and brave actions. The label shows where you are right now.",
+  hud: "Your vitals. The heart bar is your life; if it empties the story turns against you. Points are story score earned by clever and brave actions. Memory shows how much of the tale the narrator can still hold in mind: green is fine, red means it is nearly full.",
   quests: "Your current goals. Each quest has a checklist of objectives. The narrator ticks them off as you make progress, and may add new ones as the story unfolds.",
-  party: "Characters here in the scene with you. Each shows their mood toward you, health, and what they carry. Use their buttons to talk, give, or act on them, or Whisper for a private aside only they hear.",
-  scene: "Where you are right now. The picture sets the place; its mood (calm, tense, dangerous) shifts with the story. Below are objects you have found here and the things you can do, including ways out.",
+  party: "Characters standing here with you, full figure. Each card shows their mood toward you, health, and what they carry. Their buttons are what you can do to them right now; Talk and Whisper open a private exchange over the scene.",
+  scene: "Where you are right now. Its mood (calm, tense, dangerous) shifts with the story, and the clock is story time, not yours. Alongside are the objects revealed here, the things you can try, and the ways out. A dead end means no way out has been revealed yet.",
   inventory: "What you are carrying. Empty slots show how much more you can hold. Use a character's Give button to hand something over.",
-  story: "The story itself. Plain flowing text is the narrator telling the tale, just read it. Coloured cards with a name are characters speaking to you. Small badges are things that just happened (damage, items, points).",
-  action: "Type whatever you want to do in your own words and press Send. This is a freeform adventure, not a menu. The quick suggestions below are just shortcuts you can ignore.",
+  story: "The story itself. Plain flowing text is the narrator telling the tale, just read it. Coloured cards with a name are characters speaking to you. Small badges are things that just happened (damage, items, points). Scene art develops here like a photograph as it is painted.",
+  action: "Choose Do or Say, write in your own words, and press Send. The @ button tags a character or item into your words so the game knows exactly who or what you mean. The + button stacks several lines (a word and a deed) to execute together as one turn.",
   creator: "Describe the world you want in plain language and chat with the world-builder. When it has enough, press Begin the Adventure and it spins up a real game.",
   settings: "Sound options, out of the way. Turn voice on or off, autoplay each new line as it arrives, or set the master volume. The game server connects automatically.",
   library: "Your saved adventures. Continue one, or start a brand new world. These are real games stored on the backend.",
@@ -233,6 +234,9 @@ function renderCreator(state) {
          <div class="narrating"><span class="dot"></span><span class="dot"></span><span class="dot"></span><em>shaping the world...</em></div>
        </div>`
     : "";
+  const restored = c.restored
+    ? `<div class="forge-restored">${icon("rotate")}<span>Picked up where you left off. This conversation survived.</span></div>`
+    : "";
 
   return `
     <div class="holo-stage forge-stage" data-stage>
@@ -241,10 +245,13 @@ function renderCreator(state) {
         <button class="holo-icon" data-act="go-library" aria-label="Back" title="Back to archive">${icon("chevronLeft")}</button>
         <span class="hud-tag">// FORGE</span>
         ${help("creator")}
+        <button class="holo-btn forge-restart" data-act="creator-restart" title="Discard this conversation and start a new world" ${c.busy ? "disabled" : ""}>
+          ${icon("rotate")}<span>Start over</span>
+        </button>
       </header>
 
       <main class="forge-main">
-        <div class="forge-thread" id="creatorThread">${messages}${thinking}</div>
+        <div class="forge-thread" id="creatorThread">${restored}${messages}${thinking}</div>
       </main>
 
       <footer class="forge-bar">
@@ -295,49 +302,52 @@ function renderCrafting() {
 // Play
 // ---------------------------------------------------------------------------
 
-// Command-deck layout (v0.2 scene-centric):
-//   HUD bar | scene band (image + items + actions) | story (left) + characters
-//   (right) | player inventory + action input.
+// Command-deck layout (v0.2 scene-centric, integrated-header redesign):
+//   ONE integrated header (scene identity + scene affordances + vitals, no
+//   repeated affordances) | story (scene art mixed into the prose) + character
+//   columns | player inventory + the say/do composer.
 function renderPlay(state) {
   const g = state.active;
   if (!g || !g.state) {
     return `<main class="play-loading"><div class="empty-icon">${icon("sparkles")}</div><p>Loading the adventure...</p></main>`;
   }
   const s = g.state;
-  const chat = g.chat || null; // { mode: "directed"|"private", charId, name }
+  const locked = Boolean(g.generating); // busy-lock: one POST = one resolved turn
 
   return `
-    <div class="holo-stage play-stage" data-stage>
+    <div class="holo-stage play-stage${locked ? " generating" : ""}" data-stage>
       ${holoFx()}
-      ${renderPlayHud(s)}
-      ${renderSceneBand(s)}
+      ${renderPlayDeck(s, locked, g)}
 
       <div class="play-body">
         <main class="story" id="storyStream" data-help-anchor role="log" aria-live="polite" aria-relevant="additions" aria-label="Story">
           <div class="story-help-row">${help("story")}</div>
           ${renderStory(g)}
-          ${g.generating ? renderNarrating() : ""}
+          ${locked ? renderNarrating() : ""}
         </main>
 
         <aside class="char-column">
           <div class="col-head">${icon("mask")}<span>In the scene</span>${help("party")}</div>
-          ${renderCharacters(s)}
+          ${renderCharacters(s, locked)}
         </aside>
       </div>
 
-      ${renderActionBar(g, s, chat)}
-      ${g.give ? renderGiveModal(s, g.give) : ""}
+      ${g.privateChat ? "" : renderActionBar(g, s, locked)}
+      ${g.privateChat ? renderPrivateModal(s, g) : ""}
+      ${g.give ? renderGiveModal(s, g.give, locked) : ""}
+      ${locked ? `<div class="busy-veil" aria-hidden="true"><span class="busy-bar"></span></div>` : ""}
     </div>`;
 }
 
 // Give-picker: choose an item from the player's inventory to hand to a character.
-function renderGiveModal(s, give) {
+function renderGiveModal(s, give, locked) {
+  const dis = locked ? "disabled" : "";
   const items = s.player.inventory || [];
   const body = items.length
     ? `<div class="give-grid">${items
         .map(
           (it) =>
-            `<button type="button" class="holo-btn give-pick" data-act="pick-give" data-item="${escapeHtml(it.name)}" data-target="${escapeHtml(give.name)}">${escapeHtml(it.name)}</button>`,
+            `<button type="button" class="holo-btn give-pick" data-act="pick-give" data-item="${escapeHtml(it.id || it.name)}" data-target="${escapeHtml(give.name)}" ${dis}>${escapeHtml(it.name)}</button>`,
         )
         .join("")}</div>`
     : `<p class="modal-body">You have nothing to give.</p>`;
@@ -348,91 +358,127 @@ function renderGiveModal(s, give) {
         <h3 class="modal-title give"><span class="ic">${icon("gem")}</span><span>Give to ${escapeHtml(give.name)}</span></h3>
         ${items.length ? `<p class="modal-body">Choose an item to hand over.</p>` : ""}
         ${body}
-        <div class="modal-actions"><button class="holo-btn" data-act="cancel-give">Cancel</button></div>
+        <div class="modal-actions"><button class="holo-btn" data-act="cancel-give" ${dis}>Cancel</button></div>
       </div>
     </div>`;
 }
 
-function renderPlayHud(s) {
+// ---------------------------------------------------------------------------
+// The integrated header ("the deck"). ONE structure, three shape levels:
+//   nav | scene identity wing (tall, protrudes) | affordance board | vitals wing
+// Every affordance renders from exactly ONE state field, in exactly ONE place:
+// goal chip (current_goal), mood badge (scene.status, on the scene name),
+// scene items/actions/exits, context meter, story clock.
+// ---------------------------------------------------------------------------
+function renderPlayDeck(s, locked, g = {}) {
+  const dis = locked ? "disabled" : "";
   const p = s.player;
-  const pct = p.maxLife ? Math.max(0, Math.min(100, (p.life / p.maxLife) * 100)) : 0;
-  const mood = s.sceneStatus || (s.scene && s.scene.status) || null;
-  return `
-    <header class="play-hud">
-      <button class="holo-icon" data-act="go-library" aria-label="Library" title="Library">${icon("chevronLeft")}</button>
-      <div class="hud" data-hud>
-        ${help("hud")}
-        <div class="hud-life" data-hud-life>
-          ${icon("heart")}
-          <div class="life-track"><div class="life-fill" style="width:${pct}%"></div></div>
-          <span class="hud-num" data-hud-num="life">${p.life}/${p.maxLife}</span>
-        </div>
-        <div class="hud-points">${icon("star")}<span class="hud-num" data-hud-num="points">${p.points}</span></div>
-      </div>
-      ${s.currentGoal ? `<div class="hud-goal" title="Current goal">${icon("compass")}<span>${escapeHtml(s.currentGoal)}</span></div>` : ""}
-      ${mood ? `<span class="mood-badge mood-${escapeHtml(mood)}">${escapeHtml(mood)}</span>` : ""}
-      <button class="holo-icon" data-act="open-settings" aria-label="Menu" title="Menu / settings">${icon("settings")}</button>
-    </header>`;
-}
-
-// The scene: a hero image (the "big thing") with name/mood overlaid, plus the
-// scene's revealed items (6 slots) on one side and its actions + exits on the other.
-function renderSceneBand(s) {
   const scene = s.scene;
-  const name = (scene && scene.name) || titleCase(s.player.location || "Unknown");
+  const name = (scene && scene.name) || titleCase(p.location || "Unknown");
   const desc = (scene && scene.description) || "";
   const mood = (scene && scene.status) || s.sceneStatus || null;
-  const img = scene && scene.imageUrl;
-  const hero = img
-    ? `<img class="scene-img" src="${escapeHtml(scene.imageUrl)}" alt="${escapeHtml(name)}" loading="lazy" />`
-    : `<div class="scene-img placeholder">${icon("landmark")}</div>`;
-
   const items = (scene && scene.items) || [];
   const actions = (scene && scene.actions) || [];
   const exits = (scene && scene.exits) || [];
+  const pct = p.maxLife ? Math.max(0, Math.min(100, (p.life / p.maxLife) * 100)) : 0;
+
+  // "See": generate an image of the scene WITH the present characters (sync
+  // 5-10s -> loader + lock on the button). Hidden entirely when images are off.
+  const seeing = Boolean(g.seeing);
+  const seeBtn = s.imagesEnabled
+    ? `<button type="button" class="holo-icon see-btn${seeing ? " seeing" : ""}" data-act="see-scene"
+               title="See the scene as it is right now" aria-label="See the scene"
+               ${seeing || locked ? "disabled" : ""}>${icon("eye")}</button>`
+    : "";
 
   return `
-    <section class="scene-band">
-      <div class="scene-hero">
-        ${hero}
-        <div class="scene-hero-grad"></div>
-        <div class="scene-hero-text">
-          ${mood ? `<span class="mood-badge mood-${escapeHtml(mood)}">${escapeHtml(mood)}</span>` : ""}
-          <h2 class="scene-name">${escapeHtml(name)}${help("scene")}</h2>
-          ${desc ? `<p class="scene-desc">${escapeHtml(desc)}</p>` : ""}
-        </div>
+    <header class="play-deck">
+      <div class="deck-nav">
+        <button class="holo-icon" data-act="go-library" aria-label="Library" title="Library" ${dis}>${icon("chevronLeft")}</button>
       </div>
-      <div class="scene-rail">
-        <div class="rail-block">
-          <span class="rail-label">${icon("gem")}<span>Scene items</span></span>
-          ${slotGrid(items, 6, "scene-items", sceneItemSlot)}
+
+      <div class="deck-scene">
+        <span class="card-corner tr"></span><span class="card-corner bl"></span>
+        <div class="scene-id">
+          ${mood ? `<span class="mood-badge mood-${escapeHtml(mood)}">${escapeHtml(mood)}</span>` : ""}
+          ${s.time ? `<span class="time-chip" title="Story time, not yours">${icon("clock")}<span>${escapeHtml(s.time.label)}</span></span>` : ""}
+          ${seeBtn}
         </div>
-        <div class="rail-block">
+        <h2 class="scene-name">${escapeHtml(name)}${help("scene")}</h2>
+        ${desc ? `<p class="scene-desc">${escapeHtml(desc)}</p>` : ""}
+      </div>
+
+      <div class="deck-board">
+        <div class="board-cell">
+          <span class="rail-label">${icon("gem")}<span>Scene items</span></span>
+          ${slotGrid(items, 6, "scene-items", (it) => sceneItemSlot(it, locked))}
+        </div>
+        <i class="board-sep" aria-hidden="true"></i>
+        <div class="board-cell">
           <span class="rail-label">${icon("zap")}<span>Actions</span></span>
           <div class="act-row">
-            ${actions.map((a) => sceneActionBtn(a)).join("")}
+            ${actions.map((a) => sceneActionBtn(a, locked)).join("")}
             ${!actions.length ? `<span class="muted small">Nothing obvious to do.</span>` : ""}
           </div>
         </div>
-        <div class="rail-block">
+        <i class="board-sep" aria-hidden="true"></i>
+        <div class="board-cell">
           <span class="rail-label">${icon("compass")}<span>Ways out</span></span>
           <div class="act-row">
-            ${exits.map((e) => exitBtn(e)).join("")}
+            ${exits.map((e) => exitBtn(e, locked)).join("")}
             ${!exits.length ? `<span class="dead-end">${icon("x")}<span>Dead end: no way out revealed</span></span>` : ""}
           </div>
         </div>
       </div>
-    </section>`;
+
+      <div class="deck-vitals" data-hud>
+        <div class="vital-row">
+          <div class="hud-life" data-hud-life>
+            ${icon("heart")}
+            <div class="life-track"><div class="life-fill" style="width:${pct}%"></div></div>
+            <span class="hud-num" data-hud-num="life">${p.life}/${p.maxLife}</span>
+          </div>
+          <div class="hud-points">${icon("star")}<span class="hud-num" data-hud-num="points">${p.points}</span></div>
+          ${help("hud")}
+        </div>
+        ${contextMeter(s.context)}
+        ${s.currentGoal ? `<div class="hud-goal" title="Current goal">${icon("compass")}<span>${escapeHtml(s.currentGoal)}</span></div>` : ""}
+      </div>
+
+      <div class="deck-nav">
+        <button class="holo-icon" data-act="open-settings" aria-label="Menu" title="Menu / settings" ${dis}>${icon("settings")}</button>
+      </div>
+    </header>`;
 }
 
-function renderCharacters(s) {
+// Prompt-token usage as a colored meter: green -> amber -> red as it fills.
+// A PERMANENT HUD element ("12k/128k"), not a debug toggle: it renders whenever
+// the backend sends context, including used=0 before the first turn. The same
+// builder draws the small per-character meters (each character is its own
+// agent context).
+function contextMeter(ctx, { mini = false, label = "Story memory" } = {}) {
+  if (!ctx || !ctx.max) return "";
+  const pct = Math.round(ctx.ratio * 100);
+  const tone = ctx.ratio > 0.85 ? "red" : ctx.ratio > 0.6 ? "amber" : "green";
+  const fmt = (n) => (n >= 1024 ? `${Math.round(n / 1024)}k` : String(n));
+  const text = `${fmt(ctx.used)}/${fmt(ctx.max)}`;
+  return `
+    <div class="ctx-meter${mini ? " mini" : ""} tone-${tone}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"
+         aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}: ${text} tokens (${pct}%)">
+      ${icon("gauge")}
+      <div class="ctx-track"><div class="ctx-fill" style="width:${pct}%"></div></div>
+      <span class="ctx-num">${text}</span>
+    </div>`;
+}
+
+function renderCharacters(s, locked) {
   const present = presentCharacters(s);
   const presentIds = new Set(present.map((c) => c.id));
   // everyone known but not standing here: followers lagging, those left behind, the fallen.
   const elsewhere = (s.characters || []).filter((c) => c.name && !presentIds.has(c.id));
 
   const here = present.length
-    ? `<div class="char-list">${present.map(renderCharacterCard).join("")}</div>`
+    ? `<div class="char-deck cols-${present.length}">${present.map((c) => renderCharColumn(c, s, locked)).join("")}</div>`
     : `<p class="muted small char-empty">No one else is here right now.</p>`;
 
   const roster = elsewhere.length
@@ -443,6 +489,69 @@ function renderCharacters(s) {
     : "";
 
   return here + roster;
+}
+
+// A character is a tall vertical card column: the full-body reference art fills
+// the column, identity reads off a plate at its foot, and the inventory +
+// action buttons hang below. Art is tall-portrait by contract (frontend-api 5b).
+function renderCharColumn(c, s, locked) {
+  const dis = locked ? "disabled" : "";
+  const hp =
+    c.life != null && c.maxLife
+      ? `<div class="char-hp" title="${c.life}/${c.maxLife}">
+           <div class="hp-track"><div class="hp-fill" style="width:${Math.max(0, Math.min(100, (c.life / c.maxLife) * 100))}%"></div></div>
+         </div>`
+      : "";
+  return `
+    <article class="char-col${c.alive ? "" : " dead"}" data-char-id="${escapeHtml(c.id)}" style="--speaker:${escapeHtml(c.color)}">
+      <div class="col-art">
+        ${bodyArt(c, s)}
+        <div class="col-grad" aria-hidden="true"></div>
+        <span class="disp-badge disp-${escapeHtml(c.disposition)}">${escapeHtml(c.disposition)}</span>
+        <div class="col-plate">
+          <span class="char-name">${escapeHtml(c.name)}${c.following ? ` <span class="follow-tag" title="Following you">${icon("compass")}</span>` : ""}</span>
+          ${hp}
+        </div>
+      </div>
+      ${c.description ? `<p class="char-desc">${escapeHtml(c.description)}</p>` : ""}
+      ${contextMeter(c.context, { mini: true, label: `${c.name}'s memory` })}
+      <div class="char-inv-row">
+        <span class="inv-mini-label">Carrying</span>
+        ${slotGrid(c.inventory, 3, "char-items")}
+      </div>
+      <div class="char-actions">
+        ${c.actions.map((a) => charActionBtn(a, c, locked)).join("")}
+        <button type="button" class="chip-btn whisper" data-act="open-private" data-channel="whisper" data-char-id="${escapeHtml(c.id)}" data-char-name="${escapeHtml(c.name)}" title="Whisper privately to ${escapeHtml(c.name)}" ${dis}>${icon("mic")}<span>Whisper</span></button>
+      </div>
+    </article>`;
+}
+
+// Full-body art for a character column, honoring the loading rule:
+// url -> the image; null + images_enabled -> a loader (art is generating);
+// null + images off -> a static color+initial figure, no loader.
+function bodyArt(c, s) {
+  if (c.bodyUrl) {
+    return `<img class="col-body" data-art="${escapeHtml(c.bodyUrl)}" src="${escapeHtml(c.bodyUrl)}" alt="${escapeHtml(c.name)}" loading="lazy" />`;
+  }
+  if (s.imagesEnabled) {
+    return `<div class="col-body art-loading" role="img" aria-label="${escapeHtml(c.name)} (art is being painted)">
+              <span class="art-scan" aria-hidden="true"></span><span class="art-hint">manifesting</span>
+            </div>`;
+  }
+  return `<div class="col-body art-off" role="img" aria-label="${escapeHtml(c.name)}">
+            <span class="col-initial">${escapeHtml(initials(c.name))}</span>
+          </div>`;
+}
+
+// Face avatar with the same loading rule (used by the private modal header).
+function faceArt(c, s, cls) {
+  if (c.faceUrl) {
+    return `<img class="${cls}" data-art="${escapeHtml(c.faceUrl)}" src="${escapeHtml(c.faceUrl)}" alt="${escapeHtml(c.name)}" loading="lazy" />`;
+  }
+  if (s.imagesEnabled) {
+    return `<span class="${cls} art-loading" role="img" aria-label="${escapeHtml(c.name)}"><span class="art-scan" aria-hidden="true"></span></span>`;
+  }
+  return `<span class="${cls} fallback" style="background:${escapeHtml(c.color)}">${escapeHtml(initials(c.name))}</span>`;
 }
 
 function castRow(c) {
@@ -461,49 +570,16 @@ function castRow(c) {
           </div>`;
 }
 
-function renderCharacterCard(c) {
-  const portrait = c.faceUrl
-    ? `<img src="${escapeHtml(c.faceUrl)}" alt="${escapeHtml(c.name)}" loading="lazy" />`
-    : `<span class="char-fallback" style="background:${escapeHtml(c.color)}">${escapeHtml(initials(c.name))}</span>`;
-  const hp =
-    c.life != null && c.maxLife
-      ? `<div class="char-hp" title="${c.life}/${c.maxLife}">
-           <div class="hp-track"><div class="hp-fill" style="width:${Math.max(0, Math.min(100, (c.life / c.maxLife) * 100))}%"></div></div>
-         </div>`
-      : "";
-  return `
-    <article class="char-card" data-char-id="${escapeHtml(c.id)}" style="--speaker:${escapeHtml(c.color)}">
-      <span class="card-corner tr"></span><span class="card-corner bl"></span>
-      <div class="char-top">
-        <span class="char-portrait">${portrait}</span>
-        <div class="char-meta">
-          <span class="char-name">${escapeHtml(c.name)}${c.following ? ` <span class="follow-tag" title="Following you">${icon("compass")}</span>` : ""}</span>
-          <span class="disp-badge disp-${escapeHtml(c.disposition)}">${escapeHtml(c.disposition)}</span>
-          ${hp}
-        </div>
-      </div>
-      ${c.description ? `<p class="char-desc">${escapeHtml(c.description)}</p>` : ""}
-      <div class="char-inv-row">
-        <span class="inv-mini-label">Carrying</span>
-        ${slotGrid(c.inventory, 3, "char-items")}
-      </div>
-      <div class="char-actions">
-        ${c.actions.map((a) => charActionBtn(a, c)).join("")}
-        <button type="button" class="chip-btn whisper" data-act="whisper" data-char-id="${escapeHtml(c.id)}" data-char-name="${escapeHtml(c.name)}" title="Whisper privately to ${escapeHtml(c.name)}">${icon("mic")}<span>Whisper</span></button>
-      </div>
-    </article>`;
-}
-
 // --- action buttons (button -> segment mapping is resolved in app.js) ---
-function sceneActionBtn(a) {
-  return `<button type="button" class="chip-btn" data-act="scene-action" data-type="${escapeHtml(a.type)}" data-label="${escapeHtml(a.label)}">${escapeHtml(a.label)}</button>`;
+function sceneActionBtn(a, locked) {
+  return `<button type="button" class="chip-btn" data-act="scene-action" data-type="${escapeHtml(a.type)}" data-label="${escapeHtml(a.label)}" ${locked ? "disabled" : ""}>${escapeHtml(a.label)}</button>`;
 }
-function exitBtn(e) {
+function exitBtn(e, locked) {
   const ic = e.isBack ? "chevronLeft" : "compass";
-  return `<button type="button" class="chip-btn exit${e.isBack ? " back" : ""}" data-act="exit" data-label="${escapeHtml(e.label)}" data-target="${escapeHtml(e.target || "")}">${icon(ic)}<span>${escapeHtml(e.label)}</span></button>`;
+  return `<button type="button" class="chip-btn exit${e.isBack ? " back" : ""}" data-act="exit" data-label="${escapeHtml(e.label)}" data-target="${escapeHtml(e.target || "")}" ${locked ? "disabled" : ""}>${icon(ic)}<span>${escapeHtml(e.label)}</span></button>`;
 }
-function charActionBtn(a, c) {
-  return `<button type="button" class="chip-btn" data-act="char-action" data-type="${escapeHtml(a.type)}" data-label="${escapeHtml(a.label)}" data-char-id="${escapeHtml(c.id)}" data-char-name="${escapeHtml(c.name)}">${escapeHtml(a.label)}</button>`;
+function charActionBtn(a, c, locked) {
+  return `<button type="button" class="chip-btn" data-act="char-action" data-type="${escapeHtml(a.type)}" data-label="${escapeHtml(a.label)}" data-char-id="${escapeHtml(c.id)}" data-char-name="${escapeHtml(c.name)}" ${locked ? "disabled" : ""}>${escapeHtml(a.label)}</button>`;
 }
 
 // --- fixed-slot grids (caps are maximums; empty slots show capacity) ---
@@ -532,60 +608,168 @@ function filledSlot(it) {
 
 // interactive scene-item slot: loot (fixed:false) can be TAKEN, scenery
 // (fixed:true) can only be EXAMINED (the backend refuses to pocket the furniture).
-function sceneItemSlot(it) {
+function sceneItemSlot(it, locked) {
   const act = it.fixed ? "examine-item" : "take-item";
   const kind = it.fixed ? "scenery" : "loot";
   const tag = it.fixed
     ? `<span class="slot-tag fixed" aria-hidden="true">${icon("landmark")}</span>`
     : `<span class="slot-tag loot" aria-hidden="true">${icon("plus")}</span>`;
   const verb = it.fixed ? "Examine" : "Take";
-  return `<button type="button" class="slot filled item-${kind}" data-act="${act}" data-item-id="${escapeHtml(it.id || "")}" data-item-name="${escapeHtml(it.name)}" title="${escapeHtml(slotTip(it))} - ${verb}" aria-label="${verb} ${escapeHtml(it.name)}">${slotInner(it)}${tag}</button>`;
+  return `<button type="button" class="slot filled item-${kind}" data-act="${act}" data-item-id="${escapeHtml(it.id || "")}" data-item-name="${escapeHtml(it.name)}" title="${escapeHtml(slotTip(it))} - ${verb}" aria-label="${verb} ${escapeHtml(it.name)}" ${locked ? "disabled" : ""}>${slotInner(it)}${tag}</button>`;
 }
 
-function renderActionBar(g, s, chat) {
-  const placeholder = g.generating
-    ? "The narrator is thinking..."
-    : chat
-      ? `${chat.mode === "private" ? "Whisper" : "Say"} to ${chat.name}...`
-      : "What do you do?";
+// ---------------------------------------------------------------------------
+// The composer: Do/Say modes, entity chips (@), segment stacking (+), Send.
+// The contenteditable line hosts non-editable chips; app.js serializes it into
+// tagged segments with refs on submit.
+// ---------------------------------------------------------------------------
+function renderComposer({ id, mode, locked, placeholderSay, placeholderDo, submitLabel }) {
+  const dis = locked ? "disabled" : "";
+  const ph = mode === "say" ? placeholderSay : placeholderDo;
+  return `
+    <div class="composer">
+      <div class="composer-modes" role="group" aria-label="Line kind">
+        <button type="button" class="mode-btn${mode === "do" ? " active" : ""}" data-act="${id}-mode" data-mode="do" aria-pressed="${mode === "do"}" ${dis}>Do</button>
+        <button type="button" class="mode-btn${mode === "say" ? " active" : ""}" data-act="${id}-mode" data-mode="say" aria-pressed="${mode === "say"}" ${dis}>Say</button>
+      </div>
+      <div class="composer-input holo-input" id="${id}Input" contenteditable="${locked ? "false" : "true"}"
+           role="textbox" aria-multiline="false" aria-label="${mode === "say" ? "What you say" : "What you do"}"
+           data-placeholder="${escapeHtml(locked ? "The narrator is thinking..." : ph)}"></div>
+      <button type="button" class="holo-icon tag-btn" data-act="open-tagger" data-scope="${id}"
+              title="Tag a character or item" aria-label="Tag a character or item" ${dis}>${icon("at")}</button>
+      <button type="button" class="holo-icon stack-btn" data-act="${id}-stack"
+              title="Stack this line to send several at once" aria-label="Stack this line" ${dis}>${icon("plus")}</button>
+      <button class="holo-btn" type="submit" ${dis}>${icon("send")}<span>${submitLabel}</span></button>
+    </div>`;
+}
+
+// The stacked-segment queue above a composer: each row is one tagged segment
+// waiting to execute, removable until sent.
+function renderStack(stack, scope) {
+  if (!stack || !stack.length) return "";
+  return `<div class="seg-stack" aria-label="Stacked lines">
+    ${stack
+      .map(
+        (seg, i) =>
+          `<span class="seg-row seg-${escapeHtml(seg.type)}">${escapeHtml(describeSegment(seg))}
+             <button type="button" class="seg-del" data-act="${scope}-unstack" data-index="${i}" aria-label="Remove stacked line">${icon("x")}</button>
+           </span>`,
+      )
+      .join("")}
+  </div>`;
+}
+
+function renderActionBar(g, s, locked) {
+  const cmp = g.composer || { mode: "do", stack: [] };
   return `
     <footer class="play-actionbar">
       <div class="player-inv">
         <span class="rail-label">${icon("gem")}<span>You</span>${help("inventory")}</span>
         ${slotGrid(s.player.inventory, 6, "player-items")}
+        <span class="action-help">${help("action")}</span>
       </div>
-      ${renderQuickActions(g)}
-      <form class="action-form ${chat ? `chat-${chat.mode}` : ""}" data-form="action">
-        ${chat ? `<span class="chat-context">${icon(chat.mode === "private" ? "mic" : "mask")}<span>${chat.mode === "private" ? "Whispering to" : "Talking to"} ${escapeHtml(chat.name)}</span><button type="button" class="chat-close" data-act="end-chat" title="Leave chat">${icon("x")}</button></span>` : `<span class="action-help">${help("action")}</span>`}
-        <input name="actionText" class="holo-input" autocomplete="off"
-               placeholder="${escapeHtml(placeholder)}"
-               ${g.generating ? "disabled" : ""} />
-        <button class="holo-btn" type="submit" ${g.generating ? "disabled" : ""}>
-          ${icon("send")}<span>Send</span>
-        </button>
+      ${renderStack(cmp.stack, "cmp")}
+      <form class="action-form" data-form="action">
+        ${renderComposer({
+          id: "cmp",
+          mode: cmp.mode,
+          locked,
+          placeholderSay: "What do you say?",
+          placeholderDo: "What do you do?",
+          submitLabel: "Send",
+        })}
       </form>
     </footer>`;
 }
 
-// The story log. Public beats (private_with == null) render in the main stream.
-// When a private (whisper) chat is open, the stream instead shows the 1:1 thread
-// with that character - private beats never appear in the public story.
-function renderStory(g) {
-  const chat = g.chat;
-  const privId = chat && chat.mode === "private" ? chat.charId : null;
-  const beats = privId
-    ? g.beats.filter((b) => b.privateWith === privId)
-    : g.beats.filter((b) => !b.privateWith);
+// ---------------------------------------------------------------------------
+// The private modal (Talk / Whisper): a 1:1 exchange OVER the scene, scoped to
+// one character, with its own say/do composer and segment stack. Talk is spoken
+// aloud (directed, others hear); Whisper is the private channel (private_with
+// beats render here and never in the public story).
+// ---------------------------------------------------------------------------
+function renderPrivateModal(s, g) {
+  const pm = g.privateChat; // { charId, name, channel, mode, stack }
+  const c = (s.characters || []).find((x) => x.id === pm.charId) || { id: pm.charId, name: pm.name, color: "#2fe6ff", disposition: "unknown", faceUrl: null };
+  const locked = Boolean(g.generating);
+  const dis = locked ? "disabled" : "";
+  const whisper = pm.channel === "whisper";
+  const name = c.name || pm.name;
 
-  const banner = privId
-    ? `<div class="whisper-banner">${icon("mic")}<span>Private channel with ${escapeHtml(chat.name)}. No one else hears this.</span></div>`
-    : "";
+  const beats = whisper
+    ? g.beats.filter((b) => b.privateWith === pm.charId)
+    : g.beats.filter((b) => !b.privateWith && b.speaker === pm.charId);
+  const thread = beats.length
+    ? beats.slice(-40).map((b) => renderPmBeat(b)).join("")
+    : `<p class="pm-empty muted">${
+        whisper ? `Say something only ${escapeHtml(name)} will hear.` : `Speak, and ${escapeHtml(name)} will answer aloud.`
+      }</p>`;
+
+  return `
+    <div class="modal-overlay private-overlay" data-act="close-private">
+      <div class="holo-modal private-modal${whisper ? " is-whisper" : ""}" data-act="noop" role="dialog" aria-modal="true"
+           aria-label="${whisper ? "Whisper to" : "Talk to"} ${escapeHtml(name)}" style="--speaker:${escapeHtml(c.color)}">
+        <span class="card-corner tr"></span><span class="card-corner bl"></span>
+        <header class="pm-head">
+          ${faceArt(c, s, "pm-face")}
+          <div class="pm-id">
+            <span class="pm-name">${escapeHtml(name)}</span>
+            <span class="disp-badge disp-${escapeHtml(c.disposition)}">${escapeHtml(c.disposition)}</span>
+            ${contextMeter(c.context, { mini: true, label: `${name}'s memory` })}
+          </div>
+          <button type="button" class="holo-icon pm-close" data-act="close-private" aria-label="Close" title="Close" ${dis}>${icon("x")}</button>
+        </header>
+
+        <div class="pm-channel" role="tablist" aria-label="Channel">
+          <button type="button" role="tab" aria-selected="${!whisper}" class="pm-tab${!whisper ? " active" : ""}"
+                  data-act="pm-channel" data-channel="talk" ${dis}>${icon("mask")}<span>Talk aloud</span></button>
+          <button type="button" role="tab" aria-selected="${whisper}" class="pm-tab${whisper ? " active" : ""}"
+                  data-act="pm-channel" data-channel="whisper" ${dis}>${icon("mic")}<span>Whisper</span></button>
+        </div>
+        <p class="pm-hint">${
+          whisper
+            ? `Only ${escapeHtml(name)} (and the narrator) will ever know this. The others see nothing.`
+            : `Spoken aloud to ${escapeHtml(name)}. Anyone in the scene can hear it.`
+        }</p>
+
+        <div class="pm-thread" id="pmThread">${thread}</div>
+        ${renderStack(pm.stack, "pm")}
+        <form class="pm-form" data-form="private">
+          ${renderComposer({
+            id: "pm",
+            mode: pm.mode,
+            locked,
+            placeholderSay: whisper ? `Whisper to ${name}...` : `Say to ${name}...`,
+            placeholderDo: whisper ? `A discreet act only ${name} notices...` : `Do something...`,
+            submitLabel: locked ? "Resolving..." : "Execute",
+          })}
+        </form>
+      </div>
+    </div>`;
+}
+
+// Compact beat rendering inside the private modal thread.
+function renderPmBeat(beat) {
+  if (beat.kind === "system") {
+    return `<div class="pm-line pm-system">${escapeHtml(beat.text)}</div>`;
+  }
+  const mine = !beat.speaker || beat.speaker === "player";
+  const deed = beat.kind === "action";
+  return `<div class="pm-line ${mine ? "pm-you" : "pm-them"}${deed ? " pm-deed" : ""}">
+            ${!mine && beat.speakerName ? `<b>${escapeHtml(beat.speakerName)}</b> ` : ""}${escapeHtml(beat.text)}
+          </div>`;
+}
+
+// The story log. Only public beats (private_with == null) ever render here;
+// private exchanges live in the private modal. The current scene's art is mixed
+// INTO the prose: a collection-style card floated inside the latest narration,
+// revealed with a card effect once the image exists.
+function renderStory(g) {
+  const beats = g.beats.filter((b) => !b.privateWith);
+  const artCard = sceneArtCard(g.state);
 
   if (!beats.length) {
-    const empty = privId
-      ? `Say something only ${escapeHtml(chat.name)} will hear.`
-      : "The story has not begun yet.";
-    return `${banner}<p class="story-prose muted">${empty}</p>`;
+    return artCard + `<p class="story-prose muted">The story has not begun yet.</p>`;
   }
 
   // window very long logs so the DOM does not grow unbounded (perf requirement)
@@ -597,22 +781,64 @@ function renderStory(g) {
     shown = beats.slice(-MAX);
   }
   const trim = trimmed ? `<p class="story-trim muted small">${trimmed} earlier moments are behind you.</p>` : "";
-  return banner + trim + shown.map((b) => renderBeat(b, g)).join("");
+
+  let lastNarration = -1;
+  shown.forEach((b, i) => {
+    if (b.kind === "narration") lastNarration = i;
+  });
+  const body = shown.map((b, i) => renderBeat(b, g, i === lastNarration ? artCard : "")).join("");
+  // no narration on screen (e.g. directed-say turns only): show the art standalone
+  return trim + (lastNarration === -1 ? artCard : "") + body;
 }
 
-function renderBeat(beat, g) {
+// The scene image as a collectible card living inside the prose. Loader rule:
+// null + images_enabled -> a developing-photo skeleton; images off -> nothing
+// (pure text must read like a book, not a grid of dead boxes).
+function sceneArtCard(s) {
+  const scene = s && s.scene;
+  if (!scene) return "";
+  const name = scene.name || "";
+  if (scene.imageUrl) {
+    return `<figure class="prose-art">
+              <span class="card-corner tr"></span><span class="card-corner bl"></span>
+              <img data-art="${escapeHtml(scene.imageUrl)}" src="${escapeHtml(scene.imageUrl)}" alt="${escapeHtml(name)}" loading="lazy" />
+              ${name ? `<figcaption>${escapeHtml(name)}</figcaption>` : ""}
+            </figure>`;
+  }
+  if (s.imagesEnabled) {
+    return `<figure class="prose-art art-loading" role="img" aria-label="Scene art is being painted">
+              <span class="art-scan" aria-hidden="true"></span>
+              <span class="art-hint">visual manifesting...</span>
+            </figure>`;
+  }
+  return "";
+}
+
+function renderBeat(beat, g, embed = "") {
   switch (beat.kind) {
     case "narration":
-      return renderNarration(beat);
+      return renderNarration(beat, embed);
     case "dialogue":
       return renderDialogue(beat, g);
     case "action":
       return renderActionBeat(beat, g);
     case "system":
       return renderSystem(beat);
+    case "image":
+      return renderImageBeat(beat);
     default:
-      return renderNarration(beat);
+      return renderNarration(beat, embed);
   }
+}
+
+// IMAGE beat (the "See" result): just an inline picture in the story flow.
+// No bubble, no label; persists in the log and re-renders on reload.
+function renderImageBeat(beat) {
+  if (!beat.imageUrl) return "";
+  return `<figure class="beat-image" data-beat-id="${escapeHtml(beat.id)}">
+            <span class="card-corner tr"></span><span class="card-corner bl"></span>
+            <img data-art="${escapeHtml(beat.imageUrl)}" src="${escapeHtml(beat.imageUrl)}" alt="The scene as it is right now" loading="lazy" />
+          </figure>`;
 }
 
 // action beats are either the player's own echoed action or a CHARACTER's deed
@@ -629,15 +855,23 @@ function renderActionBeat(beat, g) {
           </p>`;
 }
 
-// NARRATION = prose. No bubble, no speaker label. Just the story text, set like a book.
-function renderNarration(beat) {
+// NARRATION = prose. No bubble, no speaker label. Just the story text, set like
+// a book. `embed` is the scene-art card floated into this passage so the image
+// reads as part of the text, and a beat may carry its own moment art too.
+function renderNarration(beat, embed = "") {
   const paras = String(beat.text)
     .split(/\n{2,}/)
     .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br />")}</p>`)
     .join("");
+  const beatArt = beat.imageUrl
+    ? `<figure class="prose-art beat-art">
+         <span class="card-corner tr"></span><span class="card-corner bl"></span>
+         <img data-art="${escapeHtml(beat.imageUrl)}" src="${escapeHtml(beat.imageUrl)}" alt="" loading="lazy" />
+       </figure>`
+    : "";
   const playable = beat.voiceId ? speakBtn(beat) : "";
   return `<section class="narration" data-beat-id="${escapeHtml(beat.id)}">
-            ${paras}${playable}
+            ${embed}${beatArt}${paras}${playable}
           </section>`;
 }
 
@@ -686,13 +920,9 @@ function renderNarrating() {
           </div>`;
 }
 
-function renderQuickActions(g) {
-  const chips = g.quickActions || [];
-  if (!chips.length || g.generating) return "";
-  return `<div class="quick-actions">
-    ${chips.map((c) => `<button type="button" class="chip" data-act="quick" data-text="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("")}
-  </div>`;
-}
+// (Quick-action chips were removed on purpose: each affordance comes from ONE
+// state field and renders in ONE place - synthesized suggestion chips restated
+// the goal / scene actions / character actions and read as noise.)
 
 // ---------------------------------------------------------------------------
 // Settings (tucked away; NOT shown during play)
@@ -751,6 +981,9 @@ function renderSettings(state) {
 
 function systemTone(text) {
   const t = String(text).toLowerCase();
+  // adjudication: a rejected attempt ("You don't have X.", "Mara is not here.")
+  // or a narrator veto ("Mara steps back, refusing the coin.")
+  if (/(don't have|do not have|not here|refus|cannot|can't)/.test(t)) return "veto";
   if (/(damage|hurt|hit|lose|wound|life)/.test(t)) return "danger";
   if (/(point|score)/.test(t)) return "points";
   if (/(item|found|gain|acquire|unlock|inventory)/.test(t)) return "item";
@@ -759,7 +992,7 @@ function systemTone(text) {
 }
 
 function systemIcon(tone) {
-  return { danger: "flame", points: "star", item: "gem", quest: "scroll", neutral: "zap" }[tone] || "zap";
+  return { veto: "x", danger: "flame", points: "star", item: "gem", quest: "scroll", neutral: "zap" }[tone] || "zap";
 }
 
 function formatProgress(p) {

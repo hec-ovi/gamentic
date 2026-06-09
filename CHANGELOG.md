@@ -32,4 +32,4 @@ First public day. The repo went public and everything below landed today.
 - Reference conditioning: `/image/generate` accepts optional reference image URLs (a character's stored views) and conditions the render on them via klein multi-reference editing, so an existing character keeps face, hair and outfit in new scenes and poses instead of re-rolling from text. Verified A/B on the box: same prompt and seed without the reference produced a different generic figure; with it, recognizably the same character. Missing or unfetchable references fall back to plain text-to-image, never a failed render.
 
 ### Frontend
-- Frontend redesign in progress (scene-centric layout, tagged composer with entity chips, character cards).
+- Scene-centric redesign landed: integrated header (scene, mood, day/time, goal, story-memory meter), tall full-body character card columns with per-character memory meters, scene and snapshot images inline in the story flow, the "See the scene" button, a stacking composer (do/say lines, entity tagging, send together), private whisper flow, per-beat voice playback. 102 component tests (Testing Library + MSW).

@@ -5,10 +5,11 @@
 // real backend is sequential (one POST /action -> { beats, state }).
 
 import { createApi } from "./api.js";
-import { mapGameState, mapBeats, voiceForBeat } from "./adapters.js";
+import { mapGameState, mapBeats, voiceForBeat, presentCharacters } from "./adapters.js";
 import { diffState, buildNotices } from "./transitions.js";
 import { Voice } from "./voice.js";
 import { renderApp, HELP, escapeHtml } from "./render.js";
+import { serializeComposer, insertChip, clearComposer, buildSegment } from "./composer.js";
 import { icon } from "./icons.js";
 
 const STORAGE_KEY = "gamentic.v2";
@@ -19,7 +20,7 @@ const state = {
   games: [], // raw library entries from GET /games
   backendOnline: false,
   backendError: "",
-  active: null, // { id, state(mapped), beats(mapped), quickActions, generating }
+  active: null, // { id, state(mapped), beats(mapped), generating, composer, privateChat, give, revealedArt }
   creator: { sessionId: "creator-" + rand(), messages: [], busy: false, error: "" },
   confirm: null, // { gameId, title } when a delete confirmation is open
   settings: loadSettings(),
@@ -38,10 +39,29 @@ let pollTimer = null;
 export function init(opts = {}) {
   root = opts.root || document.querySelector("#app");
   if (!root) return null;
+  // Generated media can 404/truncate for a beat right after generation (the
+  // file is still being persisted). Retry failed game images a few times with
+  // backoff instead of leaving a dead slot. error events don't bubble -> capture.
+  root.addEventListener("error", retryFailedImage, true);
   resetCreator();
   render();
   refreshLibrary();
   return { state, voice };
+}
+
+function retryFailedImage(e) {
+  const img = e.target;
+  if (!img || img.tagName !== "IMG") return;
+  const src = img.getAttribute("src") || "";
+  if (!src.startsWith("/")) return; // only our same-origin game media
+  const tries = Number(img.dataset.retry || 0);
+  if (tries >= 3) return;
+  img.dataset.retry = String(tries + 1);
+  const base = src.replace(/[?&]r=\d+$/, "");
+  setTimeout(() => {
+    if (!img.isConnected) return;
+    img.src = `${base}${base.includes("?") ? "&" : "?"}r=${tries + 1}`;
+  }, 700 * (tries + 1));
 }
 
 if (typeof document !== "undefined" && document.querySelector("#app")) {
@@ -84,16 +104,28 @@ function saveSettings() {
 // ---------------------------------------------------------------------------
 
 function render() {
+  closeTagger();
   root.dataset.view = state.view;
   root.innerHTML = renderApp(state);
   bind();
-  if (state.view === "play") scrollStory();
+  if (state.view === "play") {
+    scrollStory();
+    if (state.active && state.active.privateChat) scrollToBottom("#pmThread");
+    markArtReveals(state.active);
+  }
   if (state.view === "creator") scrollCreator();
 }
 
 function bind() {
   root.querySelectorAll("[data-act]").forEach((el) => {
     el.addEventListener("click", (e) => {
+      // "noop" wrappers (modal bodies over a clickable backdrop) must only stop
+      // the bubble - preventDefault here would cancel form submits bubbling up
+      // from buttons inside the modal.
+      if (el.dataset.act === "noop") {
+        e.stopPropagation();
+        return;
+      }
       e.preventDefault();
       e.stopPropagation(); // keep nested data-act (e.g. modal buttons over a backdrop) from double-firing
       onAction(el.dataset.act, el);
@@ -102,7 +134,23 @@ function bind() {
 
   root.querySelector('[data-form="action"]')?.addEventListener("submit", (e) => {
     e.preventDefault();
-    submitAction(new FormData(e.currentTarget).get("actionText"));
+    executeComposer();
+  });
+  root.querySelector('[data-form="private"]')?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    executePrivate();
+  });
+  // Enter in a composer line = submit its form (the contenteditable line is
+  // single-line; newlines have no meaning in a segment)
+  root.querySelectorAll(".composer-input").forEach((el) => {
+    el.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const form = el.closest("form");
+      if (!form) return;
+      if (typeof form.requestSubmit === "function") form.requestSubmit();
+      else form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
   });
   root.querySelector('[data-form="creator"]')?.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -126,11 +174,13 @@ function bind() {
 
 function onAction(act, el) {
   const gameId = el.dataset.gameId;
+  // busy-lock: one POST = one fully resolved turn; while it is in flight, block
+  // EVERY interaction (buttons are also rendered disabled - this guard covers
+  // anything left clickable, e.g. modal backdrops).
+  if (state.active && state.active.generating && state.view === "play" && act !== "noop") return;
   switch (act) {
     case "new-game":
-      resetCreator();
-      state.view = "creator";
-      render();
+      enterCreator();
       break;
     case "go-menu":
       stopPolling();
@@ -176,11 +226,16 @@ function onAction(act, el) {
     case "begin-adventure":
       beginAdventure();
       break;
-    case "quick":
-      submitAction(el.dataset.text);
-      break;
     case "speak-beat":
       speakBeat(el.dataset.beatId);
+      break;
+    case "see-scene":
+      seeScene();
+      break;
+    case "creator-restart":
+      clearCreatorSession();
+      resetCreator();
+      render();
       break;
     // --- play: scene / character action buttons -> tagged segments ---
     case "scene-action":
@@ -198,12 +253,36 @@ function onAction(act, el) {
     case "char-action":
       onCharAction(el);
       break;
-    case "whisper":
-      openChat(el.dataset.charId, el.dataset.charName, "private");
+    case "open-private":
+      openPrivate(el.dataset.charId, el.dataset.charName, el.dataset.channel || "whisper");
       break;
-    case "end-chat":
-      if (state.active) state.active.chat = null;
+    case "close-private":
+      if (state.active) state.active.privateChat = null;
       render();
+      break;
+    case "pm-channel":
+      switchPmChannel(el.dataset.channel);
+      break;
+    case "cmp-mode":
+      setComposerMode(state.active && state.active.composer, "cmp", el.dataset.mode);
+      break;
+    case "pm-mode":
+      setComposerMode(state.active && state.active.privateChat, "pm", el.dataset.mode);
+      break;
+    case "cmp-stack":
+      stackSegment("cmp");
+      break;
+    case "pm-stack":
+      stackSegment("pm");
+      break;
+    case "cmp-unstack":
+      unstackSegment(state.active && state.active.composer, el.dataset.index);
+      break;
+    case "pm-unstack":
+      unstackSegment(state.active && state.active.privateChat, el.dataset.index);
+      break;
+    case "open-tagger":
+      openTagger(el);
       break;
     case "pick-give":
       doGive(el.dataset.item, el.dataset.target);
@@ -224,15 +303,14 @@ function onCharAction(el) {
   const { type, charId, charName, label } = el.dataset;
   switch (type) {
     case "talk":
-    case "trade": // trade view is not built yet; treat as a directed chat for now
-      openChat(charId, charName, "directed");
+    case "trade": // trade view is not built yet; treat as the talk modal for now
+      openPrivate(charId, charName, "talk");
       break;
     case "attack":
-      takeTurn([{ type: "attack", target: charName }]);
+      takeTurn([{ type: "attack", target: charId || charName }]);
       break;
     case "give":
       g.give = { charId, name: charName };
-      g.chat = null;
       render();
       break;
     default:
@@ -243,14 +321,197 @@ function onCharAction(el) {
   }
 }
 
-function openChat(charId, name, mode) {
+// ---------------------------------------------------------------------------
+// the private modal (Talk / Whisper) + the composers
+// ---------------------------------------------------------------------------
+
+function openPrivate(charId, name, channel) {
   const g = state.active;
   if (!g) return;
-  g.chat = { charId, name, mode };
+  g.privateChat = { charId, name, channel, mode: "say", stack: [] };
   g.give = null;
   render();
-  const input = root.querySelector('[name="actionText"]');
-  if (input) input.focus();
+  focusComposer("#pmInput");
+}
+
+// Switching Talk <-> Whisper re-renders the thread; preserve whatever the
+// player already typed (chips included) across the rebuild.
+function switchPmChannel(channel) {
+  const g = state.active;
+  if (!g || !g.privateChat || g.privateChat.channel === channel) return;
+  const draft = root.querySelector("#pmInput");
+  const html = draft ? draft.innerHTML : "";
+  g.privateChat.channel = channel;
+  render();
+  const restored = root.querySelector("#pmInput");
+  if (restored && html) restored.innerHTML = html;
+  focusComposer("#pmInput");
+}
+
+// Toggle Do/Say in place (no re-render: a render would wipe the typed line).
+function setComposerMode(holder, scope, mode) {
+  if (!holder || (mode !== "say" && mode !== "do")) return;
+  holder.mode = mode;
+  root.querySelectorAll(`[data-act="${scope}-mode"]`).forEach((b) => {
+    const on = b.dataset.mode === mode;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", String(on));
+  });
+  const input = root.querySelector(`#${scope}Input`);
+  if (input) {
+    const pm = state.active && state.active.privateChat;
+    const whisper = scope === "pm" && pm && pm.channel === "whisper";
+    const name = pm ? pm.name : "";
+    input.dataset.placeholder =
+      mode === "say"
+        ? scope === "pm"
+          ? `${whisper ? "Whisper" : "Say"} to ${name}...`
+          : "What do you say?"
+        : scope === "pm"
+          ? whisper
+            ? `A discreet act only ${name} notices...`
+            : "Do something..."
+          : "What do you do?";
+    input.setAttribute("aria-label", mode === "say" ? "What you say" : "What you do");
+    input.focus();
+  }
+}
+
+// Pull the current line out of a composer as a wire segment, or null if empty.
+function currentSegment(scope) {
+  const g = state.active;
+  if (!g) return null;
+  const input = root.querySelector(`#${scope}Input`);
+  const { text, refs } = serializeComposer(input);
+  if (!text) return null;
+  const pm = scope === "pm" ? g.privateChat : null;
+  const channel = pm ? { kind: pm.channel, target: pm.name } : null;
+  const mode = (pm || g.composer || {}).mode || "do";
+  clearComposer(input);
+  return buildSegment({ mode, text, refs, channel });
+}
+
+// "+": stack the current line to execute together with the rest of the turn.
+function stackSegment(scope) {
+  const g = state.active;
+  if (!g) return;
+  const holder = scope === "pm" ? g.privateChat : g.composer;
+  const seg = currentSegment(scope);
+  if (!holder || !seg) return;
+  holder.stack.push(seg);
+  render();
+  focusComposer(`#${scope}Input`);
+}
+
+function unstackSegment(holder, index) {
+  if (!holder) return;
+  holder.stack.splice(Number(index), 1);
+  render();
+}
+
+// Send from the main composer: stacked segments + the current line, one POST.
+// A single plain "do" line with no tags stays a freeform { action } (the
+// narrator likes raw words); anything tagged/stacked/spoken goes as segments.
+function executeComposer() {
+  const g = state.active;
+  if (!g || g.generating) return;
+  const cmp = g.composer || (g.composer = { mode: "do", stack: [] });
+  const input = root.querySelector("#cmpInput");
+  const { text, refs } = serializeComposer(input);
+  clearComposer(input);
+
+  const segments = [...cmp.stack];
+  if (text) {
+    if (!segments.length && !refs.length && cmp.mode === "do") {
+      cmp.stack = [];
+      takeTurn(text);
+      return;
+    }
+    segments.push(buildSegment({ mode: cmp.mode, text, refs, channel: null }));
+  }
+  if (!segments.length) return;
+  cmp.stack = [];
+  takeTurn(segments);
+}
+
+// Execute the private modal's turn: all stacked lines land at the SAME target,
+// then the character replies once. The modal stays open to show the reply.
+function executePrivate() {
+  const g = state.active;
+  if (!g || !g.privateChat || g.generating) return;
+  const pm = g.privateChat;
+  const segments = [...pm.stack];
+  const seg = currentSegment("pm");
+  if (seg) segments.push(seg);
+  if (!segments.length) return;
+  pm.stack = [];
+  takeTurn(segments);
+}
+
+function focusComposer(selector) {
+  const el = root.querySelector(selector);
+  if (el) el.focus();
+}
+
+// ---------------------------------------------------------------------------
+// the entity tagger ("@"): pick a character or item to chip into the line
+// ---------------------------------------------------------------------------
+
+function closeTagger() {
+  document.querySelectorAll(".tagger-pop").forEach((p) => p.remove());
+}
+
+function openTagger(btn) {
+  const g = state.active;
+  if (!g || !g.state) return;
+  closeTagger();
+  const scope = btn.dataset.scope || "cmp";
+  const s = g.state;
+
+  const entities = [
+    ...presentCharacters(s).map((c) => ({ kind: "character", id: c.id, name: c.name })),
+    ...((s.scene && s.scene.items) || []).map((it) => ({ kind: "item", id: it.id, name: it.name })),
+    ...(s.player.inventory || []).map((it) => ({ kind: "item", id: it.id, name: it.name })),
+  ].filter((e) => e.name);
+
+  const pop = document.createElement("div");
+  pop.className = "tagger-pop";
+  pop.setAttribute("role", "listbox");
+  pop.setAttribute("aria-label", "Tag a character or item");
+  pop.innerHTML = entities.length
+    ? entities
+        .map(
+          (e, i) =>
+            `<button type="button" role="option" class="tag-opt kind-${e.kind}" data-index="${i}">
+               ${icon(e.kind === "character" ? "mask" : "gem")}<span></span>
+             </button>`,
+        )
+        .join("")
+    : `<p class="tag-empty">Nothing here to tag yet.</p>`;
+  pop.querySelectorAll(".tag-opt span").forEach((span, i) => {
+    span.textContent = entities[i].name;
+  });
+  pop.querySelectorAll(".tag-opt").forEach((opt) => {
+    opt.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const ref = entities[Number(opt.dataset.index)];
+      const editor = root.querySelector(`#${scope}Input`);
+      if (editor && ref) insertChip(editor, ref);
+      closeTagger();
+      if (editor) editor.focus();
+    });
+  });
+  document.body.appendChild(pop);
+  const r = btn.getBoundingClientRect();
+  pop.style.left = `${Math.max(8, Math.min(window.innerWidth - 248, r.left + window.scrollX - 110))}px`;
+  pop.style.top = `${Math.max(8, r.top + window.scrollY - pop.offsetHeight - 8)}px`;
+  const dismiss = (ev) => {
+    if (!pop.contains(ev.target) && ev.target !== btn) {
+      closeTagger();
+      document.removeEventListener("click", dismiss);
+    }
+  };
+  setTimeout(() => document.addEventListener("click", dismiss), 0);
 }
 
 function doGive(item, target) {
@@ -308,14 +569,22 @@ async function removeGame(id) {
 
 async function openGame(gameId) {
   stopPolling();
-  state.active = { id: gameId, state: null, beats: [], quickActions: [], generating: true, chat: null, give: null };
+  state.active = {
+    id: gameId,
+    state: null,
+    beats: [],
+    generating: true,
+    privateChat: null, // { charId, name, channel: talk|whisper, mode: say|do, stack }
+    give: null,
+    composer: { mode: "do", stack: [] },
+    revealedArt: new Set(), // art urls already card-revealed (the effect plays once)
+  };
   state.view = "play";
   render();
   try {
     const [rawState, rawBeats] = await Promise.all([api.getState(gameId), api.getBeats(gameId)]);
     state.active.state = mapGameState(rawState);
     state.active.beats = mapBeats((rawBeats && rawBeats.beats) || []).map((b) => withVoice(b));
-    state.active.quickActions = buildQuickActions(state.active.state);
     state.backendOnline = true;
   } catch (err) {
     state.backendOnline = false;
@@ -331,27 +600,9 @@ async function openGame(gameId) {
 // take a turn
 // ---------------------------------------------------------------------------
 
-// Free-text / quick-chip submit. When a per-character chat is open, the typed
-// line becomes a directed (or private) `say` segment aimed at that character.
-function submitAction(raw) {
-  const g = state.active;
-  if (!g) return;
-  const text = String(raw || "").trim();
-  if (!text) return;
-  if (g.chat) {
-    // directed Talk -> public "say" aimed at the character; Whisper -> private 1:1.
-    const seg =
-      g.chat.mode === "private"
-        ? { type: "whisper", text, target: g.chat.name }
-        : { type: "say", text, target: g.chat.name };
-    takeTurn([seg]);
-  } else {
-    takeTurn(text);
-  }
-}
-
 // Take a turn. `input` is either a plain string (freeform) or an array of tagged
-// segments (what the buttons compose). One POST -> { beats, state }.
+// segments (what the composers build). One POST -> { beats, state }; everything
+// is blocked until the response lands (the busy-lock).
 async function takeTurn(input) {
   const g = state.active;
   if (!g || g.generating) return;
@@ -368,7 +619,6 @@ async function takeTurn(input) {
     g.changes = diffState(prevState, g.state); // what transitioned this turn
     const newBeats = mapBeats(turn.beats || []).map((b) => withVoice(b));
     g.beats = [...g.beats, ...newBeats];
-    g.quickActions = buildQuickActions(g.state);
     state.backendOnline = true;
 
     render();
@@ -387,14 +637,103 @@ async function takeTurn(input) {
 }
 
 // ---------------------------------------------------------------------------
+// "See" the scene: a synchronous image of the current scene WITH the present
+// characters (5-10s). Loader + lock on the button only; the result arrives as
+// a persisted `kind: "image"` beat rendered inline in the story.
+// ---------------------------------------------------------------------------
+
+async function seeScene() {
+  const g = state.active;
+  if (!g || !g.state || !g.state.imagesEnabled || g.seeing || g.generating) return;
+  g.seeing = true;
+  render();
+  try {
+    const res = await api.viewScene(g.id);
+    if (res && res.beat) g.beats = [...g.beats, ...mapBeats([res.beat])];
+  } catch (err) {
+    if (err.status === 409) {
+      // images are disabled server-side: hide the button by trusting the flag
+      g.state.imagesEnabled = false;
+      showToast("Images are disabled for this world.");
+    } else {
+      showToast("The vision fades... (image service unavailable)");
+    }
+  } finally {
+    if (state.active === g) {
+      g.seeing = false;
+      render();
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // creator
 // ---------------------------------------------------------------------------
+
+// Creator sessions persist server-side and survive restarts; we keep the
+// session id in localStorage so a page refresh restores the chat in progress.
+const CREATOR_SESSION_KEY = "gamentic.creator.session";
+
+function savedCreatorSession() {
+  try {
+    return localStorage.getItem(CREATOR_SESSION_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+function storeCreatorSession(id) {
+  try {
+    localStorage.setItem(CREATOR_SESSION_KEY, id);
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function clearCreatorSession() {
+  try {
+    localStorage.removeItem(CREATOR_SESSION_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+// Entering the creator: restore an in-progress session when one is stored,
+// otherwise start fresh. A 404 means the backend no longer knows it.
+async function enterCreator() {
+  resetCreator();
+  state.view = "creator";
+  const saved = savedCreatorSession();
+  if (!saved) {
+    render();
+    return;
+  }
+  const c = state.creator;
+  c.busy = true;
+  render();
+  try {
+    const res = await api.creatorSession(saved);
+    c.sessionId = res.session_id || saved;
+    const history = (res.history || []).map((m) => ({
+      role: m.role === "user" ? "user" : "builder",
+      text: m.content || "",
+    }));
+    if (history.length) c.messages = [...c.messages, ...history];
+    c.restored = history.length > 0;
+  } catch {
+    clearCreatorSession(); // unknown/expired session: start clean
+  } finally {
+    c.busy = false;
+    if (state.view === "creator") render();
+  }
+}
 
 function resetCreator() {
   state.creator = {
     sessionId: "creator-" + rand(),
     busy: false,
     finalizing: false,
+    restored: false,
     error: "",
     messages: [
       {
@@ -416,6 +755,7 @@ async function sendCreatorMessage(raw) {
   try {
     const res = await api.creatorMessage(c.sessionId, text);
     c.messages.push({ role: "builder", text: (res && res.reply) || "..." });
+    storeCreatorSession(c.sessionId); // the session now exists server-side
     state.backendOnline = true;
   } catch (err) {
     c.error = "Could not reach the world-builder: " + (err.message || "offline");
@@ -436,6 +776,7 @@ async function beginAdventure() {
   try {
     const res = await api.creatorFinalize(c.sessionId);
     c.busy = false;
+    clearCreatorSession(); // the chat became a real game; next New starts fresh
     // leave finalizing on until openGame swaps the view, so the animation never flickers off first
     openGame(res.game_id);
   } catch (err) {
@@ -479,9 +820,12 @@ function autoplay(beats) {
 
 function artMissing(s) {
   if (!s) return false;
+  // images_enabled is the rule: false means images are OFF - nothing is coming,
+  // show static placeholders and never poll.
+  if (!s.imagesEnabled) return false;
   const sceneMissing = s.scene && !s.scene.imageUrl;
-  const faceMissing = (s.characters || []).some((c) => c.alive && c.present && !c.faceUrl);
-  return Boolean(sceneMissing || faceMissing);
+  const portraitMissing = (s.characters || []).some((c) => c.alive && c.present && (!c.faceUrl || !c.bodyUrl));
+  return Boolean(sceneMissing || portraitMissing);
 }
 
 function maybePollForArt() {
@@ -496,17 +840,33 @@ function maybePollForArt() {
     try {
       const mapped = mapGameState(await api.getState(state.active.id));
       const prev = state.active.state;
-      const gainedFace = mapped.characters.some(
-        (c) => c.faceUrl && !(prev.characters.find((p) => p.id === c.id) || {}).faceUrl,
-      );
+      const gainedPortrait = mapped.characters.some((c) => {
+        const p = prev.characters.find((x) => x.id === c.id) || {};
+        return (c.faceUrl && !p.faceUrl) || (c.bodyUrl && !p.bodyUrl);
+      });
       const gainedScene = mapped.scene && mapped.scene.imageUrl && !(prev.scene && prev.scene.imageUrl);
       state.active.state = mapped;
-      if ((gainedFace || gainedScene) && state.view === "play") render();
+      if ((gainedPortrait || gainedScene) && state.view === "play") render();
       if (!artMissing(mapped)) stopPolling();
     } catch {
       /* keep trying */
     }
   }, 2500);
+}
+
+// Card-reveal: any [data-art] image not yet seen this session gets the
+// collection-card reveal animation, exactly once per url (re-renders rebuild
+// the DOM every turn; without the seen-set the effect would replay each time).
+function markArtReveals(g) {
+  if (!g || !g.revealedArt) return;
+  root.querySelectorAll("[data-art]").forEach((img) => {
+    const url = img.dataset.art;
+    if (g.revealedArt.has(url)) return;
+    g.revealedArt.add(url);
+    const card = img.closest(".prose-art, .col-art, .pm-face") || img;
+    card.classList.add("art-reveal");
+    setTimeout(() => card.classList.remove("art-reveal"), 1400);
+  });
 }
 
 function stopPolling() {
@@ -528,8 +888,8 @@ function applyTransitions(g) {
   const notices = buildNotices(ch);
   if (notices.length) showNotices(notices);
 
-  // scene establish
-  if (ch.sceneChanged) flash(".scene-band", "scene-enter", 900);
+  // scene establish: the identity wing of the deck announces the new place
+  if (ch.sceneChanged) flash(".deck-scene", "scene-enter", 900);
 
   // HUD deltas
   if (ch.lifeDelta < 0) flash("[data-hud-life]", "shake", 600);
@@ -541,9 +901,9 @@ function applyTransitions(g) {
   ch.invAdded.forEach((name) => flash(`.player-items .slot[data-item-name="${cssAttr(name)}"]`, "slot-new", 1400));
 
   // characters
-  ch.charJoined.forEach((c) => flash(`.char-card[data-char-id="${cssId(c.id)}"]`, "card-arrive", 800));
-  ch.charHurt.forEach((id) => flash(`.char-card[data-char-id="${cssId(id)}"] .hp-fill`, "hp-flash", 700));
-  ch.charDisposition.forEach((c) => flash(`.char-card[data-char-id="${cssId(c.id)}"] .disp-badge`, "disp-flash", 900));
+  ch.charJoined.forEach((c) => flash(`.char-col[data-char-id="${cssId(c.id)}"]`, "card-arrive", 800));
+  ch.charHurt.forEach((id) => flash(`.char-col[data-char-id="${cssId(id)}"] .hp-fill`, "hp-flash", 700));
+  ch.charDisposition.forEach((c) => flash(`.char-col[data-char-id="${cssId(c.id)}"] .disp-badge`, "disp-flash", 900));
 }
 
 function flash(selector, cls, ms) {
@@ -583,19 +943,6 @@ function showNotices(notices) {
       setTimeout(() => el.remove(), 400);
     }, 3400 + i * 250);
   });
-}
-
-// Frontend-only helper chips. Never presented as backend choices.
-function buildQuickActions(s) {
-  if (!s) return [];
-  const out = [];
-  const q = (s.quests || []).find((x) => x.status === "active");
-  const obj = q && q.objectives.find((o) => !o.done);
-  if (obj) out.push(obj.text);
-  out.push("Look around carefully");
-  const present = (s.characters || []).find((c) => c.present);
-  if (present) out.push(`Talk to ${present.name}`);
-  return out.slice(0, 3);
 }
 
 function showHelp(el) {

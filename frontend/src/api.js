@@ -58,10 +58,15 @@ export function createApi(backendUrl) {
     },
     deleteGame: (id) => request(`/games/${encodeURIComponent(id)}`, { method: "DELETE" }),
     clearBeats: (id) => request(`/games/${encodeURIComponent(id)}/beats`, { method: "DELETE" }),
+    // "See" the scene: synchronous image of the current scene with the present
+    // characters (5-10s). 409 = images disabled, 502 = image service down.
+    viewScene: (id) => request(`/games/${encodeURIComponent(id)}/view`, { method: "POST" }),
     creatorMessage: (sessionId, message) =>
       request("/create/message", { method: "POST", body: { session_id: sessionId, message } }),
     creatorFinalize: (sessionId) =>
       request("/create/finalize", { method: "POST", body: { session_id: sessionId } }),
+    // Restore an in-progress creator chat (sessions persist server-side).
+    creatorSession: (sessionId) => request(`/create/${encodeURIComponent(sessionId)}`),
   };
 }
 

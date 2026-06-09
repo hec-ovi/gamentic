@@ -31,6 +31,9 @@ export function icon(name) {
     compass: '<circle cx="12" cy="12" r="10"/><path d="m16 8-2.8 6.2L8 16l2.8-6.2L16 8Z"/>',
     chevronLeft: '<path d="m15 18-6-6 6-6"/>',
     heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    gauge: '<path d="M12 14l3.5-3.5"/><path d="M20.2 15.5a8.5 8.5 0 1 0-16.4 0"/><path d="M3.8 15.5h2"/><path d="M18.2 15.5h2"/>',
+    at: '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',
   };
 
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.sparkles}</svg>`;
