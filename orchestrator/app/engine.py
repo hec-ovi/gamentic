@@ -226,7 +226,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
             prompts.build_narrator_messages(conn, gid, narrator_action, settings.HISTORY_BEATS,
                                             settings.LORE_BUDGET,
                                             attempts=[p["line"] for p in pending]),
-            tools=tools.NARRATOR_TOOLS, tool_choice="auto",
+            tools=tools.narrator_tools(adjudicating=bool(pending)), tool_choice="auto",
             temperature=settings.NARRATOR_TEMPERATURE, max_tokens=settings.NARRATOR_MAX_TOKENS,
         )
         ctx_used = max(ctx_used, (reply.usage or {}).get("prompt_tokens", 0) or 0)

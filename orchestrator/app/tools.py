@@ -142,8 +142,7 @@ NARRATOR_TOOLS = [
             "required": ["name", "description"]}}},
     {"type": "function", "function": {
         "name": "set_goal",
-        "description": "Set or update the player's current goal (their immediate purpose). The story "
-                       "starts with NO goal; create one as purpose emerges, and update it as it changes.",
+        "description": "Update the player's current goal (their immediate purpose) as the story turns it.",
         "parameters": {"type": "object", "properties": {
             "goal": {"type": "string"}}, "required": ["goal"]}}},
     {"type": "function", "function": {
@@ -212,16 +211,24 @@ NARRATOR_TOOLS = [
             "amount": {"type": "integer", "description": "How much time passes (positive)."},
             "unit": {"type": "string", "enum": ["minutes", "hours", "days"]},
         }, "required": ["amount", "unit"]}}},
-    {"type": "function", "function": {
-        "name": "reject_attempt",
-        "description": "Veto one numbered PLAYER ATTEMPT with an in-world reason (shown to the "
-                       "player), e.g. 'Mara steps back, refusing the coin.' Attempts you neither "
-                       "apply nor veto simply happen as attempted.",
-        "parameters": {"type": "object", "properties": {
-            "attempt": {"type": "integer", "description": "The attempt number from the list."},
-            "reason": {"type": "string", "description": "In-world reason it does not happen."},
-        }, "required": ["attempt", "reason"]}}},
 ]
+
+# Only offered while PLAYER ATTEMPTS are pending adjudication (see narrator_tools); a veto
+# tool with nothing to veto is schema noise and an invitation to misuse for a small model.
+REJECT_ATTEMPT_TOOL = {"type": "function", "function": {
+    "name": "reject_attempt",
+    "description": "Veto one numbered PLAYER ATTEMPT with an in-world reason (shown to the "
+                   "player), e.g. 'Mara steps back, refusing the coin.' Attempts you neither "
+                   "apply nor veto simply happen as attempted.",
+    "parameters": {"type": "object", "properties": {
+        "attempt": {"type": "integer", "description": "The attempt number from the list."},
+        "reason": {"type": "string", "description": "In-world reason it does not happen."},
+    }, "required": ["attempt", "reason"]}}}
+
+
+def narrator_tools(adjudicating: bool) -> list:
+    """The narrator's toolset for one call; reject_attempt only when attempts are pending."""
+    return NARRATOR_TOOLS + ([REJECT_ATTEMPT_TOOL] if adjudicating else [])
 
 # Tools a CHARACTER agent may call to act on others. Their speech is the message content;
 # these are for doing things to another character or to the player.
