@@ -184,6 +184,7 @@ def add_points(conn, gid: str, amount: int) -> int:
 
 
 def add_item(conn, gid: str, name: str, description: str = "", qty: int = 1) -> None:
+    name = norm_location(name)   # model-invented snake_case never reaches the player
     p = get_player(conn, gid)
     inv = db.loads(p["inventory"], [])
     for it in inv:
@@ -339,9 +340,11 @@ def resolve_target(conn, gid: str, name: str):
 
 
 def _item_matches(it: dict, key: str) -> bool:
-    """An inventory item matches by ID (entity chips) or by case-insensitive name (the model)."""
-    k = (key or "").strip().lower()
-    return bool(k) and (it.get("id") == k or it["name"].lower() == k)
+    """An inventory item matches by ID (entity chips) or by case-insensitive name (the model).
+    Names compare underscore/whitespace-collapsed, so 'scanner_device' finds 'scanner device'."""
+    k = norm_location(key or "").lower()
+    return bool(k) and ((it.get("id") or "").lower() == k
+                        or norm_location(it["name"]).lower() == k)
 
 
 def set_character_life(conn, cid: str, delta: int):
@@ -356,6 +359,7 @@ def set_character_life(conn, cid: str, delta: int):
 
 def character_add_item(conn, cid: str, name: str, description: str = "",
                        hidden: bool = False, qty: int = 1, cap: int | None = None) -> str:
+    name = norm_location(name)
     c = get_character(conn, cid)
     inv = db.loads(c["inventory"], [])
     for it in inv:
@@ -568,6 +572,7 @@ def add_exit(conn, gid: str, label: str, target: str, cap: int) -> str:
 
 def add_scene_item(conn, gid: str, name: str, description: str, hidden: bool, cap: int,
                    fixed: bool = False) -> str:
+    name = norm_location(name)
     sc = current_scene(conn, gid)
     items = db.loads(sc["items"], [])
     if any(i["name"].lower() == name.lower() for i in items):
@@ -660,6 +665,16 @@ def update_objective(conn, oid: str, done: bool, progress: str | None) -> bool:
     cur = conn.execute("UPDATE objectives SET done=?, progress=? WHERE id=?",
                        (int(done), progress, oid))
     return cur.rowcount > 0
+
+
+def objective_text(conn, oid: str) -> str:
+    row = conn.execute("SELECT text FROM objectives WHERE id=?", (oid,)).fetchone()
+    return row["text"] if row else ""
+
+
+def quest_title(conn, qid: str) -> str:
+    row = conn.execute("SELECT title FROM quests WHERE id=?", (qid,)).fetchone()
+    return row["title"] if row else ""
 
 
 def set_quest_status(conn, qid: str, status: str) -> bool:

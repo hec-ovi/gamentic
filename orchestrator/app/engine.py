@@ -12,6 +12,7 @@ One POST = one fully-resolved turn:
 Directed actions route deterministically to the targeted agent, so the narrator never has
 to (and shouldn't) speak for characters.
 """
+import json
 import re
 from collections import deque
 
@@ -152,6 +153,9 @@ def _character_reply(conn, gid, ch, emit, private_with=None, track=None):
 
 
 _SEGMENT_TYPES = {"say", "do", "attack", "give", "whisper"}
+# tools where firing twice with identical args may be intentional; everything else dedupes
+_DEDUP_EXEMPT = {"apply_damage", "attack", "heal", "cue_character", "advance_time",
+                 "spawn_character", "reject_attempt"}
 
 
 def interpret_action(conn, gid: str, text: str) -> list[dict] | None:
@@ -292,7 +296,16 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
                     return
 
         cues, state_notes = [], []
+        seen_calls: set = set()
         for tc in reply.tool_calls:
+            # the model sometimes over-fires the SAME call twice in one reply (live:
+            # add_item("scanner device") x2 doubled the item). Suppress exact repeats,
+            # except for tools where repetition can be meant (damage, heal, cues, time).
+            if tc.name not in _DEDUP_EXEMPT:
+                key = (tc.name, json.dumps(tc.arguments, sort_keys=True, default=str))
+                if key in seen_calls:
+                    continue
+                seen_calls.add(key)
             out = tools.apply_tool(conn, gid, tc.name, tc.arguments, actor=None)
             if tc.name in ("apply_damage", "attack", "give_item") and out["kind"] == "state":
                 _mark_handled(tc.name, tc.arguments)

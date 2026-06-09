@@ -256,7 +256,7 @@ def apply_tool(conn, gid: str, name: str, args: dict, actor=None) -> dict:
         if name in ("give_item", "give"):
             return _give(conn, gid, args, actor)
         if name == "add_item":
-            nm = (args.get("name") or "").strip()
+            nm = repo.norm_location(args.get("name") or "")
             if not nm:
                 return _invalid("add_item: empty name")
             repo.add_item(conn, gid, nm, args.get("description", ""), int(args.get("qty", 1) or 1))
@@ -279,18 +279,27 @@ def apply_tool(conn, gid: str, name: str, args: dict, actor=None) -> dict:
             repo.start_quest(conn, gid, title, args.get("description", ""), args.get("objectives", []))
             return _result("state", f"New quest: {title}.")
         if name == "update_objective":
-            if not repo.update_objective(conn, args.get("objective_id", ""),
-                                         bool(args.get("done", True)), args.get("progress")):
+            oid = args.get("objective_id", "")
+            done = bool(args.get("done", True))
+            if not repo.update_objective(conn, oid, done, args.get("progress")):
                 return _invalid("update_objective: unknown objective_id")
-            return _result("state", "Objective updated.")
+            text = repo.objective_text(conn, oid)
+            label = "complete" if done else "updated"
+            return _result("state", f"Objective {label}: {text}." if text else "Objective updated.")
         if name == "complete_quest":
-            ok = repo.set_quest_status(conn, args.get("quest_id", ""), "done")
-            return _result("state", "Quest complete.") if ok else _invalid("complete_quest: unknown quest_id")
+            qid = args.get("quest_id", "")
+            if not repo.set_quest_status(conn, qid, "done"):
+                return _invalid("complete_quest: unknown quest_id")
+            title = repo.quest_title(conn, qid)
+            return _result("state", f"Quest complete: {title}." if title else "Quest complete.")
         if name == "fail_quest":
-            ok = repo.set_quest_status(conn, args.get("quest_id", ""), "failed")
-            return _result("state", "Quest failed.") if ok else _invalid("fail_quest: unknown quest_id")
+            qid = args.get("quest_id", "")
+            if not repo.set_quest_status(conn, qid, "failed"):
+                return _invalid("fail_quest: unknown quest_id")
+            title = repo.quest_title(conn, qid)
+            return _result("state", f"Quest failed: {title}." if title else "Quest failed.")
         if name == "move_location":
-            loc = (args.get("location") or "").strip()
+            loc = repo.norm_location(args.get("location") or "")
             if not loc:
                 return _invalid("move_location: empty location")
             repo.set_location(conn, gid, loc)
@@ -376,7 +385,7 @@ def apply_tool(conn, gid: str, name: str, args: dict, actor=None) -> dict:
             return _result("state", f"A way out opens: {label}.")
         if name == "place_item":
             target = (args.get("target") or "").strip()
-            nm = (args.get("name") or "").strip()
+            nm = repo.norm_location(args.get("name") or "")
             desc = args.get("description", "")
             hidden = bool(args.get("hidden", False))
             fixed = bool(args.get("fixed", False))
@@ -401,7 +410,7 @@ def apply_tool(conn, gid: str, name: str, args: dict, actor=None) -> dict:
             return _result("state", None if hidden else f"{row['name']} now has {nm}.")
         if name == "reveal_item":
             target = (args.get("target") or "").strip()
-            nm = (args.get("name") or "").strip()
+            nm = repo.norm_location(args.get("name") or "")
             if target.lower() in _SCENE_WORDS:
                 ok = repo.reveal_scene_item(conn, gid, nm)
                 return _result("state", f"You spot {nm}.") if ok else _invalid(f"reveal_item: no hidden '{nm}' here")
@@ -411,7 +420,7 @@ def apply_tool(conn, gid: str, name: str, args: dict, actor=None) -> dict:
             ok = repo.character_reveal_item(conn, row["id"], nm)
             return _result("state", f"You notice {row['name']} carries {nm}.") if ok else _invalid("reveal_item: nothing hidden")
         if name == "take_item":
-            nm = (args.get("name") or "").strip()
+            nm = repo.norm_location(args.get("name") or "")
             res = repo.take_scene_item(conn, gid, nm)
             if res == "ok":
                 return _result("state", f"You take {nm}.")
