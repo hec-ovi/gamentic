@@ -1,0 +1,52 @@
+# Gamentic - publish the GAME CODE only. Everything design/process/secret stays local.
+
+# --- secrets & environment ---
+.env
+**/.env
+*.key
+*.pem
+
+# --- agentic / process / research / session markers (kept private) ---
+.research/
+.agents/
+.codex/
+session
+sessiontts
+sessionfrontend
+imagesession
+
+# --- all documentation, specs, contracts, plans (kept private) ---
+# NOTE: orchestrator/prompts/*.md are runtime game code, NOT docs - they stay tracked.
+docs/
+**/README.md
+**/ARCHITECTURE.md
+**/PLAN.md
+**/REDESIGN.md
+**/CHANGELOG.md
+**/SPECS.md
+
+# --- runtime data, generated media, databases ---
+**/data/
+voice-api/samples/
+*.db
+*.sqlite
+*.sqlite3
+
+# --- python ---
+**/.venv/
+**/.venv-test/
+**/__pycache__/
+**/.pytest_cache/
+*.pyc
+
+# --- node / frontend build ---
+**/node_modules/
+**/dist/
+**/build/
+
+# --- frontend design mockups / screenshots (private) ---
+frontend/examples/
+
+# --- os cruft ---
+.DS_Store
+Thumbs.db

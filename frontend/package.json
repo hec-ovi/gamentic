@@ -1,0 +1,18 @@
+{
+  "name": "gamentic-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Gamentic frontend: vanilla ES-module AI dungeon RPG UI (no build step).",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/user-event": "^14.5.2",
+    "jsdom": "^26.1.0",
+    "msw": "^2.6.0",
+    "vitest": "^2.1.0"
+  }
+}

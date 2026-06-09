@@ -1,0 +1,204 @@
+name: gamentic
+
+# Gamentic inference stack.
+# Services:
+#   llm-text  - Gemma 4 12B Heretic (Q4) via llama.cpp server, Vulkan backend (AMD Strix Halo APU)
+#   image     - ComfyUI (ROCm / TheRock 7.13)  [added from the ComfyUI repo]
+#   voice     - TTS  [TBD]
+#
+# Config lives in .env. Models are mounted read-only from MODELS_DIR.
+
+services:
+  llm-text:
+    image: ghcr.io/ggml-org/llama.cpp:server-vulkan
+    container_name: gamentic-llm-text
+    restart: unless-stopped
+    # AMD GPU access for the Vulkan backend
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "${RENDER_GID:-990}"
+      - "${VIDEO_GID:-44}"
+    volumes:
+      - ${MODELS_DIR:-/home/hec/models/gguf}:/models:ro
+    ports:
+      - "${LLM_TEXT_PORT:-8080}:8080"
+    # list form avoids shell-quoting issues: the image entrypoint is the server binary
+    command:
+      - --model
+      - /models/${LLM_TEXT_MODEL}
+      - --alias
+      - ${LLM_ALIAS:-gemma-4-12b-heretic}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --n-gpu-layers
+      - "99"
+      - --ctx-size
+      - "${LLM_CTX:-32768}"
+      - --parallel
+      - "${LLM_PARALLEL:-4}"
+      - --jinja
+      # Gemma 4 is a hybrid thinking model; a system message auto-enables thinking and
+      # burns the token budget on reasoning. Disable it globally for roleplay output.
+      - --chat-template-kwargs
+      - '{"enable_thinking":false}'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 30
+      start_period: 240s
+    networks:
+      - gamentic
+
+  image:
+    build:
+      context: ./comfyui
+    image: gamentic-comfyui-strix:latest
+    container_name: gamentic-image
+    restart: unless-stopped
+    # ComfyUI on ROCm needs full GPU access on Strix Halo
+    privileged: true
+    devices:
+      - "/dev/kfd:/dev/kfd"
+      - "/dev/dri:/dev/dri"
+    group_add:
+      - "${RENDER_GID:-990}"
+      - "${VIDEO_GID:-44}"
+    ports:
+      - "${COMFY_PORT:-8188}:8188"
+    volumes:
+      # Persistent: models, installed custom nodes, outputs, user settings, inputs, caches
+      - ${COMFY_MODELS_DIR:-/home/hec/models/comfyui}:/app/ComfyUI/models
+      - ./comfyui/data/custom_nodes:/app/ComfyUI/custom_nodes
+      - ./comfyui/data/output:/app/ComfyUI/output
+      - ./comfyui/data/user:/app/ComfyUI/user
+      - ./comfyui/data/input:/app/ComfyUI/input
+      - ./comfyui/data/cache:/root/.cache
+    environment:
+      - HSA_OVERRIDE_GFX_VERSION=11.5.1
+      - HIP_VISIBLE_DEVICES=0
+      # Strix Halo unified-memory stability (avoids VAE-decode checkerboard / ring timeouts)
+      - HSA_ENABLE_SDMA=0
+      - HSA_USE_SVM=0
+    ipc: host
+    security_opt:
+      - seccomp:unconfined
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8188/system_stats || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 40
+      start_period: 600s
+    networks:
+      - gamentic
+
+  # image-api: thin REST adapter in front of ComfyUI. No GPU. Turns the gamentic
+  # image contract (POST /image/generate -> {image_url}) into a ComfyUI prompt graph.
+  image-api:
+    build:
+      context: ./image-api
+    image: gamentic-image-api:latest
+    container_name: gamentic-image-api
+    restart: unless-stopped
+    depends_on:
+      image:
+        condition: service_healthy
+    environment:
+      - COMFY_URL=http://gamentic-image:8188
+      - IMAGE_DEFAULT_WIDTH=${IMAGE_DEFAULT_WIDTH:-1024}
+      - IMAGE_DEFAULT_HEIGHT=${IMAGE_DEFAULT_HEIGHT:-1024}
+      - IMAGE_DEFAULT_STEPS=${IMAGE_DEFAULT_STEPS:-4}
+      - IMAGE_GENERATE_TIMEOUT=${IMAGE_GENERATE_TIMEOUT:-120}
+    ports:
+      - "${IMAGE_API_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://localhost:9001/health')\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - gamentic
+
+  # voice-api: TTS service. Kokoro-82M on CPU (no GPU): non-autoregressive, runs
+  # ~6-8x faster than realtime on a few cores, so the iGPU stays free for the LLM
+  # and ComfyUI. The big autoregressive models (s2-pro/maya1) were too slow on this
+  # box (~realtime at best); see .research/local-tts-amd-strix-2026. Contract:
+  # POST /voice/speak {text, voice_id} -> {audio_url}.
+  voice-api:
+    build:
+      context: ../voice-api
+    image: gamentic-voice-api:latest
+    container_name: gamentic-voice-api
+    restart: unless-stopped
+    environment:
+      - KOKORO_THREADS=${VOICE_THREADS:-4}
+    volumes:
+      # Kokoro model files (read-only) + writable data dir (generated audio,
+      # character registry, optional real vocalization clips).
+      - ${KOKORO_DIR:-/home/hec/models/kokoro}:/models/kokoro:ro
+      - ../voice-api/data:/data
+    ports:
+      - "${VOICE_API_PORT:-9002}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://localhost:8080/health')\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - gamentic
+
+  # The game brain. Talks to llm-text (required) and image-api/voice-api (optional,
+  # best-effort) by container name. State persists in ../orchestrator/data.
+  orchestrator:
+    build:
+      context: ../orchestrator
+    image: gamentic-orchestrator:latest
+    container_name: gamentic-orchestrator
+    restart: unless-stopped
+    depends_on:
+      llm-text:
+        condition: service_healthy
+    environment:
+      - LLM_BASE_URL=http://gamentic-llm-text:8080/v1
+      - LLM_MODEL=${LLM_ALIAS:-gemma-4-12b-heretic}
+      - IMAGE_API_URL=http://gamentic-image-api:9001
+      # voice-api listens on 8080 inside the container (host maps 9002->8080)
+      - VOICE_API_URL=http://gamentic-voice-api:8080
+      - DB_PATH=/data/gamentic.db
+    volumes:
+      - ../orchestrator/data:/data
+    ports:
+      - "${ORCHESTRATOR_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - gamentic
+
+  # Static vanilla app served by nginx, which also reverse-proxies the media
+  # services same-origin (/image, /voice, /audio) so the app's relative media
+  # URLs resolve. Talks to the orchestrator cross-origin via CORS.
+  frontend:
+    build:
+      context: ../frontend
+    image: gamentic-frontend:latest
+    container_name: gamentic-frontend
+    restart: unless-stopped
+    depends_on:
+      - orchestrator
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    networks:
+      - gamentic
+
+networks:
+  gamentic:
+    driver: bridge

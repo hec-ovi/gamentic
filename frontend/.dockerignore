@@ -1,0 +1,11 @@
+node_modules
+test
+examples
+vitest.config.js
+package.json
+package-lock.json
+.dockerignore
+ARCHITECTURE.md
+README.md
+PLAN.md
+REDESIGN.md
