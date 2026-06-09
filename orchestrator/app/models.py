@@ -78,6 +78,7 @@ class Segment(BaseModel):
     item: Optional[str] = None     # for give: an item id or name
     amount: Optional[int] = None   # for attack (damage)
     refs: Optional[list[EntityRef]] = None  # entity chips tagged inside this segment's text
+    mode: Optional[str] = None     # for whisper: "say" (default) or "do" (a discreet private action)
 
 
 class ActionIn(BaseModel):

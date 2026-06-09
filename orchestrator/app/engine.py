@@ -307,14 +307,30 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
             steps += 1
             enqueue(_character_reply(conn, gid, ch, emit))
 
-    # ---- private whispers (1:1 asides; other characters never see them) ----
+    # ---- private channel (1:1; other characters never see it) ----
+    # The private modal stacks say AND do segments at one character. Consecutive private
+    # segments to the SAME character form one exchange: all the player's lines land first,
+    # then the character replies once (not once per line).
     location = repo.get_player(conn, gid)["location"]
+    exchanges: list[tuple[dict, list[dict]]] = []   # (character row, [segments])
     for w in whispers[: settings.TURN_MAX_ACTOR_STEPS]:
         kind_t, row = repo.resolve_target(conn, gid, (w.get("target") or ""))
         if kind_t != "character" or not row or not row["alive"] or row["location"] != location:
             continue
-        text = (w.get("text") or "").strip()
-        emit("player", None, "action", f'you whisper to {row["name"]}: "{text}"', private_with=row["id"])
+        if exchanges and exchanges[-1][0]["id"] == row["id"]:
+            exchanges[-1][1].append(w)
+        else:
+            exchanges.append((row, [w]))
+    for row, segs in exchanges:
+        for w in segs:
+            text = (w.get("text") or "").strip()
+            if (w.get("mode") or "say").lower() == "do":
+                # a discreet private action (slip a note, flash a badge): only they notice
+                emit("player", None, "action",
+                     f"(only {row['name']} notices) you {text}", private_with=row["id"])
+            else:
+                emit("player", None, "action",
+                     f'you whisper to {row["name"]}: "{text}"', private_with=row["id"])
         _character_reply(conn, gid, row, emit, private_with=row["id"])
 
     if arrival_at_start:

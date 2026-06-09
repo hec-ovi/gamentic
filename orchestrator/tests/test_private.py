@@ -45,6 +45,30 @@ def test_whisper_is_private_to_the_target(client, fake_llm):
     assert "tunnel behind the altar" not in ctx           # nor Mara's private reply
 
 
+def test_private_modal_stacks_say_and_do_with_one_reply(client, fake_llm):
+    """The private modal composes say AND do at one character; the stack lands as one
+    exchange (all player lines, then ONE reply), every beat private to that character."""
+    gid = client.post("/games", json=WORLD).json()["game_id"]
+    fake_llm.character_replies = {"Mara": llm.LLMReply(content='[say]"Understood."[/say]')}
+    d = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "whisper", "text": "They are watching us.", "target": "Mara"},
+        {"type": "whisper", "mode": "do", "text": "slip her the brass key under the table",
+         "target": "Mara"},
+    ]}).json()
+    beats = d["beats"]
+    player_beats = [b for b in beats if b["speaker"] == "player"]
+    assert len(player_beats) == 2
+    assert 'you whisper to Mara: "They are watching us."' == player_beats[0]["text"]
+    assert "only Mara notices" in player_beats[1]["text"]            # the discreet do
+    assert all(b["private_with"] for b in beats)                     # everything stays private
+    # ONE exchange -> ONE reply, after both player lines
+    assert len([b for b in beats if b["speaker_name"] == "Mara"]) == 1
+    assert beats[-1]["speaker_name"] == "Mara"
+    # Mara's context saw both private lines
+    mara_call = next(c for c in fake_llm.character_calls() if c["system"].startswith("You are Mara"))
+    assert "watching us" in _user(mara_call) and "brass key" in _user(mara_call)
+
+
 def test_whisper_only_turn_skips_narrator(client, fake_llm):
     gid = client.post("/games", json=WORLD).json()["game_id"]
     fake_llm.narrator = llm.LLMReply(content="PUBLIC NARRATION SHOULD NOT APPEAR")
