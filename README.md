@@ -50,7 +50,7 @@ Optional: the game is fully playable text-only, and art fills in as it is genera
 
 ## 🔊 Voice (optional)
 
-Kokoro-82M text-to-speech on CPU, giving the narrator and each character a distinct voice. Optional, synthesized on demand. (See the known issues below; the voice layer is still rough.)
+**Maya1-3B** (Maya Research) running as GGUF on llama.cpp with Vulkan, decoded to 24 kHz audio through the SNAC codec on CPU. Each character gets a *designed* voice composed from their sheet (gender, age, pitch, tone, accent) and stored in a persistent registry, so one character is always one voice. Lines support 20+ inline emotion tags (`[whisper]`, `[laugh]`, `[angry]`, ...) and a streaming endpoint delivers first audio in ~0.3s. Optional, synthesized on demand.
 
 ## 🚀 Run it
 
@@ -68,7 +68,8 @@ docker compose up -d
 | 🧠 Orchestrator (game API) | http://localhost:8000 | FastAPI, SQLite, httpx, Python 3.12 |
 | 📝 Text model | http://localhost:8080 | llama.cpp (Vulkan), `gemma-4-12B-it-heretic` GGUF Q4 |
 | 🖼️ Image | http://localhost:9001 | ComfyUI + FLUX.2 [klein] 4B (distilled), FastAPI REST adapter |
-| 🔊 Voice | http://localhost:9002 | Kokoro-82M (ONNX) on CPU, FastAPI |
+| 🔊 Voice model | http://localhost:9091 | llama.cpp (Vulkan), Maya1-3B GGUF |
+| 🔊 Voice API | http://localhost:9002 | FastAPI: voice design, character registry, SNAC decode (CPU), streaming |
 
 Open the frontend, create a world by chatting with the story creator, and play.
 
@@ -79,7 +80,7 @@ gamentic/
   orchestrator/   game brain (FastAPI + SQLite, narrator + character agents, tools)
   frontend/       vanilla HTML / CSS / JS client
   infra/          docker-compose stack + image service
-  voice-api/      Kokoro TTS service
+  voice-api/      Maya1 TTS service (voice design, character registry, streaming)
 ```
 
 ## 🧪 Status
@@ -90,7 +91,7 @@ Active personal project, in progress and under heavy iteration. The brain and th
 
 Being honest about where it stands today:
 
-- 🔊 **TTS is rough.** Kokoro sometimes gives a character the wrong-sounding voice (a male can read female, a female can read male) and drifts in consistency across lines. It works, but it is slated for a rework.
+- 🔊 **Voice is near-realtime, not instant.** Generation runs at ~1.1-1.2x realtime (a 10 second line takes 11-12 seconds to fully render); the streaming endpoint masks it with ~0.3s to first audio. English only for now.
 - 🖼️ **Images can be small or plain,** and scene art is still being wired into the UI cleanly.
 - 🧠 **Some limits are model-based.** A 12B Q4 model on local hardware will occasionally miss a tool call, repeat itself, or under-furnish a scene. The brain adds structure to fight this: a no-dead-air narration pass, bounded state, and explicit transition reasoning.
 - 🛠️ We are actively optimizing all of this, to make it as good as the local model and hardware allow.
@@ -106,8 +107,8 @@ Gamentic is just the harness. It does NOT distribute, host, or bundle any model 
 - 🖼️ **Image, FLUX.2 [klein] 4B (Black Forest Labs),** under Apache-2.0:
   - Model: https://huggingface.co/black-forest-labs/FLUX.2-klein-4B
   - Black Forest Labs licensing: https://bfl.ai/licensing
-- 🔊 **Voice, Kokoro-82M (hexgrad),** under Apache-2.0:
-  - https://huggingface.co/hexgrad/Kokoro-82M
+- 🔊 **Voice, Maya1 (Maya Research),** under Apache-2.0:
+  - https://huggingface.co/maya-research/maya1
 - ⚙️ **Runtimes** are used as-is under their own licenses: llama.cpp (MIT) and ComfyUI (GPL-3.0).
 
 Nothing in this repository grants you any rights to those models. If you swap in a different model, follow that model's license. Gamentic simply orchestrates whatever local models you point it at.

@@ -23,6 +23,11 @@ First public day. The repo went public and everything below landed today.
 - "See" button: `POST /games/{id}/view` renders the current scene with the characters present in it, grounded in live state (looks, time of day, mood, art style), and lands in the story log as an image beat.
 - Optional agentic image prompts (`IMAGE_AGENTIC_PROMPTS=true`): the text model writes the scene/view image prompt from live context (including the just-happened action, so poses reflect the moment), with deterministic guards on top and the code template as fallback. Off by default; adds one LLM call per image.
 
-### Frontend and voice
+### Voice
+- Voice stack replaced: Kokoro-82M is out, Maya1-3B is in (GGUF on llama.cpp Vulkan, SNAC decode to 24 kHz on CPU). Each character gets a designed voice composed from their sheet (gender, age, pitch, tone, accent) and stored in a persistent registry, which fixes the wrong-gender voice problem by design. 20+ inline emotion tags, a streaming endpoint with ~0.3s to first audio, and a request-hash audio cache.
+
+### Image service
+- Per-view character sizing: square face, tall full-body, independently env-configurable; scene dimensions configurable too. Defaults validated by an on-box benchmark (768x768 about 5.6s, 768x1152 about 7.6s).
+
+### Frontend
 - Frontend redesign in progress (scene-centric layout, tagged composer with entity chips, character cards).
-- Voice via Kokoro-82M is known-rough (gender mismatches among its issues); a refactor is under way.
