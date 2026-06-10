@@ -41,7 +41,8 @@ def test_obtained_item_gets_a_small_card_and_a_system_image_beat(client, fake_ll
     client.post(f"/games/{gid}/action", json={"action": "I search the silt."})
 
     beats = _item_beats(client, gid)
-    assert len(beats) == 1 and beats[0]["text"] == "brass key"
+    assert len(beats) == 1 and beats[0]["text"].startswith("brass key.")
+    assert "tarnished key" in beats[0]["text"]             # the concept rides along
     assert beats[0]["image_url"].startswith(f"/media/{gid}/item-")
     shot = next(c for c in captured if "brass key" in c["prompt"])
     assert "Close-up of a single brass key" in shot["prompt"]
@@ -68,7 +69,8 @@ def test_hidden_items_get_no_card_until_revealed(client, fake_llm, world,
                              content="Your boot strikes metal.")
     client.post(f"/games/{gid}/action", json={"action": "I dig."})
     beats = _item_beats(client, gid)
-    assert len(beats) == 1 and beats[0]["text"] == "buried strongbox"
+    assert len(beats) == 1 and beats[0]["text"].startswith("buried strongbox.")
+    assert "iron strongbox" in beats[0]["text"]            # the concept rides along
 
 
 def test_item_card_renders_only_once(client, fake_llm, world, monkeypatch, tmp_path):

@@ -142,8 +142,12 @@ def give_item(conn, gid, args, actor):
     nm, desc, img = moved["name"], moved.get("description", ""), moved.get("image_url")
     if kind_t == "player":
         repo.add_item(conn, gid, nm, desc, image_url=img)    # the item's image travels with it
+        if actor is not None:   # a gift TO the player is a pivotal moment for the giver
+            repo.add_moment(conn, actor["id"], f"Gave the player {nm}")
         return _result("state", f"{giver} {nm} to you.")
     repo.character_add_item(conn, row["id"], nm, desc, image_url=img)
+    if actor is None:           # a gift FROM the player is a pivotal moment for the receiver
+        repo.add_moment(conn, row["id"], f"Received {nm} from the player")
     return _result("state", f"{giver} {nm} to {row['name']}.", reactions=[row["id"]])
 
 

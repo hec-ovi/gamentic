@@ -144,6 +144,16 @@ def _clip(s: str, words: int) -> str:
     return " ".join((s or "").split()[:words])
 
 
+def _concept(*parts, max_chars: int = 320) -> str:
+    """A short human description of WHAT an image shows (its concept), built from the
+    given parts: shown clamped as the caption in the chat flow and in full on the
+    lightbox and the profile's memories (an image without a concept is just a picture)."""
+    text = " ".join(p.strip().rstrip(".") + "." for p in parts if p and p.strip())
+    if len(text) > max_chars:
+        text = text[:max_chars].rsplit(" ", 1)[0].rstrip(",;:") + "..."
+    return text
+
+
 def _focus_character(conn, gid: str, focus: str):
     """The present character the focus text names, if any."""
     pd = repo.get_player(conn, gid)
@@ -283,9 +293,13 @@ def generate_view_snapshot(gid: str, focus: str | None = None) -> dict | None:
     with db.get_conn() as conn:
         if not repo.get_game(conn, gid):
             return None    # game wiped while rendering: never re-create its media folder
+        sc = repo.current_scene(conn, gid)
+        t = repo.game_time(conn, gid)
+        caption = _concept(focus, f"{sc['name']}, {t['label']}",
+                           _clip(_strip_quoted(sc["description"]), 30))
         turn = repo.next_turn_index(conn, gid)
         url = _persist(gid, result["image_url"], f"view-t{turn}")
-        return repo.add_beat(conn, gid, "narrator", None, "image", focus, loc,
+        return repo.add_beat(conn, gid, "narrator", None, "image", caption, loc,
                              turn_index=turn, image_url=url)
 
 
@@ -318,7 +332,9 @@ def generate_directed_image(gid: str, description: str, caption: str = "") -> di
             return None    # game wiped while rendering: never re-create its media folder
         turn = repo.next_turn_index(conn, gid)
         url = _persist(gid, result["image_url"], f"shot-t{turn}")
-        return repo.add_beat(conn, gid, "narrator", None, "image", caption, loc,
+        # the narrator's own visual description IS the moment's concept
+        return repo.add_beat(conn, gid, "narrator", None, "image",
+                             _concept(caption, description), loc,
                              turn_index=turn, image_url=url)
 
 
@@ -355,7 +371,8 @@ def generate_item_image(gid: str, name: str) -> dict | None:
         url = _persist(gid, result["image_url"], f"item-{_slug(name)}")
         if not repo.set_item_image(conn, gid, name, url):
             return None                                # the item vanished mid-render
-        return repo.add_beat(conn, gid, "system", None, "image", entry["name"], loc,
+        return repo.add_beat(conn, gid, "system", None, "image",
+                             _concept(entry["name"], entry["description"]), loc,
                              image_url=url)
 
 

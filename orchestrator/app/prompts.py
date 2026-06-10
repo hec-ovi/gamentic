@@ -124,7 +124,9 @@ def _state_block(conn, gid: str) -> str:
         if bits:
             secrets.append(f"- {c['name']}: {' | '.join(bits)}")
     if secrets:
-        lines.append("SECRETS (only you know these; let them surface when the player earns it):\n"
+        lines.append("SECRETS (only you know these; let them surface when the player earns it. "
+                     "Weave a character's PAST into their introductions and reactions; when the "
+                     "player LEARNS a piece, record it with reveal_origin):\n"
                      + "\n".join(secrets))
     if g["memory"]:
         lines.append(f"REMEMBERED FACTS:{g['memory']}")
@@ -242,9 +244,13 @@ def build_character_messages(conn, gid: str, character, scene_limit: int) -> lis
     knowledge_block = (
         f"\nWHAT YOU PRIVATELY KNOW: {character['knowledge']}" if character["knowledge"] else ""
     )
-    # The character knows their own past; it shapes how they speak and what they can tell.
+    # The character knows their own past and PERFORMS it: hints early, opens up with
+    # familiarity, and gives the full account when plainly asked (owner spec).
     origin = (character["origin"] or "").strip() if "origin" in character.keys() else ""
-    origin_block = f"\nYOUR PAST (yours to share, hint at, or guard): {origin}" if origin else ""
+    origin_block = (f"\nYOUR PAST (perform it, don't recite it: hint at it early, share a real "
+                    f"piece once the player has earned a little trust, and if they plainly ask "
+                    f"who you are, tell it properly - several sentences of who you were and what "
+                    f"brought you here): {origin}" if origin else "")
     # Traits unlocked through play feed back into the agent, so the personality the
     # story revealed is the personality the character keeps playing.
     traits = [t["text"] for t in repo.character_traits(character)]

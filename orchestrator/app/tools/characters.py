@@ -77,7 +77,10 @@ def set_disposition(conn, gid, args, actor):
     ch = repo.find_character_by_name(conn, gid, who)
     if not ch:
         return _invalid(f"set_disposition: no character '{who}'")
+    changed = (ch["disposition"] or "").lower() != disp
     repo.set_disposition(conn, ch["id"], disp)
+    if changed:   # a real shift in the bond is a pivotal moment, mechanically detected
+        repo.add_moment(conn, ch["id"], f"Turned {disp} toward the player")
     return _result("state", f"{ch['name']} turns {disp}.")
 
 
@@ -93,10 +96,14 @@ def set_following(conn, gid, args, actor):
     if not ch:
         return _invalid(f"set_following: no character '{who}'")
     foll = bool(args.get("following", True))
+    changed = bool(ch["following"]) != foll
     repo.set_following(conn, ch["id"], foll)
     if foll:  # a new follower joins the player's current scene
         conn.execute("UPDATE characters SET location=? WHERE id=?",
                      (repo.get_player(conn, gid)["location"], ch["id"]))
+    if changed:
+        repo.add_moment(conn, ch["id"], "Began traveling with the player" if foll
+                        else "Parted ways with the player")
     return _result("state", f"{ch['name']} {'joins you' if foll else 'stays behind'}.")
 
 
@@ -136,6 +143,26 @@ def note_trait(conn, gid, args, actor):
     if not trait:
         return _result("state")  # duplicate or full: silent
     return _result("state", f"Trait unlocked: {ch['name']} - {trait}.")
+
+
+@tool({"type": "function", "function": {
+    "name": "note_moment",
+    "description": "Record a PIVOTAL shared moment between a character and the player: a "
+                   "bond formed, a life saved, a betrayal, a promise, a sacrifice. One short "
+                   "past-tense line, e.g. 'Stood beside the player against the Watch'. Only "
+                   "true turning points, never small talk; it becomes one of the character's "
+                   "lasting memories of the player.",
+    "parameters": {"type": "object", "properties": {
+        "name": {"type": "string"},
+        "event": {"type": "string", "description": "The pivotal event, one short line."},
+    }, "required": ["name", "event"]}}})
+def note_moment(conn, gid, args, actor):
+    who = (args.get("name") or "").strip()
+    ch = repo.find_character_by_name(conn, gid, who)
+    if not ch:
+        return _invalid(f"note_moment: no character '{who}'")
+    repo.add_moment(conn, ch["id"], args.get("event", ""))
+    return _result("state")  # silent: the event itself was just narrated
 
 
 @tool({"type": "function", "function": {

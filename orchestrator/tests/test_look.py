@@ -85,7 +85,9 @@ def test_look_with_show_image_lands_a_captioned_image_beat(client, fake_llm, wor
     assert "show_image" in fake_llm.narrator_calls()[-1]["names"]   # tool offered images-on
     beats = _image_beats(client, gid)
     assert len(beats) == 1
-    assert beats[0]["text"] == "the rusted hatch"                  # the look is the caption
+    # the look leads the caption; the narrator's description is the moment's concept
+    assert beats[0]["text"].startswith("the rusted hatch.")
+    assert "coal hatch" in beats[0]["text"]
     assert beats[0]["image_url"].startswith(f"/media/{gid}/")
     shot = captured[-1]                                            # the directed render
     assert "rusted coal hatch high on the left wall" in shot["prompt"]

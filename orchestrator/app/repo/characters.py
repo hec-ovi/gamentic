@@ -221,31 +221,48 @@ def character_origin_revealed(c) -> list[dict]:
             for r in db.loads(c["origin_revealed"], [])]
 
 
+def add_moment(conn, cid: str, text: str, cap: int = 20) -> str | None:
+    """Record a PIVOTAL shared event between this character and the player (a bond, a
+    wound, a gift, a betrayal, a parting). These are the character's MEMORIES of the
+    player: curated events, never transcript. Deduped, story-clock stamped, capped."""
+    text = " ".join((text or "").split()).strip().rstrip(".")
+    if not text:
+        return None
+    c = get_character(conn, cid)
+    moments = db.loads(c["moments"], []) if "moments" in c.keys() else []
+    if len(moments) >= cap or any(m["text"].lower() == text.lower() for m in moments):
+        return None
+    minutes = games.get_game(conn, c["game_id"])["time_minutes"] or 0
+    moments.append({"id": _id(), "text": text, "minutes": minutes})
+    conn.execute("UPDATE characters SET moments=? WHERE id=?", (json.dumps(moments), cid))
+    return text
+
+
+def character_moments(c) -> list[dict]:
+    moments = db.loads(c["moments"], []) if "moments" in c.keys() else []
+    return [{"id": m["id"], "text": m["text"],
+             "when": clock.time_at(m.get("minutes") or 0)["label"]}
+            for m in moments]
+
+
 def character_profile(conn, gid: str, cid: str) -> dict | None:
-    """The full-screen character view: public card data + unlocked traits + the moments
-    shared with the player (their words/acts, including private exchanges) + story images
-    as memories. PLAYER-VISIBLE only: persona and private knowledge never leave the DB."""
+    """The full-screen character view: public card data + unlocked traits + PIVOTAL
+    shared moments (curated events: bonds, wounds, gifts, partings - never transcript,
+    never whispers) + story images as memories. PLAYER-VISIBLE only: persona and
+    private knowledge never leave the DB."""
     c = get_character(conn, cid)
     if not c or c["game_id"] != gid:
         return None
-    rows = conn.execute(
-        "SELECT * FROM beats WHERE game_id=? AND (speaker=? OR private_with=?) "
-        "AND kind IN ('dialogue','action') ORDER BY turn_index DESC, seq DESC LIMIT 12",
-        (gid, cid, cid)).fetchall()
-    moments = [{"turn_index": b["turn_index"], "kind": b["kind"], "text": b["text"],
-                "speaker": "player" if b["speaker"] == "player" else "character",
-                "private": bool(b["private_with"])} for b in reversed(rows)]
-    # memories: story images from places this character has been part of, or that name them
-    locs = {r["location"] for r in conn.execute(
-        "SELECT DISTINCT location FROM beats WHERE game_id=? AND speaker=?",
-        (gid, cid)).fetchall() if r["location"]}
+    # memories: ONLY images whose own description names this character (they are a main
+    # part of that moment). Location-based attribution gave every bystander the same
+    # gallery, which read as nonsense (live-found).
     mem_rows = conn.execute(
         "SELECT * FROM beats WHERE game_id=? AND kind='image' AND image_url IS NOT NULL "
-        "ORDER BY turn_index DESC LIMIT 24", (gid,)).fetchall()
+        "ORDER BY turn_index DESC LIMIT 60", (gid,)).fetchall()
     name_low = (c["name"] or "").lower()
     memories = [{"image_url": b["image_url"], "caption": b["text"], "turn_index": b["turn_index"]}
                 for b in mem_rows
-                if b["location"] in locs or (name_low and name_low in (b["text"] or "").lower())][:8]
+                if name_low and name_low in (b["text"] or "").lower()][:8]
     memories.reverse()
     return {
         "id": c["id"], "name": c["name"], "description": c["description"],
@@ -258,7 +275,7 @@ def character_profile(conn, gid: str, cid: str) -> dict | None:
         "traits": character_traits(c),
         # only the pieces of their past the player has LEARNED (the full origin is private)
         "origin": character_origin_revealed(c),
-        "moments": moments,
+        "moments": character_moments(c),
         "memories": memories,
     }
 

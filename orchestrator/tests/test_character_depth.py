@@ -55,11 +55,12 @@ def test_unlocked_traits_feed_the_character_agent(client, fake_llm, world):
     assert "sentimental about her ship" in system
 
 
-def test_profile_collects_traits_moments_and_memories(client, fake_llm, world):
+def test_profile_collects_traits_pivotal_moments_and_stays_spoiler_safe(client, fake_llm, world):
     gid = client.post("/games", json=world).json()["game_id"]
     cid = _cid(client, gid)
-    # a public reply, a private exchange, and a trait
+    # a trait, a pivotal moment (narrator-noted), and a whisper that must NOT appear
     fake_llm.narrator = _nar(T("note_trait", name="Mara", trait="blunt"),
+                             T("note_moment", name="Mara", event="Chose to trust the player with the route"),
                              T("cue_character", name="Mara"), content="Mara shrugs.")
     fake_llm.character_replies = {"Mara": llm.LLMReply(content='[say]"Out with it."[/say]')}
     client.post(f"/games/{gid}/action", json={"action": "Mara, can I trust you?"})
@@ -69,17 +70,19 @@ def test_profile_collects_traits_moments_and_memories(client, fake_llm, world):
     prof = client.get(f"/games/{gid}/characters/{cid}/profile").json()
     assert [t["text"] for t in prof["traits"]] == ["blunt"]
     texts = [m["text"] for m in prof["moments"]]
-    assert any("Out with it." in t for t in texts)             # their public reply
-    assert any("The tunnel. Tonight." in t for t in texts)     # the private exchange
-    assert any(m["private"] for m in prof["moments"])
-    # spoiler safety: persona and private knowledge NEVER appear anywhere in the profile
+    assert texts == ["Chose to trust the player with the route"]   # curated pivots only
+    assert prof["moments"][0]["when"].startswith("Day ")
     blob = str(prof)
+    assert "The tunnel. Tonight." not in blob                  # whispers NEVER surface
+    assert "Out with it." not in blob                          # transcript never surfaces
     assert "loyal but blunt" not in blob                       # persona text stays hidden
     assert "secret tunnel behind the altar" not in blob        # knowledge stays hidden
 
 
-def test_profile_memories_are_story_images_from_their_places(client, fake_llm, world,
+def test_profile_memories_only_include_images_that_name_them(client, fake_llm, world,
                                                              monkeypatch, tmp_path):
+    """Owner spec: a memory belongs to a character only when they are a MAIN PART of
+    that moment - merely being in the same place gave everyone identical galleries."""
     from app import media
     monkeypatch.setattr(settings, "IMAGE_ENABLED", True)
     monkeypatch.setattr(settings, "GAMES_DATA_DIR", str(tmp_path))
@@ -91,11 +94,12 @@ def test_profile_memories_are_story_images_from_their_places(client, fake_llm, w
     monkeypatch.setattr(media, "fetch_image_bytes", lambda url: b"PNG")
     gid = client.post("/games", json=world).json()["game_id"]
     cid = _cid(client, gid)
-    fake_llm.narrator = _nar(T("cue_character", name="Mara"), content="Mara waves.")
-    client.post(f"/games/{gid}/action", json={"action": "I wave at Mara."})
-    client.post(f"/games/{gid}/view", json={"focus": ""})      # a snapshot where she lives
+    client.post(f"/games/{gid}/view", json={"focus": ""})          # anonymous scene shot
+    client.post(f"/games/{gid}/view", json={"focus": "at Mara"})   # HER moment
     prof = client.get(f"/games/{gid}/characters/{cid}/profile").json()
-    assert prof["memories"] and prof["memories"][-1]["image_url"].startswith(f"/media/{gid}/")
+    assert len(prof["memories"]) == 1                              # only the one naming her
+    assert "mara" in prof["memories"][0]["caption"].lower()
+    assert prof["memories"][0]["caption"].count(".") >= 2          # a real concept, not a label
 
 
 def test_profile_404s(client, fake_llm, world):

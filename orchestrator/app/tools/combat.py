@@ -33,8 +33,11 @@ def apply_damage(conn, gid, args, actor):
         if not row["alive"]:
             return _invalid(f"{row['name']} is already down")
         new, died = repo.set_character_life(conn, row["id"], -amount)
+        src = f"by {actor['name']}" if actor else "at the player's hand"
         if died:
+            repo.add_moment(conn, row["id"], f"Was struck down {src}")
             return _result("state", f"{by}strikes down {row['name']}." if by else f"{row['name']} is struck down.")
+        repo.add_moment(conn, row["id"], f"Was wounded {src}")
         hit = f"{by}hits {row['name']} for {amount}" if by else f"{row['name']} takes {amount} damage"
         return _result("state", f"{hit} ({new} left).", reactions=[row["id"]])
     return _invalid(f"attack: unknown target '{tname}'")

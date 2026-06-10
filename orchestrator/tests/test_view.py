@@ -83,7 +83,9 @@ def test_view_focus_steers_the_shot_and_the_references(client, fake_llm, monkeyp
     assert "what Vex is doing" in captured["prompt"]
     assert captured["references"] == [
         f"{settings.MEDIA_INTERNAL_BASE}/media/{gid}/char-{vex_id}-front.png"]
-    assert r["beat"]["text"] == "what Vex is doing"          # the caption
+    # the caption leads with the focus and carries the moment's CONCEPT (place, time)
+    assert r["beat"]["text"].startswith("what Vex is doing.")
+    assert "harbor" in r["beat"]["text"]
 
     # focus on a thing: detail shot, NO identity references
     client.post(f"/games/{gid}/view", json={"focus": "that black ship on the horizon"})
