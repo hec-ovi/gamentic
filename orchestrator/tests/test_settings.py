@@ -28,11 +28,14 @@ def test_difficulty_switches_the_narrator_mode_block(client, fake_llm, world):
 
 def test_settings_persist_into_state(client, fake_llm, world):
     gid = client.post("/games", json=world).json()["game_id"]
+    from app.config import settings as cfg
     st = client.get(f"/games/{gid}/state").json()
-    assert st["settings"] == {"narrator_gender": "", "difficulty": "normal"}
+    assert st["settings"] == {"narrator_gender": "", "difficulty": "normal",
+                              "history_beats": cfg.HISTORY_BEATS}
     _patch(client, gid, difficulty="hard", narrator_gender="female")
     st = client.get(f"/games/{gid}/state").json()
-    assert st["settings"] == {"narrator_gender": "female", "difficulty": "hard"}
+    assert st["settings"] == {"narrator_gender": "female", "difficulty": "hard",
+                              "history_beats": cfg.HISTORY_BEATS}
 
 
 def test_narrator_gender_redesigns_the_voice(client, fake_llm, world):

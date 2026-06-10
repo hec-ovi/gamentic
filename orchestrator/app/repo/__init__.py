@@ -8,7 +8,7 @@ whole surface so every caller keeps the single import: `from . import repo` then
 from .. import db  # noqa: F401  (prompts uses repo.db.loads on row blobs)
 from .base import _id, norm_location, norm_name  # noqa: F401
 from .beats import (  # noqa: F401
-    add_beat, all_beats, clear_beats, last_image_turn, next_turn_index,
+    add_beat, all_beats, beats_between, clear_beats, last_image_turn, next_turn_index,
     recent_beats, recent_beats_at, scene_beats_for_character,
 )
 from .characters import (  # noqa: F401
@@ -23,9 +23,9 @@ from .characters import (  # noqa: F401
 )
 from .clock import advance_time, elapsed_text, game_time, time_at  # noqa: F401
 from .games import (  # noqa: F401
-    append_memory, clear_arrival_note, create_game, delete_game, get_game, list_games,
-    set_context_used, set_difficulty, set_game_status, set_goal, set_narrator_gender,
-    set_narrator_voice,
+    append_memory, clear_arrival_note, create_game, delete_game, effective_history_beats,
+    get_game, list_games, set_context_used, set_difficulty, set_game_status, set_goal,
+    set_history_beats, set_narrator_gender, set_narrator_voice, set_story_summary,
 )
 from .items import (  # noqa: F401
     _item_matches, narrator_items, set_item_image, visible_item_index, visible_items,
@@ -42,7 +42,7 @@ from .quests import (  # noqa: F401
 from .scenes import (  # noqa: F401
     add_exit, add_scene_item, current_scene, get_or_create_scene, get_scene,
     get_scene_by_id, offer_scene_action, reveal_scene_item, scene_available_actions,
-    scene_is_established, set_location, set_scene_description, set_scene_draft,
-    set_scene_image, set_scene_status, take_scene_item,
+    scene_is_established, set_location, set_scene_background, set_scene_description,
+    set_scene_draft, set_scene_image, set_scene_status, take_scene_item,
 )
 from .state import game_state  # noqa: F401

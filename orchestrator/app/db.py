@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS games (
     arrival_note TEXT DEFAULT '',    -- transient: 'you were last here X ago' shown to the narrator on return
     narrator_gender TEXT DEFAULT '', -- narrator voice gender ('' = preset default, 'female' | 'male')
     difficulty TEXT DEFAULT 'normal',-- narrator flexibility mode: easy | normal | hard (live-changeable)
+    story_summary TEXT DEFAULT '',   -- rolling facts-only recap of chapters older than the verbatim window
+    summarized_through INTEGER DEFAULT 0,  -- turn_index folded into story_summary so far
+    history_beats INTEGER DEFAULT 0, -- per-game verbatim window override (0 = settings.HISTORY_BEATS)
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -126,6 +129,7 @@ CREATE TABLE IF NOT EXISTS scenes (
     visited INTEGER DEFAULT 1,
     left_at_minutes INTEGER,         -- story-clock stamp of when the player last left (draft layer)
     draft TEXT DEFAULT '',           -- narrator's note of open threads left here (note_scene)
+    background TEXT DEFAULT '',      -- the place's deeper story: what it is, was, and why it matters
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -181,6 +185,9 @@ _MIGRATIONS = {
         "arrival_note": "TEXT DEFAULT ''",   # transient: shown to the narrator on returning somewhere
         "narrator_gender": "TEXT DEFAULT ''",
         "difficulty": "TEXT DEFAULT 'normal'",
+        "story_summary": "TEXT DEFAULT ''",
+        "summarized_through": "INTEGER DEFAULT 0",
+        "history_beats": "INTEGER DEFAULT 0",
     },
     "beats": {
         "private_with": "TEXT",
@@ -188,6 +195,7 @@ _MIGRATIONS = {
     "scenes": {
         "left_at_minutes": "INTEGER",
         "draft": "TEXT DEFAULT ''",
+        "background": "TEXT DEFAULT ''",
     },
 }
 

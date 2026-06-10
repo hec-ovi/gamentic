@@ -12,7 +12,7 @@ Two toolsets share the one validated dispatcher:
     turn can cascade (bounded for pacing).
 """
 from . import characters, combat, items, narrative, progression, scene, world  # noqa: F401 (registration)
-from .base import HANDLERS, SCHEMAS, _invalid
+from .base import HANDLERS, SCHEMAS, _invalid, clean_arg
 
 # The base narrator toolset, in the EXACT order the model has always seen (schema order
 # is part of the prompt a small model reads; keep it stable unless deliberately retuned).
@@ -55,6 +55,8 @@ def apply_tool(conn, gid: str, name: str, args: dict, actor=None) -> dict:
     if handler is None:
         return _invalid(f"unknown tool '{name}'")
     try:
-        return handler(conn, gid, args or {}, actor)
+        # tool-stream debris is scrubbed from every string argument BEFORE it can reach
+        # state or a receipt (live: a malformed stream put "<|tool_call>..." inside a goal)
+        return handler(conn, gid, clean_arg(args or {}), actor)
     except (ValueError, TypeError) as e:
         return _invalid(f"{name}: bad args ({e})")

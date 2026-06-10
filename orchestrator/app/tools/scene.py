@@ -32,13 +32,21 @@ def set_scene_status(conn, gid, args, actor):
 @tool({"type": "function", "function": {
     "name": "describe_scene",
     "description": "Write or update the current scene's short description (do this when the "
-                   "player enters a new place so the scene card reads right).",
+                   "player enters a new place so the scene card reads right). Optionally also "
+                   "set its background: the place's deeper story (what it is, what it was, why "
+                   "it matters), which you will be reminded of every turn spent here.",
     "parameters": {"type": "object", "properties": {
-        "description": {"type": "string"}}, "required": ["description"]}}})
+        "description": {"type": "string", "description": "Short visual description (the card)."},
+        "background": {"type": "string",
+                       "description": "The place's deeper story/lore (persistent context)."},
+    }, "required": ["description"]}}})
 def describe_scene(conn, gid, args, actor):
     desc = (args.get("description") or "").strip()
     if desc:
         repo.set_scene_description(conn, gid, desc)
+    bg = (args.get("background") or "").strip()
+    if bg:
+        repo.set_scene_background(conn, gid, bg)
     return _result("state")  # silent; shown on the scene card
 
 

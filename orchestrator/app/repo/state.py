@@ -26,6 +26,7 @@ def game_state(conn, gid: str) -> dict:
     sc = scenes.current_scene(conn, gid)
     scene = {
         "id": sc["id"], "name": sc["name"], "description": sc["description"],
+        "background": (sc["background"] or "") if "background" in sc.keys() else "",
         "status": sc["status"], "image_url": sc["image_url"],
         "exits": db.loads(sc["exits"], []),
         "items": items.visible_items(sc["items"]),
@@ -40,7 +41,8 @@ def game_state(conn, gid: str) -> dict:
         "scene": scene,
         "narrator_voice_id": g["narrator_voice_id"],
         "settings": {"narrator_gender": g["narrator_gender"] or "",
-                     "difficulty": g["difficulty"] or "normal"},
+                     "difficulty": g["difficulty"] or "normal",
+                     "history_beats": games.effective_history_beats(g)},
         "context": {"used": g["context_used"] or 0, "max": settings.LLM_CONTEXT_SIZE},
         "images_enabled": settings.IMAGE_ENABLED,  # FE: if true and an image_url is null, show a loader
         "time": clock.game_time(conn, gid),        # fictional story clock {minutes, day, hour, part, label}

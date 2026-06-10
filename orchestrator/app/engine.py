@@ -16,7 +16,7 @@ import json
 import re
 from collections import deque
 
-from . import repo, prompts, tools, llm
+from . import db, repo, prompts, tools, llm
 from .config import settings
 
 _CHAR_TAG = re.compile(r"\[(say|do)\]", re.I)
@@ -248,6 +248,41 @@ CONTINUE_IMPULSE = ("(no player input; the player watches and waits. Continue th
                     "something new surface - then leave the player room to respond.)")
 
 
+def maybe_update_summary(gid: str) -> None:
+    """Background (scheduled after turns): fold story older than the newest turns into
+    the rolling facts-only recap, so the narrator always knows the WHOLE story at a
+    bounded token cost. One LLM call per fold; failures keep the previous recap and
+    retry on a later turn. Characters are NEVER summarized (their small scene windows
+    are by design; their long memory is the trait/origin/profile machinery)."""
+    if not settings.SUMMARY_ENABLED:
+        return
+    with db.get_conn() as conn:
+        g = repo.get_game(conn, gid)
+        if not g:
+            return
+        latest = repo.next_turn_index(conn, gid) - 1
+        done_through = g["summarized_through"] or 0
+        target = latest - settings.SUMMARY_KEEP_TURNS
+        if target - done_through < settings.SUMMARY_EVERY_TURNS:
+            return
+        rows = repo.beats_between(conn, gid, done_through, target)
+        if not rows:
+            return
+        prev = (g["story_summary"] or "").strip()
+        transcript = "\n".join(prompts._render_beat(b) for b in rows)
+    try:
+        reply = llm.chat(prompts.build_summary_messages(prev, transcript),
+                         temperature=0.3, max_tokens=settings.SUMMARY_MAX_TOKENS)
+    except Exception:
+        return
+    text = clean_prose(reply.content or "")   # drift safety: junk never becomes memory
+    if not text:
+        return
+    with db.get_conn() as conn:
+        if repo.get_game(conn, gid):
+            repo.set_story_summary(conn, gid, text, target)
+
+
 def _image_pacing_ok(conn, gid: str, turn: int) -> bool:
     """Spontaneous narrator images stay special: allowed only when enough turns passed
     since the last image landed in the story flow. A player LOOK bypasses this."""
@@ -345,8 +380,9 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         if failures:
             narrator_action = f"{action_text} (failed: {' '.join(failures)})"
 
+        history_limit = repo.effective_history_beats(repo.get_game(conn, gid))
         reply = llm.chat(
-            prompts.build_narrator_messages(conn, gid, narrator_action, settings.HISTORY_BEATS,
+            prompts.build_narrator_messages(conn, gid, narrator_action, history_limit,
                                             settings.LORE_BUDGET,
                                             attempts=[p["line"] for p in pending],
                                             looking=bool(look_seg), wish=wish),
@@ -369,9 +405,28 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                     p["handled"] = True
                     return
 
+        def _attempt_amount(args):
+            """The player's stated force for the attempt this accepting call covers.
+            When the narrator approves a strike WITHOUT naming its own amount, the
+            player's amount wins (live: 'attack for 12' was accepted as a default-3 hit
+            because the model rarely fills the amount field)."""
+            tname = (args or {}).get("target") or "player"
+            kt, rw = repo.resolve_target(conn, gid, tname)
+            tid = "player" if kt == "player" else (rw["id"] if rw else None)
+            for p in pending:
+                if (not p["handled"] and not p["rejected"] and p["family"] == "attack"
+                        and p["tid"] == tid):
+                    return p["d"]["args"].get("amount")
+            return None
+
         cues, state_notes = [], []
         seen_calls: set = set()
         for tc in reply.tool_calls:
+            if tc.name in ("apply_damage", "attack") and pending \
+                    and not (tc.arguments or {}).get("amount"):
+                amt = _attempt_amount(tc.arguments)
+                if amt:
+                    tc.arguments = dict(tc.arguments or {}, amount=amt)
             # the model sometimes over-fires the SAME call twice in one reply (live:
             # add_item("scanner device") x2 doubled the item). Suppress exact repeats,
             # except for tools where repetition can be meant (damage, heal, cues, time).

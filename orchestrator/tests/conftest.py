@@ -38,6 +38,7 @@ class FakeLLM:
         # so existing free-text tests behave exactly as before
         self.interpret = llm.LLMReply(content="", tool_calls=[])
         self.explain = llm.LLMReply(content="A thing of note, by the look of it.")
+        self.summary = llm.LLMReply(content="- The player arrived and met the locals.")
         self.calls = []
 
     def __call__(self, messages, tools=None, tool_choice="auto", temperature=0.8,
@@ -60,6 +61,8 @@ class FakeLLM:
             return self.image_prompt
         if sys.startswith("You answer the player's tap"):    # tap-to-explain
             return self.explain
+        if sys.startswith("You maintain the story recap"):   # rolling summary fold
+            return self.summary
         if sys.startswith("You are a warm"):         # story-creator chat
             return self.creator_text
         # otherwise a character call (may carry CHARACTER_TOOLS attack/give, or none)

@@ -234,6 +234,11 @@ services:
       - IMAGE_NARRATOR_COOLDOWN_TURNS=${IMAGE_NARRATOR_COOLDOWN_TURNS:-4}
       - INTERPRET_FREE_TEXT=${INTERPRET_FREE_TEXT:-true}
       - CHARACTER_MAX_TOKENS=${CHARACTER_MAX_TOKENS:-420}
+      # whole-story memory: generous verbatim window + rolling facts-only recap
+      - HISTORY_BEATS=${HISTORY_BEATS:-80}
+      - SUMMARY_ENABLED=${SUMMARY_ENABLED:-true}
+      - SUMMARY_EVERY_TURNS=${SUMMARY_EVERY_TURNS:-10}
+      - SUMMARY_KEEP_TURNS=${SUMMARY_KEEP_TURNS:-8}
     volumes:
       - ../orchestrator/data:/data
     ports:

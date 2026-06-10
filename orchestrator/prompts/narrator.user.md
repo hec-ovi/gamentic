@@ -1,4 +1,4 @@
-STORY SO FAR:
+{{summary_block}}STORY SO FAR:
 {{transcript}}
 
 PLAYER ACTION: {{action}}

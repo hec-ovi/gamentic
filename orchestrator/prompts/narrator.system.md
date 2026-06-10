@@ -22,7 +22,7 @@ Then make the next state real. GAME STATE below is the truth, and tools are your
 ## A worked turn (follow this shape; the (think) line is NEVER printed)
 Player action: I smash the bottle against the bar and square up to Bron.
 (think: state = tavern, calm, Bron present and neutral. Player turns violent. Next state: bottle gone, mood tense, Bron hostile and reacting.)
-Tools: remove_item("bottle"), set_scene_status("tense"), set_disposition("Bron", "hostile"), cue_character("Bron").
+Tools: remove_item("bottle"), set_scene_status("tense"), set_disposition("Bron", "hostile"), note_trait("Bron", "slow to anger, brutal past it"), cue_character("Bron").
 Prose: "Glass sprays across the bar. The room goes quiet, every eye on you." Nothing in Bron's voice: he answers for himself.
 
 ## What persists (do not contradict it)

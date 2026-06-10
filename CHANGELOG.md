@@ -24,6 +24,12 @@ The first full-playtest feedback batch.
 - `orchestrator/INDEX.md`: a resolver-style map of the brain (which file owns what, and which prompt block injects when), so the codebase is easy to navigate.
 - The README gained a visual chart of how a turn flows through the system.
 
+### Whole-story memory (owner decision: the story should never fall out of context)
+- The narrator now knows the WHOLE story every turn: a rolling facts-only recap automatically folds chapters older than the recent turns (one background LLM call every N turns, configurable), injected as fenced past facts. Drift-guarded: the recap is scrubbed, capped in length, and can never contain instructions. Characters are deliberately NEVER summarized; their long memory remains the traits/origin/profile machinery.
+- The verbatim story window grew (24 -> 80 beats by default) and became a live per-game setting (`history_beats` on PATCH /settings, up to 400): richer turns at the cost of speed, the player's choice. Prefill on the reference box runs ~600 tokens/s, so the cost is roughly one second per 600 tokens of window per call.
+- Scenes gained a background: the place's deeper story (what it is, what it was, why it matters), written by the narrator when it furnishes a place and re-read every turn spent there.
+- Two live-found fixes from the showcase soak run: tool-stream debris can no longer leak inside tool arguments (a goal once arrived with `<tool_call>` junk embedded), and a player's stated attack force now wins when the narrator accepts a strike without naming its own amount.
+
 ### Storage hygiene
 - Wipe all memory: `DELETE /games?confirm=wipe` deletes every game, creator session, voice-registry entry and generated media folder, orphans included (a settings button in the UI fronts it).
 - Fixed the orphan leak: a render finishing AFTER its game was deleted used to re-create the wiped media folder; background generators now re-check the game exists before persisting anything.

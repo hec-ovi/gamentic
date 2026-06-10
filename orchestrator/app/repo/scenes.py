@@ -51,6 +51,13 @@ def set_scene_description(conn, gid: str, description: str) -> None:
     conn.execute("UPDATE scenes SET description=? WHERE id=?", (description, current_scene(conn, gid)["id"]))
 
 
+def set_scene_background(conn, gid: str, background: str) -> None:
+    """The place's deeper story (what it is, was, and why it matters): persistent
+    narrator context beyond the short visual description."""
+    conn.execute("UPDATE scenes SET background=? WHERE id=?",
+                 (background, current_scene(conn, gid)["id"]))
+
+
 def set_scene_draft(conn, gid: str, note: str) -> None:
     """The narrator's draft of open threads on the CURRENT scene (note_scene tool)."""
     conn.execute("UPDATE scenes SET draft=? WHERE id=?", (note, current_scene(conn, gid)["id"]))

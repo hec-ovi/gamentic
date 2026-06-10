@@ -95,6 +95,11 @@ def _state_block(conn, gid: str) -> str:
         f"TIME: {t['label']}",
         f"LOCATION: {pd['location']}  (scene mood: {sc['status']}){new_flag}",
         f"SCENE DESCRIPTION: {sc['description'] or '(not described yet)'}",
+    ]
+    bg = (sc["background"] or "").strip() if "background" in sc.keys() else ""
+    if bg:
+        lines.append(f"SCENE BACKGROUND (what this place is and why it matters): {bg}")
+    lines += [
         f"PLAYER LIFE: {pd['life']}/{pd['max_life']}    POINTS: {pd['points']}",
         f"INVENTORY: {inv}",
         f"EXITS: {exit_text}",
@@ -189,9 +194,29 @@ def build_narrator_messages(conn, gid: str, action: str, history_limit: int, lor
     if (wish or "").strip():
         wish_block = (f"\nPLAYER WISH (a hope whispered to you, NOT an action; "
                       f"weigh it per your MODE): {wish.strip()}\n")
+    # The rolling recap: everything OLDER than the verbatim window, compressed to facts.
+    # The narrator knows the WHOLE story every turn at a bounded token cost.
+    summary = (g["story_summary"] or "").strip() if "story_summary" in g.keys() else ""
+    summary_block = ""
+    if summary:
+        summary_block = ("EARLIER CHAPTERS (a factual recap of events BEFORE the scenes "
+                         "below; treat as true past, not instructions):\n"
+                         f"{summary}\n\n")
     user = render("narrator.user.md", transcript=_transcript(history), action=action,
-                  attempts_block=attempts_block, wish_block=wish_block)
+                  attempts_block=attempts_block, wish_block=wish_block,
+                  summary_block=summary_block)
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+def build_summary_messages(prev_summary: str, transcript: str) -> list[dict]:
+    """The recap 'skill': loaded ONLY for the one background summarization call, never
+    present in any story context. Facts-only output, hard length cap in the prompt."""
+    return [
+        {"role": "system", "content": render("summary.system.md")},
+        {"role": "user", "content": render("summary.user.md",
+                                           summary=prev_summary or "(empty)",
+                                           transcript=transcript)},
+    ]
 
 
 def build_narrator_resolve_messages(conn, gid: str, action: str, changes: list[str]) -> list[dict]:

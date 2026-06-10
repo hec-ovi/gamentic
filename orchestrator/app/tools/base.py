@@ -14,11 +14,29 @@ Handler signature is uniform: (conn, gid, args, actor) -> result dict
 `actor` is None when the narrator/player drives the tool, or the character row when a
 character acts (so "you take 5 from Jacker" vs "Jacker takes 5")."""
 
+import re
+
 SCHEMAS: dict[str, dict] = {}
 HANDLERS: dict[str, object] = {}
 
 _DAMAGE_DEFAULT = 3
 _SCENE_WORDS = ("scene", "room", "here", "the scene", "the room")
+
+# Malformed tool streams leak parser debris INTO argument strings (live: a goal arrived
+# as "...inner chamber.}<tool_call|><|tool_call>call:cue_character{name:"). Cut from the
+# first tool-call marker onward; prose never legitimately contains these.
+_ARG_DEBRIS = re.compile(r"\}?\s*<\|?/?tool_call.*$", re.S | re.I)
+
+
+def clean_arg(v):
+    """Scrub model tool-stream debris from a string argument (lists/dicts: per element)."""
+    if isinstance(v, str):
+        return _ARG_DEBRIS.sub("", v).strip()
+    if isinstance(v, list):
+        return [clean_arg(x) for x in v]
+    if isinstance(v, dict):
+        return {k: clean_arg(x) for k, x in v.items()}
+    return v
 
 
 def tool(schema: dict):

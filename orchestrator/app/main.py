@@ -199,6 +199,8 @@ def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
     if settings.IMAGE_ENABLED and settings.IMAGE_ITEMS and new_items:
         for it in new_items[: settings.IMAGE_MAX_ITEMS_PER_TURN]:
             background_tasks.add_task(integrate.generate_item_image, gid, it["name"])
+    if settings.SUMMARY_ENABLED:
+        background_tasks.add_task(engine.maybe_update_summary, gid)  # fold old chapters
     return result
 
 
@@ -237,9 +239,15 @@ def update_settings(gid: str, body: GameSettingsIn):
             if body.narrator_gender not in ("", "female", "male"):
                 raise HTTPException(422, "narrator_gender must be '', 'female' or 'male'")
             integrate.apply_narrator_gender(conn, gid, body.narrator_gender)
+        if body.history_beats is not None:
+            # 0 = back to the default; otherwise a generous but bounded verbatim window
+            if body.history_beats != 0 and not (8 <= body.history_beats <= 400):
+                raise HTTPException(422, "history_beats must be 0 (default) or 8..400")
+            repo.set_history_beats(conn, gid, body.history_beats)
         g = repo.get_game(conn, gid)
         return {"settings": {"narrator_gender": g["narrator_gender"] or "",
-                             "difficulty": g["difficulty"] or "normal"},
+                             "difficulty": g["difficulty"] or "normal",
+                             "history_beats": repo.effective_history_beats(g)},
                 "narrator_voice_id": g["narrator_voice_id"]}
 
 

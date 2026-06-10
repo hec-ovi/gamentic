@@ -110,6 +110,7 @@ class GameSettingsIn(BaseModel):
     are left untouched."""
     narrator_gender: Optional[str] = None   # '' (preset default) | 'female' | 'male'
     difficulty: Optional[str] = None        # easy | normal | hard
+    history_beats: Optional[int] = None     # verbatim story window (0 = default, 8..400)
 
 
 class ViewIn(BaseModel):
@@ -191,6 +192,7 @@ class SceneOut(BaseModel):
     id: str
     name: str
     description: str = ""
+    background: str = ""          # the place's deeper story (persistent narrator context)
     status: str = "calm"
     image_url: Optional[str] = None
     exits: list[dict] = Field(default_factory=list)            # revealed exits (<= 3)

@@ -124,3 +124,20 @@ def set_narrator_voice(conn, gid: str, voice_id: str) -> None:
 def set_context_used(conn, gid: str, used: int) -> None:
     """Record the last turn's prompt-token count for the context-usage meter."""
     conn.execute("UPDATE games SET context_used=? WHERE id=?", (int(used or 0), gid))
+
+
+def set_story_summary(conn, gid: str, text: str, through_turn: int) -> None:
+    """Store the updated rolling recap and the turn it covers through."""
+    conn.execute("UPDATE games SET story_summary=?, summarized_through=? WHERE id=?",
+                 (text, int(through_turn), gid))
+
+
+def set_history_beats(conn, gid: str, beats: int) -> None:
+    """Per-game verbatim-window override (0 = the settings default)."""
+    conn.execute("UPDATE games SET history_beats=? WHERE id=?", (int(beats), gid))
+
+
+def effective_history_beats(g) -> int:
+    from ..config import settings
+    stored = (g["history_beats"] or 0) if "history_beats" in g.keys() else 0
+    return stored or settings.HISTORY_BEATS

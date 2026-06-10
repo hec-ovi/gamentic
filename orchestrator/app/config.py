@@ -27,8 +27,19 @@ class Settings:
     # felt clipped); the prompt still says to stop when the point is made.
     CHARACTER_MAX_TOKENS = int(os.getenv("CHARACTER_MAX_TOKENS", "420"))
 
-    # Context budgeting
-    HISTORY_BEATS = int(os.getenv("HISTORY_BEATS", "24"))   # raw recent beats fed to narrator
+    # Context budgeting. The verbatim window is GENEROUS by owner decision (slower turns
+    # are an accepted trade for a richer story); it is also a per-game live setting
+    # (PATCH /settings {history_beats}). Prefill on the box runs ~600 tok/s: every ~600
+    # tokens of window costs ~1s per narrator call.
+    HISTORY_BEATS = int(os.getenv("HISTORY_BEATS", "80"))   # raw recent beats fed to narrator
+    # Rolling story recap: everything OLDER than the recent turns gets folded into a
+    # compact facts-only summary (one background LLM call), so the narrator knows the
+    # WHOLE story at a bounded token cost. Characters are NEVER summarized (they keep
+    # their small scene windows by design).
+    SUMMARY_ENABLED = os.getenv("SUMMARY_ENABLED", "true").lower() == "true"
+    SUMMARY_EVERY_TURNS = int(os.getenv("SUMMARY_EVERY_TURNS", "10"))  # fold cadence
+    SUMMARY_KEEP_TURNS = int(os.getenv("SUMMARY_KEEP_TURNS", "8"))     # newest turns never folded
+    SUMMARY_MAX_TOKENS = int(os.getenv("SUMMARY_MAX_TOKENS", "400"))
     SCENE_BEATS = int(os.getenv("SCENE_BEATS", "14"))       # recent beats a character perceives
     LORE_BUDGET = int(os.getenv("LORE_BUDGET", "8"))        # max lore entries injected
     MAX_CHARACTER_REACTIONS = int(os.getenv("MAX_CHARACTER_REACTIONS", "3"))

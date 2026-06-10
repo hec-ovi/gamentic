@@ -35,8 +35,19 @@ def all_beats(conn, gid: str, since_turn: int = 0):
 
 
 def clear_beats(conn, gid: str) -> None:
-    """Clear the story log (history) of a game, keeping its current state."""
+    """Clear the story log (history) of a game, keeping its current state. The rolling
+    recap is history too, so it resets with the log."""
     conn.execute("DELETE FROM beats WHERE game_id=?", (gid,))
+    conn.execute("UPDATE games SET story_summary='', summarized_through=0 WHERE id=?", (gid,))
+
+
+def beats_between(conn, gid: str, after_turn: int, through_turn: int):
+    """Public+private beats in (after_turn, through_turn], oldest first, images excluded.
+    The summarizer's source window (the narrator is omniscient, so privates fold in too)."""
+    return conn.execute(
+        "SELECT * FROM beats WHERE game_id=? AND turn_index>? AND turn_index<=? "
+        "AND kind!='image' ORDER BY turn_index, seq",
+        (gid, after_turn, through_turn)).fetchall()
 
 
 def last_image_turn(conn, gid: str):
