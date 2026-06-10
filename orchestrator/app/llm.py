@@ -4,6 +4,7 @@ One function: chat(). No framework. Returns the assistant message with parsed
 tool calls. The same server + model backs every agent; only the messages differ.
 """
 import json
+import time
 from dataclasses import dataclass, field
 
 import httpx
@@ -47,7 +48,18 @@ def chat(
         payload["stop"] = stop
 
     url = f"{settings.LLM_BASE_URL}/chat/completions"
-    resp = httpx.post(url, json=payload, timeout=settings.LLM_TIMEOUT)
+    # One retry on connection-level failures only: a redeploy of the llama.cpp container
+    # kills in-flight requests (seen live), and a fresh connection a beat later succeeds.
+    # Timeouts are NOT retried (a 180s timeout means the box is busy; retrying doubles
+    # the pain), and HTTP status errors are real answers, not transport flakes.
+    for attempt in (0, 1):
+        try:
+            resp = httpx.post(url, json=payload, timeout=settings.LLM_TIMEOUT)
+            break
+        except (httpx.ConnectError, httpx.RemoteProtocolError):
+            if attempt:
+                raise
+            time.sleep(0.5)
     resp.raise_for_status()
     data = resp.json()
     choice = data["choices"][0]
