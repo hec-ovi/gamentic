@@ -8,7 +8,7 @@ import { createApi } from "./api.js";
 import { mapGameState, mapBeats, mapProfile, voiceForBeat, presentCharacters } from "./adapters.js";
 import { diffState, buildNotices } from "./transitions.js";
 import { Voice } from "./voice.js";
-import { renderApp, HELP, escapeHtml } from "./render.js";
+import { renderApp, HELP, escapeHtml, stripWrappingQuotes } from "./render.js";
 import { serializeComposer, insertChip, clearComposer, buildSegment } from "./composer.js";
 import { icon } from "./icons.js";
 
@@ -35,6 +35,8 @@ let lateTimer = null; // post-turn late-image-beat polling (look images, item ca
 // document-level dismiss listener for the tagger popover (tracked so a stale
 // one can never close the next popover)
 let taggerDismiss = null;
+// the per-beat speak button state: { beatId, phase: "loading" | "playing" }
+let speaking = null;
 
 // ---------------------------------------------------------------------------
 // boot. Exported so tests can mount the app against a fresh DOM + mocked network
@@ -180,6 +182,7 @@ function render() {
     // the whisper thread pins itself to the newest line
     if (state.active && state.active.profile) scrollToBottom("#pmThread");
     markArtReveals(state.active);
+    applySpeakStates(); // the rebuild wiped the speak-button states
   }
   if (state.view === "creator") scrollCreator();
 }
@@ -392,6 +395,13 @@ function onAction(act, el) {
     case "open-profile":
       openProfile(el.dataset.charId, el.dataset.charName);
       break;
+    case "profile-tab":
+      if (state.active && state.active.profile) {
+        state.active.profile.tab = el.dataset.tab;
+        render();
+        if (el.dataset.tab === "whisper") focusComposer("#pmInput");
+      }
+      break;
     case "close-profile":
       if (state.active) state.active.profile = null;
       render();
@@ -486,7 +496,7 @@ function onCharAction(el) {
 function openProfile(charId, name) {
   const g = state.active;
   if (!g || !g.state) return;
-  g.profile = { charId, name, mode: "say", stack: [], loading: true, data: null, error: "" };
+  g.profile = { charId, name, tab: "profile", mode: "say", stack: [], loading: true, data: null, error: "" };
   g.give = null;
   render();
   refreshProfile(g);
@@ -827,7 +837,55 @@ async function takeTurn(input) {
   if (empty) return;
   const wish = captureWish(g);
   const look = Array.isArray(input) && input.some((s) => s.type === "look");
-  await resolveTurn(g, () => api.takeAction(g.id, input, wish), { look });
+  await resolveTurn(g, () => api.takeAction(g.id, input, wish), { look, echo: echoBeats(g, input) });
+}
+
+// Optimistic echo: the player's own line shows the moment they send it (the
+// backend's canonical echo replaces it when the turn resolves). The texts
+// mirror the wire's echo phrasing so speech renders as speech immediately.
+let pendingSeq = 0;
+function echoBeats(g, input) {
+  const mk = (text, privateWith = null) => ({
+    id: `pending-${++pendingSeq}`,
+    turnIndex: null,
+    seq: 0,
+    kind: "action",
+    speaker: "player",
+    speakerName: null,
+    text,
+    location: null,
+    imageUrl: null,
+    audioUrl: null,
+    privateWith,
+    voiceId: null,
+    pending: true,
+  });
+  if (!Array.isArray(input)) return [mk(String(input))];
+  const beats = [];
+  for (const seg of input) {
+    if (seg.type === "say") {
+      beats.push(mk(`you say "${seg.text}"${seg.target ? ` to ${seg.target}` : ""}`));
+    } else if (seg.type === "whisper") {
+      // route into the open profile's private thread
+      const pf = g.profile;
+      const cid = pf && (pf.name === seg.target || pf.charId === seg.target) ? pf.charId : seg.target;
+      beats.push(
+        mk(
+          seg.mode === "do" ? `you discreetly: ${seg.text}` : `you whisper to ${seg.target}: "${seg.text}"`,
+          cid,
+        ),
+      );
+    } else if (seg.type === "look") {
+      beats.push(mk(seg.text ? `you look at ${seg.text}` : "you study the scene"));
+    } else if (seg.type === "attack") {
+      beats.push(mk(`you attack ${seg.target}`));
+    } else if (seg.type === "give") {
+      beats.push(mk(`you offer ${seg.item} to ${seg.target}`));
+    } else if (seg.text) {
+      beats.push(mk(seg.text));
+    }
+  }
+  return beats;
 }
 
 // "Continue": the narrator advances the story with no player input. Same
@@ -850,15 +908,19 @@ function captureWish(g) {
 }
 
 // Shared turn resolver (action / continue): one POST -> { beats, state },
-// then the diff cues, the staged reveal, and the post-turn image watch.
-async function resolveTurn(g, send, { look = false } = {}) {
+// then the diff cues, the staged reveal, and the post-turn image watch. The
+// optimistic `echo` beats render instantly and are swapped for the backend's
+// canonical player echoes when the response lands (or dropped on failure).
+async function resolveTurn(g, send, { look = false, echo = null } = {}) {
   g.generating = true;
   g.skipReveal = true; // fast-forward any reveal still running from last turn
   stopLateWatch(); // the new turn supersedes the previous watch window
+  if (echo && echo.length) g.beats = [...g.beats, ...echo];
   render();
 
   try {
     const turn = await send();
+    g.beats = g.beats.filter((b) => !b.pending); // the canonical echoes replace ours
     const prevState = g.state;
     g.state = mapGameState(turn.state);
     g.changes = diffState(prevState, g.state); // what transitioned this turn
@@ -875,6 +937,7 @@ async function resolveTurn(g, send, { look = false } = {}) {
     g.pendingView = Boolean(look && g.state.imagesEnabled);
     state.backendOnline = true;
   } catch (err) {
+    g.beats = g.beats.filter((b) => !b.pending); // the turn never happened
     state.backendError = err.message || "Turn failed";
     if (err.status === 0) state.backendOnline = false;
     showToast(err.message || "The backend did not accept that action.");
@@ -1064,7 +1127,9 @@ function typeTargets(el) {
 // DOM: a mid-reveal re-render rebuilds the nodes with full text, and we keep
 // typing into the fresh ones from our own position.
 async function typewrite(g, beat, cps) {
-  const paras = beat.kind === "narration" ? String(beat.text || "").split(/\n{2,}/) : [String(beat.text || "")];
+  // dialogue types the same quote-stripped text the bubble renders
+  const paras =
+    beat.kind === "narration" ? String(beat.text || "").split(/\n{2,}/) : [stripWrappingQuotes(beat.text)];
   const step = Math.max(1, Math.round((cps * REVEAL_TICK) / 1000));
   const els = () => [...root.querySelectorAll(`[data-beat-id="${cssId(beat.id)}"]`)];
 
@@ -1379,11 +1444,52 @@ function withVoice(beat) {
   return { ...beat, voiceId: voiceForBeat(beat, state.active && state.active.state) };
 }
 
-function speakBeat(beatId) {
+// The per-beat speak button is a little state machine: click -> LOADING while
+// the line synthesizes, PLAYING while the audio runs (click again to stop),
+// then back to the plain speaker when it finishes.
+async function speakBeat(beatId) {
   const g = state.active;
   const beat = g && g.beats.find((b) => b.id === beatId);
   if (!beat) return;
-  voice.speak({ text: beat.text, voiceId: beat.voiceId, speakerId: beat.speaker });
+  if (speaking && speaking.beatId === beatId) {
+    // clicking the busy beat again stops it
+    voice.stop();
+    setSpeaking(null);
+    return;
+  }
+  setSpeaking({ beatId, phase: "loading" });
+  const prepared = await voice.prepare({ text: beat.text, voiceId: beat.voiceId });
+  if (!speaking || speaking.beatId !== beatId) return; // stopped or superseded meanwhile
+  if (!prepared) return setSpeaking(null); // synth failed; the text is on screen
+  const el = voice.playUrl(prepared.audioUrl, beat.speaker);
+  if (!el) return setSpeaking(null);
+  setSpeaking({ beatId, phase: "playing" });
+  const done = () => {
+    if (speaking && speaking.beatId === beatId) setSpeaking(null);
+  };
+  el.addEventListener("ended", done);
+  el.addEventListener("pause", done); // stop() pauses
+  el.addEventListener("error", done);
+}
+
+function setSpeaking(next) {
+  speaking = next;
+  applySpeakStates();
+}
+
+// Patch the speak buttons in place (no full render: never disturb reading or a
+// running typewriter). render() re-applies it after every rebuild.
+function applySpeakStates() {
+  root.querySelectorAll('[data-act="speak-beat"]').forEach((btn) => {
+    const mine = speaking && btn.dataset.beatId === speaking.beatId;
+    const loading = Boolean(mine && speaking.phase === "loading");
+    const playing = Boolean(mine && speaking.phase === "playing");
+    btn.classList.toggle("speak-loading", loading);
+    btn.classList.toggle("speak-playing", playing);
+    const label = loading ? "Preparing voice..." : playing ? "Stop voice" : "Play voice";
+    btn.setAttribute("aria-label", label);
+    btn.setAttribute("title", label);
+  });
 }
 
 // (turn autoplay is handled by the staged reveal: each speech beat's audio is

@@ -32,6 +32,23 @@ function help(key) {
   return `<button type="button" class="help-dot" data-help="${key}" aria-label="What is this?" title="What is this?">?</button>`;
 }
 
+// Speech text sometimes arrives wrapped in literal quote marks; the bubble IS
+// the quotation, so showing them doubles up. Strip one wrapping pair only.
+export function stripWrappingQuotes(value) {
+  const t = String(value ?? "").trim();
+  const pairs = [
+    ['"', '"'],
+    ["“", "”"], // curly double
+    ["‘", "’"], // curly single
+  ];
+  for (const [a, b] of pairs) {
+    if (t.length > 1 && t.startsWith(a) && t.endsWith(b)) {
+      return t.slice(a.length, t.length - b.length).trim();
+    }
+  }
+  return t;
+}
+
 export function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -769,35 +786,102 @@ function renderProfile(s, g) {
     </div>`;
 }
 
+// The right column is TABBED: Profile (status: who they are, what they carry),
+// Traits (the personality card collection), Memory (shared moments + image
+// memories), Whisper (the private channel). The art + name stay on the left.
+const PROFILE_TABS = [
+  { id: "profile", label: "Profile", icon: "mask" },
+  { id: "traits", label: "Traits", icon: "sparkles" },
+  { id: "memory", label: "Memory", icon: "eye" },
+  { id: "whisper", label: "Whisper", icon: "mic" },
+];
+
+const GROW_NOTE = `<p class="profile-empty muted">The more you interact with your characters, the more their traits and personality will grow from your interactions.</p>`;
+
 function profileBody(s, g, d, locked) {
-  const hp =
-    d.life != null && d.maxLife
-      ? `<div class="char-hp" title="${d.life}/${d.maxLife}"><div class="hp-track"><div class="hp-fill" style="width:${Math.max(0, Math.min(100, (d.life / d.maxLife) * 100))}%"></div></div></div>`
-      : "";
+  const pf = g.profile;
+  const tab = pf.tab || "profile";
   const art = d.bodyUrl || d.faceUrl
     ? `<img class="profile-art" data-art="${escapeHtml(d.bodyUrl || d.faceUrl)}" src="${escapeHtml(d.bodyUrl || d.faceUrl)}" alt="${escapeHtml(d.name)}" />`
     : `<div class="profile-art fallback" role="img" aria-label="${escapeHtml(d.name)}"><span class="col-initial">${escapeHtml(initials(d.name))}</span></div>`;
 
-  // fresh character: traits and moments grow from play
+  const tabBar = `
+    <div class="profile-tabs" role="tablist" aria-label="Character view">
+      ${PROFILE_TABS.map(
+        (t) =>
+          `<button type="button" role="tab" class="profile-tab${tab === t.id ? " active" : ""}" aria-selected="${tab === t.id}"
+                   data-act="profile-tab" data-tab="${t.id}">${icon(t.icon)}<span>${t.label}</span></button>`,
+      ).join("")}
+    </div>`;
+
+  const pane =
+    tab === "traits"
+      ? profileTraitsPane(d)
+      : tab === "memory"
+        ? profileMemoryPane(d)
+        : tab === "whisper"
+          ? renderWhisperChannel(g, d.name, locked)
+          : profileStatusPane(s, d);
+
+  return `
+    <div class="profile-cols">
+      <div class="profile-left">
+        ${art}
+        <h3 class="profile-name">${escapeHtml(d.name)}</h3>
+      </div>
+      <div class="profile-right">
+        ${tabBar}
+        <div class="profile-pane" role="tabpanel">${pane}</div>
+      </div>
+    </div>`;
+}
+
+// Profile tab: the status sheet - who they are, how they stand, what they carry.
+function profileStatusPane(s, d) {
+  const hp =
+    d.life != null && d.maxLife
+      ? `<div class="char-hp" title="${d.life}/${d.maxLife}"><div class="hp-track"><div class="hp-fill" style="width:${Math.max(0, Math.min(100, (d.life / d.maxLife) * 100))}%"></div></div></div>`
+      : "";
+  // the character's own agent memory lives in state (not the profile endpoint)
+  const stateChar = (s.characters || []).find((x) => x.id === d.id);
   const sparse = !d.traits.length && d.moments.length < 3;
-  const emptyNote = sparse
-    ? `<p class="profile-empty muted">The more you interact with your characters, the more their traits and personality will grow from your interactions.</p>`
-    : "";
+  return `
+    <div class="profile-id">
+      <p class="ins-tags">
+        <span class="disp-badge disp-${escapeHtml(d.disposition)}">${escapeHtml(d.disposition)}</span>
+        ${d.following ? `<span class="ins-tag">following you</span>` : ""}
+        ${!d.alive ? `<span class="ins-tag">fallen</span>` : ""}
+      </p>
+      ${hp}
+      ${d.description ? `<p class="modal-body">${escapeHtml(d.description)}</p>` : ""}
+      ${stateChar ? contextMeter(stateChar.context, { mini: true, label: `${d.name}'s memory` }) : ""}
+      <div class="char-inv">
+        <span class="inv-mini-label">Carrying</span>
+        ${slotGrid(d.carrying, 3, "char-items")}
+      </div>
+      ${sparse ? GROW_NOTE : ""}
+    </div>`;
+}
 
-  const traits = d.traits.length
-    ? `<section class="profile-sec">
-         <h4 class="profile-sec-head">${icon("sparkles")}<span>Traits</span></h4>
-         <ul class="trait-list">
-           ${d.traits
-             .map(
-               (t) =>
-                 `<li class="trait"><span class="trait-text">${escapeHtml(t.text)}</span>${t.unlocked ? `<span class="trait-stamp">unlocked: ${escapeHtml(t.unlocked)}</span>` : ""}</li>`,
-             )
-             .join("")}
-         </ul>
-       </section>`
-    : "";
+// Traits tab: the personality card collection unlocked through play.
+function profileTraitsPane(d) {
+  if (!d.traits.length) return GROW_NOTE;
+  return `
+    <ul class="trait-list">
+      ${d.traits
+        .map(
+          (t) =>
+            `<li class="trait"><span class="trait-text">${escapeHtml(t.text)}</span>${t.unlocked ? `<span class="trait-stamp">unlocked: ${escapeHtml(t.unlocked)}</span>` : ""}</li>`,
+        )
+        .join("")}
+    </ul>`;
+}
 
+// Memory tab: the moments shared with them + story images as memories.
+function profileMemoryPane(d) {
+  if (!d.moments.length && !d.memories.length) {
+    return `<p class="profile-empty muted">Nothing shared yet. The moments you live together will gather here.</p>`;
+  }
   const moments = d.moments.length
     ? `<section class="profile-sec">
          <h4 class="profile-sec-head">${icon("scroll")}<span>Moments</span></h4>
@@ -807,14 +891,13 @@ function profileBody(s, g, d, locked) {
                (m) =>
                  `<li class="moment ${m.speaker === "player" ? "from-you" : "from-them"}${m.private ? " private" : ""}">
                     <span class="moment-who">${m.speaker === "player" ? "You" : escapeHtml(d.name)}${m.private ? ` <i class="moment-private" title="A private exchange">${icon("mic")}private</i>` : ""}</span>
-                    <span class="moment-text">${escapeHtml(m.text)}</span>
+                    <span class="moment-text">${escapeHtml(stripWrappingQuotes(m.text))}</span>
                   </li>`,
              )
              .join("")}
          </ul>
        </section>`
     : "";
-
   const memories = d.memories.length
     ? `<section class="profile-sec">
          <h4 class="profile-sec-head">${icon("eye")}<span>Memories</span></h4>
@@ -828,41 +911,7 @@ function profileBody(s, g, d, locked) {
          </div>
        </section>`
     : "";
-
-  const carrying = `
-    <div class="char-inv">
-      <span class="inv-mini-label">Carrying</span>
-      ${slotGrid(d.carrying, 3, "char-items")}
-    </div>`;
-
-  // the character's own agent memory lives in state (not the profile endpoint)
-  const stateChar = (s.characters || []).find((x) => x.id === d.id);
-
-  return `
-    <div class="profile-cols">
-      <div class="profile-left">
-        ${art}
-        <div class="profile-id">
-          <h3 class="profile-name">${escapeHtml(d.name)}</h3>
-          <p class="ins-tags">
-            <span class="disp-badge disp-${escapeHtml(d.disposition)}">${escapeHtml(d.disposition)}</span>
-            ${d.following ? `<span class="ins-tag">following you</span>` : ""}
-            ${!d.alive ? `<span class="ins-tag">fallen</span>` : ""}
-          </p>
-          ${hp}
-          ${d.description ? `<p class="modal-body">${escapeHtml(d.description)}</p>` : ""}
-          ${stateChar ? contextMeter(stateChar.context, { mini: true, label: `${d.name}'s memory` }) : ""}
-          ${carrying}
-        </div>
-      </div>
-      <div class="profile-right">
-        ${emptyNote}
-        ${traits}
-        ${moments}
-        ${memories}
-        ${renderWhisperChannel(g, d.name, locked)}
-      </div>
-    </div>`;
+  return moments + memories;
 }
 
 // The private channel: whisper-only, 1:1, lives in the profile. private_with
@@ -1044,7 +1093,8 @@ function inspectBeat(g, ins) {
 
 // Compact beat rendering inside the private whisper thread. data-beat-id + the
 // .pm-text span let the staged reveal typewrite private replies too. Narration
-// stays unlabeled here too (no "Narrator" tag anywhere).
+// stays unlabeled here too (no "Narrator" tag anywhere), and no literal quote
+// marks: the player's own speech echoes show just what was said.
 function renderPmBeat(beat) {
   if (beat.kind === "system") {
     return `<div class="pm-line pm-system" data-beat-id="${escapeHtml(beat.id)}">${escapeHtml(beat.text)}</div>`;
@@ -1054,8 +1104,10 @@ function renderPmBeat(beat) {
   }
   const mine = !beat.speaker || beat.speaker === "player";
   const deed = beat.kind === "action";
-  return `<div class="pm-line ${mine ? "pm-you" : "pm-them"}${deed ? " pm-deed" : ""}" data-beat-id="${escapeHtml(beat.id)}">
-            ${!mine && beat.speakerName ? `<b>${escapeHtml(beat.speakerName)}</b> ` : ""}<span class="pm-text">${escapeHtml(beat.text)}</span>
+  const sp = mine ? playerSpeech(beat) : null;
+  const text = sp ? sp.quote : stripWrappingQuotes(beat.text);
+  return `<div class="pm-line ${mine ? "pm-you" : "pm-them"}${deed && !sp ? " pm-deed" : ""}" data-beat-id="${escapeHtml(beat.id)}">
+            ${!mine && beat.speakerName ? `<b>${escapeHtml(beat.speakerName)}</b> ` : ""}<span class="pm-text">${escapeHtml(text)}</span>
           </div>`;
 }
 
@@ -1263,7 +1315,7 @@ function renderDialogue(beat, g) {
       ${avatar}
       <div class="bubble">
         <span class="bubble-name">${escapeHtml(name)}</span>
-        <p>${escapeHtml(beat.text)}</p>
+        <p>${escapeHtml(stripWrappingQuotes(beat.text))}</p>
         ${beat.voiceId ? speakBtn(beat) : ""}
       </div>
     </article>`;

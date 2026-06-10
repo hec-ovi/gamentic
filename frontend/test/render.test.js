@@ -232,39 +232,54 @@ const PROFILE_DATA = {
 
 function profileOpen(data, extra = {}) {
   return scenePlay({
-    profile: { charId: "c1", name: "Jacker", mode: "say", stack: [], loading: false, data: data ? mapProfile(data) : null, error: "", ...extra },
+    profile: { charId: "c1", name: "Jacker", tab: "profile", mode: "say", stack: [], loading: false, data: data ? mapProfile(data) : null, error: "", ...extra },
   });
 }
 
-test("the full-screen profile shows traits with unlock stamps, moments (private marked) and memories", () => {
+test("the profile is TABBED: Profile/Traits/Memory/Whisper, with the status sheet as the default", () => {
   const el = parse(renderApp(profileOpen(PROFILE_DATA)));
   const screen = el.querySelector(".profile-screen");
   assert.ok(screen, "full-screen profile present");
   assert.equal(screen.getAttribute("role"), "dialog");
-  // traits as bullets with their unlock stamp
-  const trait = screen.querySelector(".trait");
+  // the four tabs
+  const tabs = [...screen.querySelectorAll('[data-act="profile-tab"]')].map((t) => t.dataset.tab);
+  assert.deepEqual(tabs, ["profile", "traits", "memory", "whisper"]);
+  assert.equal(screen.querySelector(".profile-tab.active").dataset.tab, "profile");
+  // the default Profile tab is the status sheet: identity, description, carrying
+  assert.ok(screen.querySelector(".disp-badge"), "disposition on the status sheet");
+  assert.ok(/Bartender/.test(screen.querySelector(".profile-pane").textContent), "description on the status sheet");
+  const inv = screen.querySelector(".char-inv");
+  assert.ok(inv, "carrying lives on the status sheet");
+  assert.ok(inv.children[0].classList.contains("inv-mini-label"), "label row above the items row");
+  // the big art + name stay outside the tabs
+  assert.equal(screen.querySelector(".profile-art").getAttribute("src"), "/media/g2/jacker-body.png");
+  assert.ok(/Jacker/.test(screen.querySelector(".profile-name").textContent));
+  // other panes are NOT rendered while their tab is inactive
+  assert.equal(screen.querySelector(".trait"), null);
+  assert.equal(screen.querySelector(".whisper-sec"), null);
+});
+
+test("the Traits tab lists the unlocked traits with their stamps", () => {
+  const el = parse(renderApp(profileOpen(PROFILE_DATA, { tab: "traits" })));
+  const trait = el.querySelector(".profile-pane .trait");
   assert.ok(/distrusts authority/.test(trait.textContent));
   assert.ok(/unlocked: Day 2, evening/.test(trait.querySelector(".trait-stamp").textContent));
-  // moments: shared lines, private ones marked
-  const moments = [...screen.querySelectorAll(".moment")];
+});
+
+test("the Memory tab holds the shared moments (private marked) and the image memories", () => {
+  const el = parse(renderApp(profileOpen(PROFILE_DATA, { tab: "memory" })));
+  const pane = el.querySelector(".profile-pane");
+  const moments = [...pane.querySelectorAll(".moment")];
   assert.equal(moments.length, 3);
   assert.ok(moments[1].classList.contains("private"), "the private exchange is marked");
   assert.ok(/private/.test(moments[1].querySelector(".moment-private").textContent));
-  // memories: the image strip
-  const memory = screen.querySelector(".memory img");
-  assert.equal(memory.getAttribute("src"), "/media/g2/bar.png");
-  // the big art
-  assert.equal(screen.querySelector(".profile-art").getAttribute("src"), "/media/g2/jacker-body.png");
-  // carrying block: label row above the items row
-  const inv = screen.querySelector(".char-inv");
-  assert.ok(inv.children[0].classList.contains("inv-mini-label"));
+  assert.equal(pane.querySelector(".memory img").getAttribute("src"), "/media/g2/bar.png");
 });
 
-test("the profile hosts THE whisper composer (say/do, no look); the main composer keeps rendering behind", () => {
-  const el = parse(renderApp(profileOpen(PROFILE_DATA)));
-  const screen = el.querySelector(".profile-screen");
-  const whisper = screen.querySelector(".whisper-sec");
-  assert.ok(whisper, "whisper channel lives in the profile");
+test("the Whisper tab hosts THE whisper composer (say/do, no look)", () => {
+  const el = parse(renderApp(profileOpen(PROFILE_DATA, { tab: "whisper" })));
+  const whisper = el.querySelector(".profile-pane .whisper-sec");
+  assert.ok(whisper, "whisper channel lives in the profile's whisper tab");
   assert.ok(/only jacker/i.test(whisper.querySelector(".pm-hint").textContent), "explains privacy");
   assert.ok(whisper.querySelector("#pmInput"), "own composer");
   assert.ok(whisper.querySelector('[data-act="pm-mode"][data-mode="do"]'), "say/do modes");
@@ -292,20 +307,32 @@ test("private (whisper) beats never appear in the public story stream", () => {
   assert.equal(/Secret aside/.test(story.textContent), false, "private beat hidden from public story");
 });
 
-test("the profile's whisper thread shows the private 1:1 beats (and only them); player lines mirror", () => {
+test("the profile's whisper thread shows the private 1:1 beats (and only them); player lines mirror, quote-free", () => {
   const withEcho = [
     ...PRIV_BEATS,
     ...mapBeats([{ id: "p3", turn_index: 2, seq: 0, speaker: "player", kind: "action", text: 'you whisper to Jacker: "psst"', private_with: "c1" }]),
   ];
-  const st = profileOpen(PROFILE_DATA);
+  const st = profileOpen(PROFILE_DATA, { tab: "whisper" });
   st.active.beats = withEcho;
   const el = parse(renderApp(st));
   const thread = el.querySelector("#pmThread");
   assert.ok(/Secret aside/.test(thread.textContent), "private beat shown in the profile thread");
   assert.equal(/Public line/.test(thread.textContent), false, "public beats stay out of the whisper thread");
-  assert.ok(thread.querySelector('.pm-line.pm-you[data-beat-id="p3"]'), "the player's whisper echo mirrors as pm-you");
+  const mine = thread.querySelector('.pm-line.pm-you[data-beat-id="p3"]');
+  assert.ok(mine, "the player's whisper echo mirrors as pm-you");
+  assert.equal(mine.querySelector(".pm-text").textContent, "psst", "just what was said, no quote marks, no wrapper text");
   // and the public story behind the profile still hides the secret
   assert.equal(/Secret aside/.test(el.querySelector("#storyStream").textContent), false);
+});
+
+test("literal quote marks are stripped from speech: the bubble IS the quotation", () => {
+  const beats = mapBeats([
+    { id: "q1", turn_index: 1, seq: 0, speaker: "c1", speaker_name: "Edda", kind: "dialogue", text: '"Stay back."' },
+    { id: "q2", turn_index: 1, seq: 1, speaker: "c1", speaker_name: "Edda", kind: "dialogue", text: "“Come closer.”" },
+  ]);
+  const el = parse(renderApp(playState({ beats })));
+  assert.equal(el.querySelector('[data-beat-id="q1"] .bubble p').textContent, "Stay back.");
+  assert.equal(el.querySelector('[data-beat-id="q2"] .bubble p').textContent, "Come closer.");
 });
 
 // ---- the new contract fields in the deck ----
@@ -507,7 +534,7 @@ test("the export choice modal offers the two flavors for that card", () => {
 });
 
 test("the whisper hint sells privacy: only the character is named, never the narrator", () => {
-  const el = parse(renderApp(profileOpen(PROFILE_DATA)));
+  const el = parse(renderApp(profileOpen(PROFILE_DATA, { tab: "whisper" })));
   const hint = el.querySelector(".whisper-sec .pm-hint");
   assert.ok(/Only Jacker will ever know this\./.test(hint.textContent));
   assert.equal(/narrator/i.test(hint.textContent), false, "no narrator mention in the private channel");

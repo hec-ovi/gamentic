@@ -1423,6 +1423,38 @@ button.cast-row:hover { border-color: var(--holo-cyan); }
 .lib-import svg { width: 0.95em; height: 0.95em; }
 .export-actions { flex-wrap: wrap; }
 
+/* ---- profile tabs: Profile | Traits | Memory | Whisper ---- */
+.profile-tabs { display: flex; gap: 0; }
+.profile-tab {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+  padding: 0.55rem 0.6rem; border: 1px solid var(--holo-line-soft); background: rgba(7, 14, 26, 0.55);
+  color: var(--holo-dim); font-family: var(--holo-display); font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;
+}
+.profile-tab + .profile-tab { margin-left: -1px; }
+.profile-tab:first-child { clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px); }
+.profile-tab:last-child { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%); }
+.profile-tab svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; }
+.profile-tab.active { color: var(--holo-cyan); border-color: var(--holo-cyan); background: rgba(47, 230, 255, 0.1); }
+.profile-tab.active[data-tab="whisper"] { color: var(--gold); border-color: var(--gold); background: rgba(242, 184, 75, 0.1); }
+.profile-pane { display: flex; flex-direction: column; gap: 1rem; min-height: 0; }
+.profile-screen .whisper-sec { border-top: none; padding-top: 0; }
+
+/* ---- the speak button as a state machine: idle -> loading -> playing ---- */
+.speak-btn { position: relative; }
+.speak-btn.speak-loading { color: var(--holo-dim); cursor: progress; }
+.speak-btn.speak-loading svg { opacity: 0.3; }
+.speak-btn.speak-loading::after {
+  content: ""; position: absolute; inset: 2px; border-radius: 50%;
+  border: 1px solid transparent; border-top-color: var(--holo-cyan); border-right-color: var(--holo-cyan);
+  animation: spin 0.9s linear infinite;
+}
+.speak-btn.speak-playing { color: var(--gold); border-color: var(--gold); }
+.speak-btn.speak-playing svg { animation: speak-pulse 1s ease-in-out infinite; }
+@keyframes speak-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.25); opacity: 0.65; }
+}
+
 @media (max-width: 760px) {
   .profile-cols { grid-template-columns: 1fr; }
   .profile-left { position: static; flex-direction: row; align-items: flex-start; }

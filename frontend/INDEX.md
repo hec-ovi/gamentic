@@ -30,13 +30,16 @@ Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> `adap
 | The integrated deck (scene, items, exits, vitals, goal, clock, meter) | `render.js` (renderPlayDeck, contextMeter) | `test/render.test.js` |
 | Context meter format ("4.2k / 128k", tones) | `render.js` (contextMeter) | `test/render.test.js` |
 | Character columns + light action row | `render.js` (renderCharColumn, castRow) | `test/render.test.js` |
-| Full-screen character profile (traits, moments, memories) | `render.js` (renderProfile), `app.js` (openProfile, refreshProfile), `adapters.js` (mapProfile) | `test/render.test.js`, `test/play.component.test.js` |
+| Full-screen character profile (tabs: status/traits/memory/whisper) | `render.js` (renderProfile, profileBody, the pane builders), `app.js` (openProfile, refreshProfile, profile-tab), `adapters.js` (mapProfile) | `test/render.test.js`, `test/play.component.test.js` |
 | Whisper channel (in the profile; scroll pin; voice on replies) | `render.js` (renderWhisperChannel, renderPmBeat), `app.js` (executePrivate, followStory) | `test/play.component.test.js` |
 | Composer: Do/Say/Look modes, chips, stacking | `render.js` (renderComposer), `composer.js`, `app.js` (executeComposer, setComposerMode) | `test/composer.test.js`, `test/interaction.test.js`, `test/play.component.test.js` |
 | Look action (button, empty = whole scene, scene Look/Search rewire) | `app.js` (takeSceneAction, executeComposer), `composer.js` (buildSegment) | `test/play.component.test.js` |
 | Continue + the wish line | `render.js` (renderActionBar), `app.js` (continueStory, captureWish) | `test/play.component.test.js` |
 | Partial busy-lock (read-only stays live) | `app.js` (MUTATING_ACTS), `render.js` (per-control `disabled`) | `test/play.component.test.js`, `test/interaction.test.js` |
 | Staged reveal (typewriter, veils, click to skip, voice pacing) | `app.js` (startReveal, revealBeat, typewrite) | `test/play.component.test.js` |
+| Optimistic player echo (instant lines, swap on resolve) | `app.js` (echoBeats, resolveTurn) | `test/play.component.test.js` |
+| Quote stripping on speech | `render.js` (stripWrappingQuotes) | `test/render.test.js` |
+| Speak button states (loading/playing/idle) | `app.js` (speakBeat, applySpeakStates) | `test/play.component.test.js` |
 | Scene-art anchoring (establishing narration, never "latest") | `render.js` (renderStory, sceneArtCard) | `test/render.test.js`, `test/play.component.test.js` |
 | Late image beats (look shots, item unlock cards) | `app.js` (watchLateBeats), `render.js` (renderImageBeat, renderViewPending) | `test/play.component.test.js`, `test/render.test.js` |
 | Item thumbnails + tap-to-inspect + /explain | `render.js` (slot builders, renderInspectModal), `app.js` (openInspect, doExplain) | `test/play.component.test.js` |

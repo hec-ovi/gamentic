@@ -296,18 +296,19 @@ test("clicking a character card opens the FULL-SCREEN profile fed by GET /profil
   await gotoPlay(u);
   await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
   expect(await screen.findByRole("dialog", { name: /jacker's profile/i })).toBeTruthy();
-  // traits with their unlock stamp (the personality card collection); the data
-  // lands async, and the screen re-renders, so query the live node each time
-  await waitFor(() => expect(within(profileEl()).getByText(/distrusts authority/)).toBeTruthy());
+  // the default tab is the status sheet (the data lands async and the screen
+  // re-renders, so query the live node each time)
+  await waitFor(() => expect(within(profileEl()).getByText("neutral")).toBeTruthy());
+  expect(within(profileEl()).getByText(/watchful bartender/i)).toBeTruthy();
+  // Traits tab: the unlock stamps
+  await u.click(within(profileEl()).getByRole("tab", { name: /traits/i }));
+  expect(within(profileEl()).getByText(/distrusts authority/)).toBeTruthy();
   expect(within(profileEl()).getByText(/unlocked: Day 2, evening/)).toBeTruthy();
-  // moments, the private one marked
+  // Memory tab: moments (private marked) + the image strip
+  await u.click(within(profileEl()).getByRole("tab", { name: /memory/i }));
   expect(within(profileEl()).getByText("Keep it quiet.")).toBeTruthy();
   expect(document.querySelector(".moment.private")).toBeTruthy();
-  // memories image strip
   expect(document.querySelector('.memory img[src="/media/g-test/bar.png"]')).toBeTruthy();
-  // identity facts
-  expect(within(profileEl()).getByText("neutral")).toBeTruthy();
-  expect(within(profileEl()).getByText(/watchful bartender/i)).toBeTruthy();
   // closing returns to the scene
   await u.click(within(profileEl()).getByRole("button", { name: /back to the scene/i }));
   expect(document.querySelector(".profile-screen")).toBeNull();
@@ -390,6 +391,8 @@ test("the whisper channel lives in the profile: the secret renders in its thread
   await gotoPlay(u);
   await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
   await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getByRole("tab", { name: /whisper/i })).toBeTruthy());
+  await u.click(within(profileEl()).getByRole("tab", { name: /whisper/i }));
   await waitFor(() => expect(within(profileEl()).getAllByText(/only jacker/i).length).toBeGreaterThan(0));
 
   await u.type(pmBox(/what you say/i), "tell me the secret");
@@ -421,6 +424,8 @@ test("the whisper thread pins itself to the newest line when a reply lands", asy
     await gotoPlay(u);
     await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
     await screen.findByRole("dialog", { name: /jacker's profile/i });
+    await waitFor(() => expect(within(profileEl()).getByRole("tab", { name: /whisper/i })).toBeTruthy());
+    await u.click(within(profileEl()).getByRole("tab", { name: /whisper/i }));
     await waitFor(() => expect(pmBox(/what you say/i)).toBeTruthy());
     await u.type(pmBox(/what you say/i), "come closer");
     await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
@@ -454,6 +459,8 @@ test("whisper replies SPEAK with the character's voice through the speak pipelin
 
   await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
   await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getByRole("tab", { name: /whisper/i })).toBeTruthy());
+  await u.click(within(profileEl()).getByRole("tab", { name: /whisper/i }));
   await waitFor(() => expect(pmBox(/what you say/i)).toBeTruthy());
   await u.type(pmBox(/what you say/i), "shh");
   await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
@@ -462,6 +469,97 @@ test("whisper replies SPEAK with the character's voice through the speak pipelin
     expect(prepared).toHaveBeenCalledWith(expect.objectContaining({ text: "Hush now.", voiceId: "vx-jacker" })),
   );
 }, 10000);
+
+test("optimistic echo: the player's line shows the moment it is sent, then the canonical echo replaces it", async () => {
+  const u = user();
+  server.use(
+    http.post(`${API}/games/:id/action`, async () => {
+      await delay(400);
+      return HttpResponse.json({
+        beats: [
+          makeBeat({ id: "pe1", kind: "action", speaker: "player", text: 'you say "hello there" to Jacker' }),
+          makeBeat({ id: "pn1", kind: "narration", text: "Jacker raises an eyebrow." }),
+        ],
+        state: makeState(),
+      });
+    }),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /^say$/i }));
+  await u.type(cmpBox(), "hello there");
+  await u.click(screen.getByRole("button", { name: /send/i }));
+
+  // BEFORE the backend answers: the line is already on screen, as a mirrored speech bubble
+  const pending = document.querySelector('#storyStream [data-beat-id^="pending-"]');
+  expect(pending).toBeTruthy();
+  expect(pending.classList.contains("from-player")).toBe(true);
+  expect(pending.querySelector(".bubble p").textContent).toBe("hello there");
+
+  // AFTER: the canonical echo replaced it - exactly one copy of the line remains
+  await waitFor(() => expect(screen.getByText(/raises an eyebrow/)).toBeTruthy(), { timeout: 4000 });
+  expect(document.querySelector('[data-beat-id^="pending-"]')).toBeNull();
+  expect(screen.getAllByText("hello there").length).toBe(1);
+}, 10000);
+
+test("optimistic echo in the whisper thread; a failed turn takes the echo back", async () => {
+  const u = user();
+  server.use(http.post(`${API}/games/:id/action`, async () => {
+    await delay(300);
+    return new HttpResponse(null, { status: 502 });
+  }));
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getByRole("tab", { name: /whisper/i })).toBeTruthy());
+  await u.click(within(profileEl()).getByRole("tab", { name: /whisper/i }));
+  await waitFor(() => expect(pmBox(/what you say/i)).toBeTruthy());
+  await u.type(pmBox(/what you say/i), "psst");
+  await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
+
+  // instantly in the PRIVATE thread (and nowhere else), just the said words
+  const mine = document.querySelector('#pmThread [data-beat-id^="pending-"]');
+  expect(mine).toBeTruthy();
+  expect(mine.querySelector(".pm-text").textContent).toBe("psst");
+  expect(within(document.querySelector("#storyStream")).queryByText(/psst/)).toBeNull();
+
+  // the turn fails: the echo is taken back (the toast explains)
+  await waitFor(() => expect(document.querySelector(".toast")).toBeTruthy(), { timeout: 4000 });
+  await waitFor(() => expect(document.querySelector('[data-beat-id^="pending-"]')).toBeNull());
+}, 10000);
+
+test("the speak button walks loading -> playing -> back to idle", async () => {
+  const u = user();
+  const app = await mountApp();
+  // a controllable voice: prepare resolves when we say so; playUrl hands back a fake element
+  let releasePrepare;
+  app.voice.prepare = vi.fn(() => new Promise((res) => (releasePrepare = res)));
+  const fakeAudio = document.createElement("audio");
+  app.voice.playUrl = vi.fn(() => fakeAudio);
+  await u.click(await screen.findByRole("button", { name: /enter your saved worlds/i }));
+  await u.click(await screen.findByRole("button", { name: /^enter$/i }));
+  await screen.findAllByText("The Last Breath");
+
+  const btn = document.querySelector('[data-act="speak-beat"]');
+  expect(btn).toBeTruthy();
+  await u.click(btn);
+
+  // synthesizing: the loading state
+  expect(btn.classList.contains("speak-loading")).toBe(true);
+  expect(btn.getAttribute("aria-label")).toMatch(/preparing voice/i);
+
+  // audio ready: the playing state
+  releasePrepare({ audioUrl: "/audio/x.wav", duration: 2 });
+  await waitFor(() => expect(btn.classList.contains("speak-playing")).toBe(true));
+  expect(btn.getAttribute("aria-label")).toMatch(/stop voice/i);
+
+  // playback finished: back to the plain speaker
+  fakeAudio.dispatchEvent(new Event("ended"));
+  await waitFor(() => {
+    expect(btn.classList.contains("speak-playing")).toBe(false);
+    expect(btn.classList.contains("speak-loading")).toBe(false);
+  });
+  expect(btn.getAttribute("aria-label")).toMatch(/play voice/i);
+});
 
 test("the profile composer's Do mode whispers a discreet private action (mode: do)", async () => {
   const u = user();
@@ -475,6 +573,8 @@ test("the profile composer's Do mode whispers a discreet private action (mode: d
   await gotoPlay(u);
   await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
   await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getByRole("tab", { name: /whisper/i })).toBeTruthy());
+  await u.click(within(profileEl()).getByRole("tab", { name: /whisper/i }));
   await waitFor(() => expect(within(profileEl()).getByRole("button", { name: /^do$/i })).toBeTruthy());
   await u.click(within(profileEl()).getByRole("button", { name: /^do$/i }));
   await u.type(pmBox(/what you do/i), "slip him the key");
