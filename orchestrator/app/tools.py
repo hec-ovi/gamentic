@@ -546,11 +546,11 @@ def _give(conn, gid, args, actor):
         if not moved:
             return _invalid(f"give: {actor['name']} has no '{item}'")
         giver = f"{actor['name']} gives"
-    nm, desc = moved["name"], moved.get("description", "")
+    nm, desc, img = moved["name"], moved.get("description", ""), moved.get("image_url")
     if kind_t == "player":
-        repo.add_item(conn, gid, nm, desc)
+        repo.add_item(conn, gid, nm, desc, image_url=img)    # the item's image travels with it
         return _result("state", f"{giver} {nm} to you.")
-    repo.character_add_item(conn, row["id"], nm, desc)
+    repo.character_add_item(conn, row["id"], nm, desc, image_url=img)
     return _result("state", f"{giver} {nm} to {row['name']}.", reactions=[row["id"]])
 
 

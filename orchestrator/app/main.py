@@ -135,6 +135,10 @@ def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
     if settings.IMAGE_ENABLED and shot:
         background_tasks.add_task(integrate.generate_directed_image, gid,
                                   shot["description"], shot["caption"])
+    new_items = result.pop("new_items", None)                # items newly visible this turn
+    if settings.IMAGE_ENABLED and settings.IMAGE_ITEMS and new_items:
+        for it in new_items[: settings.IMAGE_MAX_ITEMS_PER_TURN]:
+            background_tasks.add_task(integrate.generate_item_image, gid, it["name"])
     return result
 
 

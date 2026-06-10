@@ -74,6 +74,12 @@ class Settings:
     # Adds one LLM call per image (a few seconds, and it shares the single llama.cpp
     # server with turns). Deterministic guards + template fallback still apply. A/B this.
     IMAGE_AGENTIC_PROMPTS = os.getenv("IMAGE_AGENTIC_PROMPTS", "false").lower() == "true"
+    # Item unlock images: a small square card rendered when an item first becomes visible
+    # (obtained, revealed, placed in view), shown as a system image beat and attached to
+    # the item. Capped per turn so a loot shower doesn't queue a render storm.
+    IMAGE_ITEMS = os.getenv("IMAGE_ITEMS", "true").lower() == "true"
+    IMAGE_ITEM_SIZE = int(os.getenv("IMAGE_ITEM_SIZE", "320"))
+    IMAGE_MAX_ITEMS_PER_TURN = int(os.getenv("IMAGE_MAX_ITEMS_PER_TURN", "2"))
     # Spontaneous narrator images (the show_image tool fired WITHOUT the player looking)
     # are allowed only every N turns, so they stay a dramatic beat, not wallpaper.
     # A player look always renders if the narrator calls the tool.

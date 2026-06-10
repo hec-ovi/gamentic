@@ -279,6 +279,10 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
     has_public = bool(public) or bool(action_text) or continue_story
     look_seg = next((s for s in public if (s.get("type") or "").lower() == "look"), None)
 
+    # Snapshot what the player can SEE before the turn; the after-diff finds newly
+    # unlocked items (each gets a small unlock image, rendered in the background).
+    items_before = set(repo.visible_item_index(conn, gid))
+
     # Hybrid story clock: every turn costs a few fictional minutes automatically, so time
     # never freezes; the narrator jumps it with advance_time for rests/journeys/nightfall.
     repo.advance_time(conn, gid, settings.TURN_TIME_MINUTES)
@@ -470,4 +474,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         # the image beat's caption (matches the See-with-focus behavior)
         result["image_request"] = {"description": image_request,
                                    "caption": ((look_seg or {}).get("text") or "").strip()}
+    new_items = [v for k, v in repo.visible_item_index(conn, gid).items()
+                 if k not in items_before and not v.get("image_url")]
+    if new_items:
+        result["new_items"] = new_items   # caller renders their small unlock images
     return result

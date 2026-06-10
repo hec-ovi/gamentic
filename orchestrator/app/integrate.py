@@ -304,6 +304,41 @@ def generate_directed_image(gid: str, description: str, caption: str = "") -> di
                              turn_index=turn, image_url=url)
 
 
+def item_prompt(name: str, description: str, style: str) -> str:
+    """A small unlock card for one item: single centered subject, plain backdrop."""
+    return ", ".join(x for x in (
+        f"Close-up of a single {name}",
+        _strip_quoted(description),
+        "centered on a plain dark surface, soft dramatic light",
+        style, NO_TEXT_GUARD) if x)
+
+
+def generate_item_image(gid: str, name: str) -> dict | None:
+    """Background: render the small unlock image of a newly visible item, attach it to the
+    item wherever it now lives, and land it as a SYSTEM image beat (small card in the chat;
+    system image beats don't count against the narrator's show_image pacing)."""
+    with db.get_conn() as conn:
+        g = repo.get_game(conn, gid)
+        if not g:
+            return None
+        entry = repo.visible_item_index(conn, gid).get(repo.norm_location(name).lower())
+        if not entry or entry.get("image_url"):       # gone from view, or already pictured
+            return None
+        style = g["art_style"] or g["tone"] or ""
+        loc = repo.get_player(conn, gid)["location"]
+        prompt = item_prompt(entry["name"], entry["description"], style)
+    result = media.generate_scene_image(prompt, width=settings.IMAGE_ITEM_SIZE,
+                                        height=settings.IMAGE_ITEM_SIZE)
+    if not result or not result.get("image_url"):
+        return None
+    with db.get_conn() as conn:
+        url = _persist(gid, result["image_url"], f"item-{_slug(name)}")
+        if not repo.set_item_image(conn, gid, name, url):
+            return None                                # the item vanished mid-render
+        return repo.add_beat(conn, gid, "system", None, "image", entry["name"], loc,
+                             image_url=url)
+
+
 def _persist(gid: str, src_url, name: str):
     """Download an image from image-api into the per-game folder; return the /media URL.
     Falls back to the original image-api URL if the download fails (still works, not persisted)."""

@@ -183,17 +183,21 @@ def add_points(conn, gid: str, amount: int) -> int:
     return new
 
 
-def add_item(conn, gid: str, name: str, description: str = "", qty: int = 1) -> None:
+def add_item(conn, gid: str, name: str, description: str = "", qty: int = 1,
+             image_url: str | None = None) -> None:
     name = norm_location(name)   # model-invented snake_case never reaches the player
     p = get_player(conn, gid)
     inv = db.loads(p["inventory"], [])
     for it in inv:
         if it["name"].lower() == name.lower():
             it["qty"] = it.get("qty", 1) + qty
+            if image_url and not it.get("image_url"):
+                it["image_url"] = image_url
             break
     else:
         # ids let the UI's entity chips reference player items precisely (give/transfer)
-        inv.append({"id": _id(), "name": name, "description": description, "qty": qty})
+        inv.append({"id": _id(), "name": name, "description": description, "qty": qty,
+                    "image_url": image_url})
     conn.execute("UPDATE player_state SET inventory=? WHERE game_id=?", (json.dumps(inv), gid))
 
 
@@ -358,19 +362,22 @@ def set_character_life(conn, cid: str, delta: int):
 
 
 def character_add_item(conn, cid: str, name: str, description: str = "",
-                       hidden: bool = False, qty: int = 1, cap: int | None = None) -> str:
+                       hidden: bool = False, qty: int = 1, cap: int | None = None,
+                       image_url: str | None = None) -> str:
     name = norm_location(name)
     c = get_character(conn, cid)
     inv = db.loads(c["inventory"], [])
     for it in inv:
         if it["name"].lower() == name.lower():
             it["qty"] = it.get("qty", 1) + qty
+            if image_url and not it.get("image_url"):
+                it["image_url"] = image_url
             break
     else:
         if cap is not None and len(inv) >= cap:
             return "full"
         inv.append({"id": _id(), "name": name, "description": description,
-                    "image_url": None, "hidden": bool(hidden), "qty": qty})
+                    "image_url": image_url, "hidden": bool(hidden), "qty": qty})
     conn.execute("UPDATE characters SET inventory=? WHERE id=?", (json.dumps(inv), cid))
     return "ok"
 
@@ -607,7 +614,9 @@ def take_scene_item(conn, gid: str, key: str) -> str:
                 return "fixed"
             items.remove(it)
             conn.execute("UPDATE scenes SET items=? WHERE id=?", (json.dumps(items), sc["id"]))
-            add_item(conn, gid, it["name"], it.get("description", ""))
+            # the item's generated image travels with it into the pack
+            add_item(conn, gid, it["name"], it.get("description", ""),
+                     image_url=it.get("image_url"))
             return "ok"
     return "missing"
 
@@ -631,6 +640,39 @@ def offer_scene_action(conn, gid: str, label: str, cap_total: int) -> bool:
     offers.append({"id": _id(), "label": label})
     conn.execute("UPDATE scenes SET offers=? WHERE id=?", (json.dumps(offers), sc["id"]))
     return True
+
+
+def set_item_image(conn, gid: str, name: str, url: str) -> bool:
+    """Attach a generated image to an item WHEREVER it lives now (pack, any scene, any
+    character): the item may have moved while the render ran in the background. Only fills
+    empty slots (an item never swaps an image it already has). Returns True if anything matched."""
+    k = norm_location(name).lower()
+    hit = False
+
+    def _fill(items) -> bool:
+        changed = False
+        for it in items:
+            if norm_location(it["name"]).lower() == k and not it.get("image_url"):
+                it["image_url"] = url
+                changed = True
+        return changed
+
+    p = get_player(conn, gid)
+    inv = db.loads(p["inventory"], [])
+    if _fill(inv):
+        conn.execute("UPDATE player_state SET inventory=? WHERE game_id=?", (json.dumps(inv), gid))
+        hit = True
+    for sc in conn.execute("SELECT * FROM scenes WHERE game_id=?", (gid,)).fetchall():
+        items = db.loads(sc["items"], [])
+        if _fill(items):
+            conn.execute("UPDATE scenes SET items=? WHERE id=?", (json.dumps(items), sc["id"]))
+            hit = True
+    for c in get_characters(conn, gid):
+        items = db.loads(c["inventory"], [])
+        if _fill(items):
+            conn.execute("UPDATE characters SET inventory=? WHERE id=?", (json.dumps(items), c["id"]))
+            hit = True
+    return hit
 
 
 # ---------- quests ----------
@@ -731,12 +773,33 @@ def all_beats(conn, gid: str, since_turn: int = 0):
 
 
 def last_image_turn(conn, gid: str):
-    """The turn_index of the most recent image beat (None if none yet). Used to pace
-    the narrator's spontaneous show_image so images stay special."""
+    """The turn_index of the most recent NARRATOR image beat (None if none yet). Used to
+    pace the narrator's spontaneous show_image so images stay special. System image beats
+    (small item unlock cards) don't count against the narrator's pacing."""
     row = conn.execute(
-        "SELECT MAX(turn_index) AS t FROM beats WHERE game_id=? AND kind='image'",
+        "SELECT MAX(turn_index) AS t FROM beats WHERE game_id=? AND kind='image' "
+        "AND speaker='narrator'",
         (gid,)).fetchone()
     return row["t"]
+
+
+def visible_item_index(conn, gid: str) -> dict:
+    """Every item the player can SEE right now (pack + revealed scene items + revealed
+    items on present characters), keyed by collapsed name. The engine diffs this across
+    a turn to find newly unlocked items (for their small unlock images)."""
+    pd = get_player(conn, gid)
+    out: dict[str, dict] = {}
+
+    def _take(items):
+        for it in items:
+            out.setdefault(norm_location(it["name"]).lower(),
+                           {"name": it["name"], "description": it.get("description") or "",
+                            "image_url": it.get("image_url")})
+    _take(db.loads(pd["inventory"], []))
+    _take(visible_items(current_scene(conn, gid)["items"]))
+    for c in present_characters(conn, gid, pd["location"]):
+        _take(visible_items(c["inventory"]))
+    return out
 
 
 # Model-facing transcript windows exclude kind='image' (a snapshot beat is a URL for the
