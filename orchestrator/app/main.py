@@ -201,6 +201,9 @@ def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
     if settings.IMAGE_ENABLED and shot:
         background_tasks.add_task(integrate.generate_directed_image, gid,
                                   shot["description"], shot["caption"])
+    fallback = result.pop("view_fallback", None)             # a look the narrator didn't render
+    if settings.IMAGE_ENABLED and fallback is not None:
+        background_tasks.add_task(integrate.generate_view_snapshot, gid, fallback or None)
     new_items = result.pop("new_items", None)                # items newly visible this turn
     if settings.IMAGE_ENABLED and settings.IMAGE_ITEMS and new_items:
         for it in new_items[: settings.IMAGE_MAX_ITEMS_PER_TURN]:

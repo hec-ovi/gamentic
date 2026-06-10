@@ -540,6 +540,11 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         # the image beat's caption (matches the See-with-focus behavior)
         result["image_request"] = {"description": image_request,
                                    "caption": ((look_seg or {}).get("text") or "").strip()}
+    elif look_seg:
+        # owner decision: a LOOK always earns an image. The narrator's show_image
+        # description wins when it fired; otherwise fall back to the deterministic
+        # state-grounded snapshot with the look's focus.
+        result["view_fallback"] = ((look_seg or {}).get("text") or "").strip()
     new_items = [v for k, v in repo.visible_item_index(conn, gid).items()
                  if k not in items_before and not v.get("image_url")]
     if new_items:

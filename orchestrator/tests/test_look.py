@@ -110,6 +110,29 @@ def test_show_image_conditions_on_named_characters_identity(client, fake_llm, wo
     assert refs and refs[0].endswith("/media/x/mara-front.png") and refs[0].startswith("http")
 
 
+def test_look_without_show_image_falls_back_to_a_snapshot(client, fake_llm, world,
+                                                          monkeypatch, tmp_path):
+    """Owner decision: a LOOK always earns an image. When the narrator describes but
+    doesn't render, the deterministic snapshot fires with the look's focus."""
+    from app import integrate
+    captured = []
+    _enable_images(monkeypatch, tmp_path, captured)
+    scheduled = []
+    monkeypatch.setattr(integrate, "generate_view_snapshot",
+                        lambda gid, focus=None: scheduled.append(focus))
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(content="You see only frost and iron.")   # no show_image
+    client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "look", "text": "the far wall"}]})
+    assert scheduled == ["the far wall"]
+    # ...but when show_image DID fire, no fallback doubles the render
+    scheduled.clear()
+    fake_llm.narrator = _nar(T("show_image", description="A wall of black iron, rivets weeping rust."),
+                             content="The wall answers your stare.")
+    client.post(f"/games/{gid}/action", json={"segments": [{"type": "look", "text": "the wall again"}]})
+    assert scheduled == []
+
+
 def test_spontaneous_show_image_is_paced(client, fake_llm, world, monkeypatch, tmp_path):
     """Without a player look, narrator-initiated images respect the cooldown; a look
     bypasses it."""

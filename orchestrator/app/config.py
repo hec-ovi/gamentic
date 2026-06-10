@@ -39,7 +39,7 @@ class Settings:
     SUMMARY_ENABLED = os.getenv("SUMMARY_ENABLED", "true").lower() == "true"
     SUMMARY_EVERY_TURNS = int(os.getenv("SUMMARY_EVERY_TURNS", "10"))  # fold cadence
     SUMMARY_KEEP_TURNS = int(os.getenv("SUMMARY_KEEP_TURNS", "8"))     # newest turns never folded
-    SUMMARY_MAX_TOKENS = int(os.getenv("SUMMARY_MAX_TOKENS", "400"))
+    SUMMARY_MAX_TOKENS = int(os.getenv("SUMMARY_MAX_TOKENS", "640"))
     SCENE_BEATS = int(os.getenv("SCENE_BEATS", "14"))       # recent beats a character perceives
     LORE_BUDGET = int(os.getenv("LORE_BUDGET", "8"))        # max lore entries injected
     MAX_CHARACTER_REACTIONS = int(os.getenv("MAX_CHARACTER_REACTIONS", "3"))
