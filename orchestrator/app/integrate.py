@@ -32,7 +32,7 @@ def assign_voices_for_game(conn, gid: str) -> None:
         sheet = " ".join(x for x in (c["description"], c["persona"]) if x).strip() or c["name"]
         vid = media.register_character_voice(
             c["id"], c["name"], sheet,
-            gender=_gender_hint(c["description"], c["persona"], c["appearance"], c["name"]))
+            gender=repo.character_gender(c))   # the stored single source of truth
         if not vid and voices:
             vid = voices[(i + 1) % len(voices)]
         if vid:
@@ -79,8 +79,6 @@ def _slug(s: str) -> str:
 # appearance never says so) and rendered text (FLUX draws any words it finds an
 # excuse for: sign names, lettering, watermarks).
 
-_FEMALE = re.compile(r"\b(woman|women|female|girl|lady|she|her|hers)\b", re.I)
-_MALE = re.compile(r"\b(man|men|male|boy|guy|gentleman|he|him|his)\b", re.I)
 _QUOTED = re.compile(r'["“”][^"“”]*["“”]')   # "..." spans (incl. curly quotes)
 # standalone '...' spans (a ship name like 'Star-Strider') but never apostrophes in words
 _SQUOTED = re.compile(r"(?<!\w)'[^'\n]{1,80}'(?!\w)")
@@ -106,23 +104,15 @@ def _place_text(sc) -> str:
 NO_TEXT_GUARD = "plain unmarked surfaces, no signage"
 
 
-def _gender_hint(*texts) -> str:
-    blob = " ".join(t or "" for t in texts)
-    if _FEMALE.search(blob):
-        return "female"
-    if _MALE.search(blob):
-        return "male"
-    return ""
-
-
 def _gendered_base(c) -> str:
-    """A character's visual base: appearance text with an explicit gender lead. If the
-    appearance itself names no gender, one is inferred from description/persona pronouns."""
+    """A character's visual base: appearance text with an explicit gender lead from the
+    character's STORED gender (decided once at creation), so the portrait can never
+    disagree with the narrator's pronouns. The net (repo.gender_hint) only remains as
+    the fallback inside repo.character_gender for legacy rows."""
     base = (c["appearance"] or c["description"] or c["persona"] or c["name"]).strip()
-    if not _gender_hint(base):
-        hint = _gender_hint(c["description"], c["persona"], c["name"])
-        if hint:
-            base = f"{hint}, {base}"
+    gender = repo.character_gender(c)
+    if gender and not repo.gender_hint(base):
+        base = f"{gender}, {base}"
     return base
 
 

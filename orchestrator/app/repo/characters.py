@@ -1,9 +1,33 @@
-"""Character rows: lookup, life, inventory, traits, offers, and the full-screen profile."""
+"""Character rows: lookup, life, inventory, traits, origin, offers, and the
+full-screen profile. Also home of the gender net: gender is decided ONCE (explicit
+field, or inferred from the sheet at creation) and stored, so image, prose and voice
+can never disagree about it."""
 import json
+import re
 
 from .. import db
 from . import clock, games, items
 from .base import _id, norm_name
+
+_FEMALE = re.compile(r"\b(woman|women|female|girl|lady|she|her|hers)\b", re.I)
+_MALE = re.compile(r"\b(man|men|male|boy|guy|gentleman|he|him|his)\b", re.I)
+
+
+def gender_hint(*texts) -> str:
+    """'female' | 'male' | '' inferred from pronouns/nouns across the given texts."""
+    blob = " ".join(t or "" for t in texts)
+    if _FEMALE.search(blob):
+        return "female"
+    if _MALE.search(blob):
+        return "male"
+    return ""
+
+
+def character_gender(c) -> str:
+    """The character's gender: the stored field, else inferred from their sheet
+    (legacy rows created before the column existed)."""
+    stored = (c["gender"] or "").strip() if "gender" in c.keys() else ""
+    return stored or gender_hint(c["appearance"], c["description"], c["persona"], c["name"])
 
 
 def get_characters(conn, gid: str):
@@ -109,15 +133,20 @@ def character_remove_item(conn, cid: str, key: str, qty: int = 1):
 
 def spawn_character(conn, gid: str, name: str, persona: str, appearance: str = "",
                     knowledge: str = "", location: str | None = None,
-                    life: int = 10) -> str:
-    """Add a character to the game on the fly (dynamic narrator)."""
+                    life: int = 10, gender: str = "", origin: str = "") -> str:
+    """Add a character to the game on the fly (dynamic narrator). Gender is fixed at
+    birth: explicit when given, else inferred once from the sheet, so every consumer
+    (image, prose, voice) agrees from the first moment."""
     from . import players
     location = norm_name(location) if location else players.get_player(conn, gid)["location"]
+    gender = (gender or "").strip().lower()
+    if gender not in ("female", "male"):
+        gender = gender_hint(appearance, persona, name)
     cid = _id()
     conn.execute(
         "INSERT INTO characters (id, game_id, name, persona, knowledge, appearance, "
-        "location, life, max_life, present) VALUES (?,?,?,?,?,?,?,?,?,1)",
-        (cid, gid, name, persona, knowledge, appearance, location, life, life),
+        "location, life, max_life, present, gender, origin) VALUES (?,?,?,?,?,?,?,?,?,1,?,?)",
+        (cid, gid, name, persona, knowledge, appearance, location, life, life, gender, origin),
     )
     return cid
 
@@ -168,6 +197,30 @@ def character_traits(c) -> list[dict]:
             for t in db.loads(c["traits"], [])]
 
 
+def add_origin_fact(conn, cid: str, text: str, cap: int) -> str | None:
+    """The player just LEARNED a piece of this character's past (reveal_origin tool).
+    Returns the cleaned text, or None when duplicate/empty/full. Story-clock stamped.
+    The full origin stays private; only revealed pieces ever reach the profile."""
+    text = " ".join((text or "").split()).strip().rstrip(".")
+    if not text:
+        return None
+    c = get_character(conn, cid)
+    revealed = db.loads(c["origin_revealed"], [])
+    if len(revealed) >= cap or any(r["text"].lower() == text.lower() for r in revealed):
+        return None
+    minutes = games.get_game(conn, c["game_id"])["time_minutes"] or 0
+    revealed.append({"id": _id(), "text": text, "minutes": minutes})
+    conn.execute("UPDATE characters SET origin_revealed=? WHERE id=?",
+                 (json.dumps(revealed), cid))
+    return text
+
+
+def character_origin_revealed(c) -> list[dict]:
+    return [{"id": r["id"], "text": r["text"],
+             "learned": clock.time_at(r.get("minutes") or 0)["label"]}
+            for r in db.loads(c["origin_revealed"], [])]
+
+
 def character_profile(conn, gid: str, cid: str) -> dict | None:
     """The full-screen character view: public card data + unlocked traits + the moments
     shared with the player (their words/acts, including private exchanges) + story images
@@ -196,12 +249,15 @@ def character_profile(conn, gid: str, cid: str) -> dict | None:
     memories.reverse()
     return {
         "id": c["id"], "name": c["name"], "description": c["description"],
+        "gender": character_gender(c),
         "disposition": c["disposition"], "following": bool(c["following"]),
         "alive": bool(c["alive"]), "life": c["life"], "max_life": c["max_life"],
         "face_url": c["face_url"], "body_url": c["body_front_url"],
         "voice_id": c["voice_id"], "color": c["color"],
         "carrying": items.visible_items(c["inventory"]),
         "traits": character_traits(c),
+        # only the pieces of their past the player has LEARNED (the full origin is private)
+        "origin": character_origin_revealed(c),
         "moments": moments,
         "memories": memories,
     }

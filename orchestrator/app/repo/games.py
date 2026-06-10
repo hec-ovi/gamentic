@@ -20,14 +20,20 @@ def create_game(conn, sheet: WorldSheet) -> str:
         "INSERT INTO player_state (game_id, life, max_life, location) VALUES (?,?,?,?)",
         (gid, sheet.player_life, sheet.player_life, start),
     )
+    from . import characters as _chars
     for c in sheet.characters:
+        # gender is decided ONCE here (explicit field, else inferred from the sheet) and
+        # stored, so the portrait, the narrator's pronouns and the voice always agree
+        gender = (c.gender or "").strip().lower()
+        if gender not in ("female", "male"):
+            gender = _chars.gender_hint(c.appearance, c.description, c.persona, c.name)
         conn.execute(
             "INSERT INTO characters (id, game_id, name, persona, description, knowledge, appearance, "
-            "voice_id, color, talkativeness, location, life, max_life, disposition, following) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "voice_id, color, talkativeness, location, life, max_life, disposition, following, "
+            "gender, origin) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (_id(), gid, c.name, c.persona, c.description, c.knowledge, c.appearance,
              c.voice_id, c.color, c.talkativeness, start, c.life, c.max_life,
-             c.disposition, 1 if c.following else 0),
+             c.disposition, 1 if c.following else 0, gender, c.origin),
         )
     for q in sheet.quests:
         qid = _id()

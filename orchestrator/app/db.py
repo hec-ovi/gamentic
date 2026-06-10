@@ -65,7 +65,10 @@ CREATE TABLE IF NOT EXISTS characters (
     following INTEGER DEFAULT 0,      -- moves with the player between scenes
     offers TEXT DEFAULT '[]',         -- narrator-offered contextual actions (JSON list of {id,label})
     context_used INTEGER DEFAULT 0,   -- this character agent's last prompt size (own context meter)
-    traits TEXT DEFAULT '[]'          -- personality traits UNLOCKED through play (JSON list of {id,text,minutes})
+    traits TEXT DEFAULT '[]',         -- personality traits UNLOCKED through play (JSON list of {id,text,minutes})
+    gender TEXT DEFAULT '',           -- 'female' | 'male' | '' - SINGLE source of truth for image/prose/voice
+    origin TEXT DEFAULT '',           -- their backstory (narrator + the character know it; player discovers it)
+    origin_revealed TEXT DEFAULT '[]' -- pieces of the origin the player has learned (JSON list of {id,text,minutes})
 );
 
 CREATE TABLE IF NOT EXISTS quests (
@@ -166,6 +169,9 @@ _MIGRATIONS = {
         "offers": "TEXT DEFAULT '[]'",       # narrator-offered contextual actions (JSON)
         "context_used": "INTEGER DEFAULT 0",
         "traits": "TEXT DEFAULT '[]'",       # personality traits unlocked through play (JSON)
+        "gender": "TEXT DEFAULT ''",
+        "origin": "TEXT DEFAULT ''",
+        "origin_revealed": "TEXT DEFAULT '[]'",
     },
     "games": {
         "scene_status": "TEXT DEFAULT 'calm'",

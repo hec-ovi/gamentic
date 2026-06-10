@@ -10,6 +10,7 @@ def game_state(conn, gid: str) -> dict:
     quest_list = [quests.quest_dict(conn, q) for q in quests.get_quests(conn, gid)]
     chars = [
         {"id": c["id"], "name": c["name"], "description": c["description"],
+         "gender": characters.character_gender(c),
          "voice_id": c["voice_id"], "color": c["color"],
          "present": bool(c["present"]), "location": c["location"],
          "life": c["life"], "max_life": c["max_life"], "alive": bool(c["alive"]),

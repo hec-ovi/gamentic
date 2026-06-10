@@ -52,6 +52,15 @@ def _clean_segment(text: str) -> str:
     return text.strip()
 
 
+def _unquote(text: str) -> str:
+    """Strip WRAPPING quotation marks from a speech segment: the model writes
+    [say]"Far enough."[/say], but a dialogue bubble supplies its own framing, so the
+    quotes read as artifacts on screen. Partial/inner quotes are left alone."""
+    if len(text) >= 2 and text[0] in '"“' and text[-1] in '"”':
+        return text[1:-1].strip()
+    return text
+
+
 def parse_character_output(text: str) -> list[tuple[str, str]]:
     """Split a character's tagged reply into (kind, content) where kind is 'say' or 'do'.
     [say]...[/say] -> speech (dialogue beat); [do]...[/do] -> action (action beat).
@@ -61,7 +70,7 @@ def parse_character_output(text: str) -> list[tuple[str, str]]:
         return []
     matches = list(_CHAR_TAG.finditer(text))
     if not matches:
-        cleaned = _clean_segment(text)
+        cleaned = _unquote(_clean_segment(text))
         return [("say", cleaned)] if cleaned else []
     segs: list[tuple[str, str]] = []
     lead = _clean_segment(text[: matches[0].start()])
@@ -72,6 +81,8 @@ def parse_character_output(text: str) -> list[tuple[str, str]]:
         start = m.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         content = _clean_segment(_CHAR_CLOSE.sub("", text[start:end]))
+        if kind == "say":
+            content = _unquote(content)
         if content:
             segs.append((kind, content))
     return segs

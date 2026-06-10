@@ -25,13 +25,17 @@ def cue_character(conn, gid, args, actor):
     "parameters": {"type": "object", "properties": {
         "name": {"type": "string"},
         "persona": {"type": "string", "description": "Who they are, how they behave."},
+        "sex": {"type": "string", "enum": ["female", "male"],
+                "description": "Their sex. Fixed at creation; portrait, pronouns and voice all follow it."},
         "appearance": {"type": "string",
                        "description": "What they look like (for their portrait). Start with explicit "
                                       "sex and rough age ('a young woman...', 'an old man...'); looks "
                                       "only, never words or signs to draw."},
         "knowledge": {"type": "string", "description": "Private things only they know."},
+        "origin": {"type": "string",
+                   "description": "Their backstory (private; the player discovers it through play)."},
         "life": {"type": "integer"},
-    }, "required": ["name", "persona"]}}})
+    }, "required": ["name", "persona", "sex"]}}})
 def spawn_character(conn, gid, args, actor):
     nm = (args.get("name") or "").strip()
     if not nm:
@@ -39,7 +43,8 @@ def spawn_character(conn, gid, args, actor):
     if repo.find_character_by_name(conn, gid, nm):
         return _invalid(f"spawn_character: '{nm}' already here")
     cid = repo.spawn_character(conn, gid, nm, args.get("persona", ""), args.get("appearance", ""),
-                               args.get("knowledge", ""), life=int(args.get("life", 10) or 10))
+                               args.get("knowledge", ""), life=int(args.get("life", 10) or 10),
+                               gender=args.get("sex", ""), origin=args.get("origin", ""))
     return _result("spawn", text=f"{nm} arrives.",
                    cue={"id": cid, "name": nm, "reason": "has just arrived"}, reactions=[cid])
 
@@ -131,6 +136,27 @@ def note_trait(conn, gid, args, actor):
     if not trait:
         return _result("state")  # duplicate or full: silent
     return _result("state", f"Trait unlocked: {ch['name']} - {trait}.")
+
+
+@tool({"type": "function", "function": {
+    "name": "reveal_origin",
+    "description": "Record a piece of a character's PAST the player just LEARNED (they told "
+                   "it, someone else did, or it surfaced in the scene). Short and concrete: "
+                   "'fled the mining colonies after the riots'. Only what was actually "
+                   "learned, never the whole biography at once. It appears on their profile.",
+    "parameters": {"type": "object", "properties": {
+        "name": {"type": "string"},
+        "fact": {"type": "string", "description": "The piece of their past just learned."},
+    }, "required": ["name", "fact"]}}})
+def reveal_origin(conn, gid, args, actor):
+    who = (args.get("name") or "").strip()
+    ch = repo.find_character_by_name(conn, gid, who)
+    if not ch:
+        return _invalid(f"reveal_origin: no character '{who}'")
+    fact = repo.add_origin_fact(conn, ch["id"], args.get("fact", ""), settings.CHAR_TRAIT_CAP)
+    if not fact:
+        return _result("state")  # duplicate or full: silent
+    return _result("state", f"You learn of {ch['name']}'s past: {fact}.")
 
 
 @tool({"type": "function", "function": {

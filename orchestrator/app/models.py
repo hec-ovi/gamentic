@@ -1,6 +1,6 @@
 """Request/response shapes. These mirror docs/SPECS.md section 7."""
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ObjectiveIn(BaseModel):
@@ -29,6 +29,16 @@ class CharacterIn(BaseModel):
     description: str = ""         # short public bio shown in the UI
     knowledge: str = ""
     appearance: str = ""          # visual descriptor for the 3-image reference set
+    gender: str = ""              # 'female' | 'male' | '' (inferred once at creation if empty)
+    origin: str = ""              # backstory; narrator + the character know it, the player discovers it
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_sex(cls, data):
+        # the creator's save_world schema says 'sex' (the model-facing word); map it in
+        if isinstance(data, dict) and not data.get("gender") and data.get("sex"):
+            data["gender"] = data["sex"]
+        return data
     voice_id: Optional[str] = None
     color: Optional[str] = None
     talkativeness: float = 0.5
@@ -157,6 +167,7 @@ class CharacterOut(BaseModel):
     id: str
     name: str
     description: str = ""
+    gender: str = ""              # 'female' | 'male' | '' - single source of truth (image/prose/voice)
     voice_id: Optional[str] = None
     color: Optional[str] = None
     present: bool

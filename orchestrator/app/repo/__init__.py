@@ -12,10 +12,12 @@ from .beats import (  # noqa: F401
     recent_beats, recent_beats_at, scene_beats_for_character,
 )
 from .characters import (  # noqa: F401
-    add_trait, available_actions, character_add_item, character_has_images,
-    character_profile, character_remove_item, character_reveal_item, character_traits,
-    find_character_by_name, get_character, get_characters, kill_character, offer_action,
-    present_characters, resolve_target, set_character_context, set_character_description,
+    add_origin_fact, add_trait, available_actions, character_add_item,
+    character_gender, character_has_images, character_origin_revealed,
+    character_profile, character_remove_item,
+    character_reveal_item, character_traits, find_character_by_name, gender_hint,
+    get_character, get_characters, kill_character, offer_action, present_characters,
+    resolve_target, set_character_context, set_character_description,
     set_character_images, set_character_life, set_character_voice, set_disposition,
     set_following, spawn_character,
 )

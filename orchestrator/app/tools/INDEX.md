@@ -8,7 +8,7 @@ To change ONE tool: find its module below, edit the one block. To add a tool: wr
 |---|---|
 | `combat.py` | `apply_damage` (alias `attack`), `heal`; the character-agent `attack` schema (`CHARACTER_ATTACK`) |
 | `items.py` | `add_item`, `remove_item`, `place_item`, `reveal_item`, `take_item`, `give_item` (alias `give`); the character-agent give schema (`CHARACTER_GIVE`) |
-| `characters.py` | `cue_character`, `spawn_character`, `kill_character`, `set_disposition`, `set_following`, `describe_character`, `note_trait`, `offer_action` |
+| `characters.py` | `cue_character`, `spawn_character`, `kill_character`, `set_disposition`, `set_following`, `describe_character`, `note_trait`, `reveal_origin`, `offer_action` |
 | `progression.py` | `award_points`, `start_quest`, `update_objective`, `complete_quest`, `fail_quest`, `set_goal` |
 | `scene.py` | `move_location`, `set_scene_status`, `describe_scene`, `add_exit`, `offer_scene_action`, `note_scene` |
 | `world.py` | `set_flag`, `remember`, `set_game_status`, `advance_time` |

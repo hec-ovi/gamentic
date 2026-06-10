@@ -24,6 +24,11 @@ The first full-playtest feedback batch.
 - `orchestrator/INDEX.md`: a resolver-style map of the brain (which file owns what, and which prompt block injects when), so the codebase is easy to navigate.
 - The README gained a visual chart of how a turn flows through the system.
 
+### Character identity (post-playtest fix + depth)
+- Gender is now a single stored truth per character, set explicitly by the creator (or inferred ONCE from the sheet at creation) and fed to every consumer: the portrait, the narrator's pronouns, the character's own agent, and the voice design. Fixes the live mismatch where a character rendered male while the narration wrote "she" (both sides were guessing independently; a character with no cues anywhere now stays neutral everywhere instead of two coins being flipped).
+- Characters gained an origin: a private backstory written at creation, known to the narrator and to the character themselves, never shown to the player directly. A `reveal_origin` tool unlocks pieces as the player actually learns them ("You learn of Vex's past: ..."), and the profile lists only what was learned, story-clock stamped.
+- Dialogue loses its wrapping quotation marks server-side (a speech bubble frames itself; the quotes read as artifacts).
+
 ### Internal reorganization (no behavior change; the full suite pins it)
 - `repo.py` split into a `repo/` package, one module per domain (games, players, characters, items, scenes, quests, lore, beats, clock, state), with the item-blob rules (stack vs exists, caps, unhide, image carry-over) deduplicated into `repo/items.py`. Callers keep the same `repo.<fn>` surface.
 - `tools.py` split into a `tools/` package: each tool's schema and handler live side by side in its domain module, composed by a registry; the dispatcher is table-driven. The schema arrays the model sees were verified byte-identical, order included.

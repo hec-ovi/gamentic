@@ -68,7 +68,11 @@ def _state_block(conn, gid: str) -> str:
     def _char_line(c):
         held = ", ".join(i["name"] for i in repo.visible_items(c["inventory"]))
         carry = f", holding {held}" if held else ""
-        return (f"{c['name']} ({c['disposition']}{', following you' if c['following'] else ''}, "
+        # gender leads so pronouns in prose always match the stored truth (and the portrait)
+        g_tag = repo.character_gender(c)
+        g_tag = f"{g_tag}, " if g_tag else ""
+        return (f"{c['name']} ({g_tag}{c['disposition']}"
+                f"{', following you' if c['following'] else ''}, "
                 f"{c['life']}/{c['max_life']} hp{carry})")
 
     present = repo.present_characters(conn, gid, pd["location"])
@@ -102,11 +106,18 @@ def _state_block(conn, gid: str) -> str:
     if (g["arrival_note"] or "").strip():
         lines.append(f"RETURNING: {g['arrival_note']}")
     lines.append(f"ACTIVE QUESTS:\n{quest_text}")
-    # The narrator is omniscient: it knows each character's secret so it can honor planted
-    # facts (a hidden key, a chip under a table) and reveal them when the player earns it.
-    # Characters themselves never see another's knowledge; this block is narrator-only.
-    secrets = [f"- {c['name']}: {c['knowledge']}" for c in repo.get_characters(conn, gid)
-               if c["alive"] and (c["knowledge"] or "").strip()]
+    # The narrator is omniscient: it knows each character's secret AND their past so it
+    # can honor planted facts and let backstory surface when the player earns it
+    # (reveal_origin). Characters never see another's knowledge; this block is narrator-only.
+    secrets = []
+    for c in repo.get_characters(conn, gid):
+        if not c["alive"]:
+            continue
+        bits = [b for b in ((c["knowledge"] or "").strip(),
+                            f"PAST: {(c['origin'] or '').strip()}" if (c["origin"] or "").strip() else "")
+                if b]
+        if bits:
+            secrets.append(f"- {c['name']}: {' | '.join(bits)}")
     if secrets:
         lines.append("SECRETS (only you know these; let them surface when the player earns it):\n"
                      + "\n".join(secrets))
@@ -206,16 +217,23 @@ def build_character_messages(conn, gid: str, character, scene_limit: int) -> lis
     knowledge_block = (
         f"\nWHAT YOU PRIVATELY KNOW: {character['knowledge']}" if character["knowledge"] else ""
     )
+    # The character knows their own past; it shapes how they speak and what they can tell.
+    origin = (character["origin"] or "").strip() if "origin" in character.keys() else ""
+    origin_block = f"\nYOUR PAST (yours to share, hint at, or guard): {origin}" if origin else ""
     # Traits unlocked through play feed back into the agent, so the personality the
     # story revealed is the personality the character keeps playing.
     traits = [t["text"] for t in repo.character_traits(character)]
     traits_block = (f"\nWHAT THE STORY HAS REVEALED ABOUT YOU (stay true to it): "
                     f"{'; '.join(traits)}" if traits else "")
+    gender = repo.character_gender(character)
+    gender_line = {"female": " You are a woman.", "male": " You are a man."}.get(gender, "")
     system = render(
         "character.system.md",
         name=character["name"],
         persona=character["persona"],
+        gender_line=gender_line,
         knowledge_block=knowledge_block,
+        origin_block=origin_block,
         traits_block=traits_block,
     )
     user = render("character.user.md", location=location, scene=_transcript(scene), name=character["name"])
@@ -396,6 +414,13 @@ FINALIZE_TOOL = [{
                     "name": {"type": "string"},
                     "persona": {"type": "string", "description": "Who they are and how they behave (agent context)."},
                     "description": {"type": "string", "description": "One short public line shown in the UI."},
+                    "sex": {"type": "string", "enum": ["female", "male"],
+                            "description": "Their sex, explicit. Fixed at creation; the portrait, "
+                                           "the narration's pronouns and the voice all follow it."},
+                    "origin": {"type": "string",
+                               "description": "Their backstory: where they come from, what shaped "
+                                              "them (2-3 sentences). Private; the player discovers "
+                                              "it through play."},
                     "knowledge": {"type": "string"},
                     "appearance": {"type": "string",
                                    "description": "Visual description for the character reference images. "

@@ -70,7 +70,7 @@ def test_silent_character_is_retried_once(client, fake_llm, world):
     fake_llm.character_replies = {
         "Mara": [llm.LLMReply(content=""), llm.LLMReply(content='[say]"Yes?"[/say]')]}
     d = client.post(f"/games/{gid}/action", json={"action": "Mara, did you hear that?"}).json()
-    assert any(b["text"] == '"Yes?"' for b in _beats(d, "dialogue"))
+    assert any(b["text"] == "Yes?" for b in _beats(d, "dialogue"))   # wrapping quotes stripped
     assert len(fake_llm.character_calls()) == 2          # first empty, then the retry
 
 
