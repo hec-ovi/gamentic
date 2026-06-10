@@ -441,6 +441,14 @@ def set_goal(conn, gid: str, goal: str) -> None:
     conn.execute("UPDATE games SET current_goal=? WHERE id=?", (goal, gid))
 
 
+def set_difficulty(conn, gid: str, difficulty: str) -> None:
+    conn.execute("UPDATE games SET difficulty=? WHERE id=?", (difficulty, gid))
+
+
+def set_narrator_gender(conn, gid: str, gender: str) -> None:
+    conn.execute("UPDATE games SET narrator_gender=? WHERE id=?", (gender, gid))
+
+
 def set_context_used(conn, gid: str, used: int) -> None:
     """Record the last turn's prompt-token count for the context-usage meter."""
     conn.execute("UPDATE games SET context_used=? WHERE id=?", (int(used or 0), gid))
@@ -930,6 +938,8 @@ def game_state(conn, gid: str) -> dict:
         "current_goal": g["current_goal"],
         "scene": scene,
         "narrator_voice_id": g["narrator_voice_id"],
+        "settings": {"narrator_gender": g["narrator_gender"] or "",
+                     "difficulty": g["difficulty"] or "normal"},
         "context": {"used": g["context_used"] or 0, "max": settings.LLM_CONTEXT_SIZE},
         "images_enabled": settings.IMAGE_ENABLED,  # FE: if true and an image_url is null, show a loader
         "time": game_time(conn, gid),              # fictional story clock {minutes, day, hour, part, label}

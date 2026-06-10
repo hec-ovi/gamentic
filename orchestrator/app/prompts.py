@@ -133,6 +133,10 @@ def _situation_blocks(conn, gid: str) -> str:
     g = repo.get_game(conn, gid)
     sc = repo.current_scene(conn, gid)
     blocks = []
+    # difficulty mode: 'normal' injects nothing (lean core); easy/hard are hardened blocks
+    difficulty = (g["difficulty"] or "normal") if "difficulty" in g.keys() else "normal"
+    if difficulty in ("easy", "hard"):
+        blocks.append(render(f"narrator.{difficulty}.md"))
     if not repo.scene_is_established(sc):
         blocks.append(render("narrator.newplace.md"))
     if (g["arrival_note"] or "").strip():
@@ -142,7 +146,7 @@ def _situation_blocks(conn, gid: str) -> str:
 
 def build_narrator_messages(conn, gid: str, action: str, history_limit: int, lore_budget: int,
                             attempts: list[str] | None = None,
-                            looking: bool = False) -> list[dict]:
+                            looking: bool = False, wish: str | None = None) -> list[dict]:
     g = repo.get_game(conn, gid)
     history = repo.recent_beats(conn, gid, history_limit)
     focus = action + " " + " ".join(_render_beat(b) for b in history[-4:])
@@ -168,8 +172,14 @@ def build_narrator_messages(conn, gid: str, action: str, history_limit: int, lor
     if attempts:
         lines = "\n".join(f"{i + 1}. {a}" for i, a in enumerate(attempts))
         attempts_block = "\n" + render("narrator.attempts.md", attempts=lines) + "\n"
+    # The wish channel: a hope whispered to the storyteller, never an action. The MODE
+    # block decides its weight (easy leans into it, hard may ignore it).
+    wish_block = ""
+    if (wish or "").strip():
+        wish_block = (f"\nPLAYER WISH (a hope whispered to you, NOT an action; "
+                      f"weigh it per your MODE): {wish.strip()}\n")
     user = render("narrator.user.md", transcript=_transcript(history), action=action,
-                  attempts_block=attempts_block)
+                  attempts_block=attempts_block, wish_block=wish_block)
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 

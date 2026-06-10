@@ -245,7 +245,7 @@ def _image_pacing_ok(conn, gid: str, turn: int) -> bool:
 
 
 def run_turn(conn, gid: str, action_text: str = "", segments=None,
-             continue_story: bool = False) -> dict:
+             continue_story: bool = False, wish: str | None = None) -> dict:
     turn = repo.next_turn_index(conn, gid)
     seq = 0
     new_beats: list[dict] = []
@@ -338,7 +338,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             prompts.build_narrator_messages(conn, gid, narrator_action, settings.HISTORY_BEATS,
                                             settings.LORE_BUDGET,
                                             attempts=[p["line"] for p in pending],
-                                            looking=bool(look_seg)),
+                                            looking=bool(look_seg), wish=wish),
             tools=tools.narrator_tools(adjudicating=bool(pending),
                                        images=settings.IMAGE_ENABLED),
             tool_choice="auto",

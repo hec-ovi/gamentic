@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS games (
     context_used INTEGER DEFAULT 0,  -- last turn's prompt tokens, for the context-usage meter
     time_minutes INTEGER DEFAULT 0,  -- FICTIONAL story time elapsed (narrator-driven, never wall clock)
     arrival_note TEXT DEFAULT '',    -- transient: 'you were last here X ago' shown to the narrator on return
+    narrator_gender TEXT DEFAULT '', -- narrator voice gender ('' = preset default, 'female' | 'male')
+    difficulty TEXT DEFAULT 'normal',-- narrator flexibility mode: easy | normal | hard (live-changeable)
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -171,6 +173,8 @@ _MIGRATIONS = {
         "context_used": "INTEGER DEFAULT 0",
         "time_minutes": "INTEGER DEFAULT 0",
         "arrival_note": "TEXT DEFAULT ''",   # transient: shown to the narrator on returning somewhere
+        "narrator_gender": "TEXT DEFAULT ''",
+        "difficulty": "TEXT DEFAULT 'normal'",
     },
     "beats": {
         "private_with": "TEXT",

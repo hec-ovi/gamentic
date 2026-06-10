@@ -15,6 +15,11 @@ SCENE_STATUS_DEFAULT = "calm"
 GAME_STATUSES = ("active", "won", "lost")
 GAME_STATUS_DEFAULT = "active"
 
+# Narrator flexibility mode (the difficulty): how much the world bends toward the player.
+# Instruction-hardened: each non-normal mode injects a protocol block into the narrator.
+DIFFICULTIES = ("easy", "normal", "hard")
+DIFFICULTY_DEFAULT = "normal"
+
 # Base player-facing action buttons per character, derived from disposition (code rule).
 # The frontend renders these (plus any narrator-offered contextual actions), capped at CHAR_ACTION_CAP.
 # Each action: (label, type). type tells the frontend what clicking does.

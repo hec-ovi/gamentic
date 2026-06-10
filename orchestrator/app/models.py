@@ -85,6 +85,21 @@ class ActionIn(BaseModel):
     # Back-compat: a plain freeform action string. OR structured tagged segments.
     action: Optional[str] = None
     segments: Optional[list[Segment]] = None
+    # The wish channel: what the player HOPES happens next (never an action). The
+    # narrator weighs it by difficulty mode: easy leans into it, hard may ignore it.
+    wish: Optional[str] = None
+
+
+class ContinueIn(BaseModel):
+    """Optional body of /continue; the wish channel rides along naturally here."""
+    wish: Optional[str] = None
+
+
+class GameSettingsIn(BaseModel):
+    """Live-changeable game settings (PATCH /games/{gid}/settings). Omitted fields
+    are left untouched."""
+    narrator_gender: Optional[str] = None   # '' (preset default) | 'female' | 'male'
+    difficulty: Optional[str] = None        # easy | normal | hard
 
 
 class ViewIn(BaseModel):
@@ -180,6 +195,7 @@ class GameState(BaseModel):
     current_goal: str = ""        # the player's current goal (empty until the narrator sets one)
     scene: SceneOut               # the main card
     narrator_voice_id: Optional[str] = None
+    settings: dict = Field(default_factory=dict)  # {narrator_gender, difficulty} (live-changeable)
     context: dict = Field(default_factory=dict)   # {used, max} prompt-token usage meter
     images_enabled: bool = True                   # if true and an image_url is null, art is still coming (show a loader)
     time: dict = Field(default_factory=dict)      # fictional story clock {minutes, day, hour, part, label}

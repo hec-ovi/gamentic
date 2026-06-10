@@ -45,6 +45,30 @@ def release_game_voices(char_ids: list[str]) -> None:
         media.delete_character_voice(cid)
 
 
+# Gendered narrator voices: full designed descriptions (voice-api treats any voice_id
+# containing whitespace as a description), specified per the Maya1 anchoring rules:
+# gender, age, pitch with texture, pacing, tone, accent. Distinctive = stable.
+NARRATOR_VOICES = {
+    "female": ("Female voice, in her 40s, warm low storyteller pitch with a velvet "
+               "texture, unhurried measured pacing, intimate confident tone, neutral accent"),
+    "male": ("Male voice, in his 50s, deep resonant storyteller pitch with a gravelly "
+             "edge, unhurried measured pacing, intimate confident tone, neutral accent"),
+}
+
+
+def apply_narrator_gender(conn, gid: str, gender: str) -> None:
+    """Switch the narrator's voice to the chosen gender (takes effect on the next line;
+    the frontend reads narrator_voice_id from /state per beat). Empty gender returns to
+    the preset default."""
+    repo.set_narrator_gender(conn, gid, gender)
+    if gender in NARRATOR_VOICES:
+        repo.set_narrator_voice(conn, gid, NARRATOR_VOICES[gender])
+    else:
+        voices = media.list_voice_ids() if settings.VOICE_ENABLED else []
+        repo.set_narrator_voice(conn, gid,
+                                "narrator" if not voices or "narrator" in voices else voices[0])
+
+
 def _slug(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")[:40] or "img"
 

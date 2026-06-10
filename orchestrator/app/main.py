@@ -10,9 +10,10 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from . import db, repo, engine, creator, integrate, prompts, llm
+from . import db, repo, engine, creator, integrate, prompts, llm, constants
 from .config import settings
-from .models import WorldSheet, ActionIn, CreateMessageIn, GameState, TurnOut, ViewIn, ExplainIn
+from .models import (WorldSheet, ActionIn, ContinueIn, CreateMessageIn, GameState,
+                     GameSettingsIn, TurnOut, ViewIn, ExplainIn)
 
 
 @asynccontextmanager
@@ -108,7 +109,8 @@ def get_beats(gid: str, since: int = 0):
 
 
 def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
-                   segments=None, continue_story: bool = False) -> dict:
+                   segments=None, continue_story: bool = False,
+                   wish: str | None = None) -> dict:
     """Run one full turn and schedule its background art (shared by action/continue)."""
     with db.get_conn() as conn:
         if not repo.get_game(conn, gid):
@@ -121,7 +123,7 @@ def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
                 text = ""    # the segments ARE the action now (else a whisper-only
                              # message would still open a public turn with the raw text)
         result = engine.run_turn(conn, gid, action_text=text, segments=segments,
-                                 continue_story=continue_story)
+                                 continue_story=continue_story, wish=wish)
         if result.get("spawned"):
             integrate.assign_voices_for_game(conn, gid)      # voice for the newcomer (inline)
         scene = repo.current_scene(conn, gid)
@@ -148,15 +150,39 @@ def action(gid: str, body: ActionIn, background_tasks: BackgroundTasks):
     text = (body.action or "").strip()
     if not segments and not text:
         raise HTTPException(400, "empty action")
-    return _resolved_turn(gid, background_tasks, text=text, segments=segments)
+    return _resolved_turn(gid, background_tasks, text=text, segments=segments, wish=body.wish)
 
 
 @app.post("/games/{gid}/continue", response_model=TurnOut)
-def continue_story(gid: str, background_tasks: BackgroundTasks):
+def continue_story(gid: str, background_tasks: BackgroundTasks, body: ContinueIn | None = None):
     """The 'Continue' button: no player input. The narrator advances the story on its own
     (the world shifts, a character acts, something surfaces) - a full turn, minus the
-    player beat."""
-    return _resolved_turn(gid, background_tasks, continue_story=True)
+    player beat. An optional wish rides along ('what I'd like to happen next')."""
+    return _resolved_turn(gid, background_tasks, continue_story=True,
+                          wish=body.wish if body else None)
+
+
+@app.patch("/games/{gid}/settings")
+def update_settings(gid: str, body: GameSettingsIn):
+    """Live-changeable game settings. difficulty (easy|normal|hard) switches the narrator
+    flexibility mode on the NEXT turn: easy lets the player lead (and leans into wishes),
+    hard makes the world strict and punishing. narrator_gender (female|male, '' = preset)
+    redesigns the narrator's voice; takes effect on the next spoken line."""
+    with db.get_conn() as conn:
+        if not repo.get_game(conn, gid):
+            raise HTTPException(404, "game not found")
+        if body.difficulty is not None:
+            if body.difficulty not in constants.DIFFICULTIES:
+                raise HTTPException(422, f"difficulty must be one of {constants.DIFFICULTIES}")
+            repo.set_difficulty(conn, gid, body.difficulty)
+        if body.narrator_gender is not None:
+            if body.narrator_gender not in ("", "female", "male"):
+                raise HTTPException(422, "narrator_gender must be '', 'female' or 'male'")
+            integrate.apply_narrator_gender(conn, gid, body.narrator_gender)
+        g = repo.get_game(conn, gid)
+        return {"settings": {"narrator_gender": g["narrator_gender"] or "",
+                             "difficulty": g["difficulty"] or "normal"},
+                "narrator_voice_id": g["narrator_voice_id"]}
 
 
 @app.get("/games/{gid}/characters/{cid}/profile")
