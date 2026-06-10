@@ -109,16 +109,16 @@ gamentic/
 
 ## 🧪 Status
 
-Active personal project, in progress and under heavy iteration. The brain and the services run and are covered by an automated test suite (deterministic tests plus live tests against the real model). The frontend is being redesigned right now. Expect rough edges.
+Active personal project, in progress and under heavy iteration. The brain and the services run and are covered by automated test suites (220+ deterministic backend tests, 140+ frontend component tests, plus live tests against the real model), and the whole loop has been soak-tested with full scripted adventures against the real stack. Expect rough edges anyway.
 
 ## ⚠️ Known issues and limitations
 
 Being honest about where it stands today:
 
-- 🔊 **Voice is near-realtime, not instant.** Generation runs at ~1.1-1.2x realtime (a 10 second line takes 11-12 seconds to fully render); the streaming endpoint masks it with ~0.3s to first audio. English only for now.
-- 🖼️ **Images can be small or plain,** and scene art is still being wired into the UI cleanly.
-- 🧠 **Some limits are model-based.** A 12B Q4 model on local hardware will occasionally miss a tool call, repeat itself, or under-furnish a scene. The brain adds structure to fight this: a no-dead-air narration pass, bounded state, and explicit transition reasoning.
-- 🛠️ We are actively optimizing all of this, to make it as good as the local model and hardware allow.
+- 🔊 **Voice is near-realtime, not instant.** Generation runs at ~1.1-1.2x realtime (a 10 second line takes 11-12 seconds to fully render). English only for now.
+- 🖼️ **Images render in the background and arrive seconds late** by design (the turn never waits for art); occasionally the 4B image model still sneaks lettering into a corner.
+- ⏱️ **Deep story memory costs speed.** Turn time grows with the story window you choose (prefill is ~1s per 600 tokens on the reference hardware); the story-memory settings exist precisely to pick your own point on that curve.
+- 🧠 **Some limits are model-based.** A 12B Q4 model on local hardware will occasionally miss a tool call, repeat itself, or under-furnish a scene. The brain adds structure to fight this: a no-dead-air narration pass, bounded state, deterministic guards, and explicit transition reasoning.
 
 ## 📜 Models and licenses
 
