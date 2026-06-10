@@ -27,6 +27,14 @@ export function openLightbox(src, alt) {
   img.src = src;
   img.alt = alt;
   ov.appendChild(img);
+  // the caption is the moment's CONCEPT (1-3 sentences): clamped to one line
+  // in the chat flow, shown in FULL here
+  if (alt) {
+    const cap = document.createElement("p");
+    cap.className = "lightbox-caption";
+    cap.textContent = alt;
+    ov.appendChild(cap);
+  }
   ov.addEventListener("click", closeLightbox); // click anywhere closes
   document.body.appendChild(ov);
   document.addEventListener("keydown", lightboxKey);

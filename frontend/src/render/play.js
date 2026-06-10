@@ -117,7 +117,7 @@ export function renderPlayDeck(s, locked, g = {}) {
           ${mood ? `<span class="mood-badge mood-${escapeHtml(mood)}">${escapeHtml(mood)}</span>` : ""}
           ${s.time ? `<span class="time-chip" title="Story time, not yours">${icon("clock")}<span>${escapeHtml(s.time.label)}</span></span>` : ""}
         </div>
-        <h2 class="scene-name">${escapeHtml(name)}${help("scene")}</h2>
+        <h2 class="scene-name"><button type="button" class="scene-name-btn" data-act="inspect-scene" title="What this place is">${escapeHtml(name)}</button>${help("scene")}</h2>
         ${desc ? `<p class="scene-desc">${escapeHtml(desc)}</p>` : ""}
       </div>
 
@@ -202,7 +202,10 @@ export function renderCharColumn(c, s, locked, g = {}) {
       <button type="button" class="col-art" data-act="open-profile" data-char-id="${escapeHtml(c.id)}" data-char-name="${escapeHtml(c.name)}" title="Open ${escapeHtml(c.name)}'s profile" aria-label="Open ${escapeHtml(c.name)}'s profile">
         ${bodyArt(c, s)}
         <div class="col-grad" aria-hidden="true"></div>
-        <span class="disp-badge disp-${escapeHtml(c.disposition)}">${escapeHtml(c.disposition)}</span>
+        <span class="col-badges">
+          ${c.relation ? `<span class="relation-badge">${escapeHtml(c.relation)}</span>` : ""}
+          <span class="disp-badge disp-${escapeHtml(c.disposition)}">${escapeHtml(c.disposition)}</span>
+        </span>
         <div class="col-plate">
           <span class="char-name">${escapeHtml(c.name)}${c.following ? ` <span class="follow-tag" title="Following you">${icon("compass")}</span>` : ""}</span>
           ${hp}

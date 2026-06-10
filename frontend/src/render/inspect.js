@@ -44,6 +44,7 @@ export function renderInspectModal(s, g) {
 
 export function inspectView(s, g, ins) {
   if (ins.kind === "item") return inspectItem(s, ins, g);
+  if (ins.kind === "scene") return inspectScene(s);
   if (ins.kind === "goal") return inspectGoal(s);
   if (ins.kind === "quest") return inspectQuest(s, ins);
   if (ins.kind === "beat") return inspectBeat(g, ins);
@@ -92,6 +93,27 @@ export function inspectItem(s, ins, g) {
 
 // (characters no longer use the inspect modal: tapping one opens the
 // full-screen profile, which is richer and carries the whisper channel)
+
+// The scene itself: description, mood, and the place's deeper story (the
+// narrator writes `background` as the game goes; empty = nothing yet).
+function inspectScene(s) {
+  const scene = s.scene;
+  if (!scene) return { title: "Nowhere", body: `<p class="modal-body">No place to speak of.</p>`, actions: "" };
+  return {
+    title: scene.name || "This place",
+    body: `
+      ${inspectImage(scene.imageUrl, scene.name)}
+      <p class="ins-tags"><span class="mood-badge mood-${escapeHtml(scene.status)}">${escapeHtml(scene.status)}</span></p>
+      ${scene.description ? `<p class="modal-body">${escapeHtml(scene.description)}</p>` : ""}
+      ${
+        scene.background
+          ? `<h4 class="ins-sub">What this place is</h4>
+             <p class="modal-body scene-background">${escapeHtml(scene.background)}</p>`
+          : ""
+      }`,
+    actions: "",
+  };
+}
 
 export function inspectGoal(s) {
   const quests = (s.quests || []).filter((q) => q.status === "active");

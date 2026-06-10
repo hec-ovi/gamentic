@@ -120,6 +120,7 @@ export function profileStatusPane(s, d, locked = false) {
     <div class="profile-id">
       <p class="ins-tags">
         ${d.gender ? `<span class="ins-tag">${escapeHtml(d.gender)}</span>` : ""}
+        ${d.relation ? `<span class="relation-badge">${escapeHtml(d.relation)}</span>` : ""}
         <span class="disp-badge disp-${escapeHtml(d.disposition)}">${escapeHtml(d.disposition)}</span>
         ${d.following ? `<span class="ins-tag">following you</span>` : ""}
         ${!d.alive ? `<span class="ins-tag">fallen</span>` : ""}
@@ -165,27 +166,13 @@ export function profileTraitsPane(d) {
     </ul>`;
 }
 
-// Memories tab: the image strip first, then the moments shared with them.
+// Memories tab: the image strip first (captions in full - they are the
+// moment's CONCEPT now), then the pivotal-event TIMELINE. Moments are curated
+// events with a story-clock stamp, never chat transcript.
 export function profileMemoryPane(d) {
   if (!d.moments.length && !d.memories.length) {
     return `<p class="profile-empty muted">Nothing shared yet. The moments you live together will gather here.</p>`;
   }
-  const moments = d.moments.length
-    ? `<section class="profile-sec">
-         <h4 class="profile-sec-head">${icon("scroll")}<span>Moments</span></h4>
-         <ul class="moment-list">
-           ${d.moments
-             .map(
-               (m) =>
-                 `<li class="moment ${m.speaker === "player" ? "from-you" : "from-them"}${m.private ? " private" : ""}">
-                    <span class="moment-who">${m.speaker === "player" ? "You" : escapeHtml(d.name)}${m.private ? ` <i class="moment-private" title="A private exchange">${icon("mic")}private</i>` : ""}</span>
-                    <span class="moment-text">${escapeHtml(stripWrappingQuotes(m.text))}</span>
-                  </li>`,
-             )
-             .join("")}
-         </ul>
-       </section>`
-    : "";
   const memories = d.memories.length
     ? `<section class="profile-sec">
          <h4 class="profile-sec-head">${icon("eye")}<span>Memories</span></h4>
@@ -197,6 +184,22 @@ export function profileMemoryPane(d) {
              )
              .join("")}
          </div>
+       </section>`
+    : "";
+  const moments = d.moments.length
+    ? `<section class="profile-sec">
+         <h4 class="profile-sec-head">${icon("scroll")}<span>Moments</span></h4>
+         <ul class="moment-timeline">
+           ${d.moments
+             .map(
+               (m) =>
+                 `<li class="moment-event">
+                    ${m.when ? `<span class="moment-when">${escapeHtml(m.when)}</span>` : ""}
+                    <span class="moment-text">${escapeHtml(m.text)}</span>
+                  </li>`,
+             )
+             .join("")}
+         </ul>
        </section>`
     : "";
   return memories + moments;

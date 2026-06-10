@@ -9,7 +9,7 @@ import { showHelp } from "./cues.js";
 import { exportGame, importGameFile, markArtReveals, openGame, refreshLibrary, removeGame, stopPolling, wipeEverything } from "./game.js";
 import { closeTagger, doExplain, doGive, onCharAction, openInspect, openTagger, takeSceneAction } from "./playctl.js";
 import { openProfile, switchProfileTab } from "./profilectl.js";
-import { patchGameSettings, updateSetting } from "./settingsctl.js";
+import { applyMemorySetting, patchGameSettings, updateSetting } from "./settingsctl.js";
 import { applySpeakStates, speakBeat } from "./speech.js";
 import { continueStory, stopLateWatch, takeTurn } from "./turns.js";
 
@@ -115,6 +115,11 @@ export function bind(scope = root) {
     el.addEventListener("change", () => patchGameSettings(el.dataset.gameSetting, el.value));
   });
 
+  // the story-memory numeric controls validate their range client-side
+  scope.querySelectorAll("[data-mem-setting]").forEach((el) => {
+    el.addEventListener("change", () => applyMemorySetting(el));
+  });
+
   // the wish line survives re-renders via state (it is not a form of its own)
   scope.querySelector("#wishInput")?.addEventListener("input", (e) => {
     if (state.active) state.active.wish = e.target.value;
@@ -217,6 +222,9 @@ export function onAction(act, el) {
     // --- tap-to-inspect: the detail modal + "ask what this is" ---
     case "inspect-item":
       openInspect({ kind: "item", key: el.dataset.itemId || el.dataset.itemName });
+      break;
+    case "inspect-scene":
+      openInspect({ kind: "scene", key: (state.active && state.active.state.scene && state.active.state.scene.name) || "scene" });
       break;
     case "inspect-goal":
       openInspect({ kind: "goal", key: (state.active && state.active.state.currentGoal) || "goal" });

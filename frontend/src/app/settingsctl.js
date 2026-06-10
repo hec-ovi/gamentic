@@ -35,6 +35,9 @@ export async function patchGameSettings(key, value) {
       g.state.settings = {
         difficulty: res.settings.difficulty || "normal",
         narratorGender: res.settings.narrator_gender || "",
+        historyBeats: Number(res.settings.history_beats) || 0,
+        summaryEvery: Number(res.settings.summary_every) || 0,
+        contextTokens: Number(res.settings.context_tokens) || 0,
       };
     }
     // a narrator_gender change redesigns the narrator voice from the next line
@@ -46,4 +49,25 @@ export async function patchGameSettings(key, value) {
     g.settingsSaving = false;
     render();
   }
+}
+
+// The story-memory numeric controls (history_beats / summary_every /
+// context_tokens). 0 always means "back to the default"; anything else must
+// sit inside the backend's range or it never leaves the client (the field
+// just marks itself invalid).
+export const MEMORY_RANGES = {
+  history_beats: [8, 400],
+  summary_every: [2, 50],
+  context_tokens: [4000, 120000],
+};
+
+export function applyMemorySetting(el) {
+  const key = el.dataset.memSetting;
+  const range = MEMORY_RANGES[key];
+  if (!range) return;
+  const n = Number(el.value);
+  const valid = Number.isFinite(n) && (n === 0 || (n >= range[0] && n <= range[1]));
+  el.classList.toggle("invalid", !valid);
+  if (!valid) return; // out of range: nothing is sent
+  patchGameSettings(key, n);
 }

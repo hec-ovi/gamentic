@@ -1,6 +1,7 @@
 // The non-play screens: menu, library (delete/export/import), creator, settings.
 
 import { icon } from "../icons.js";
+import { contextMeter } from "./widgets.js";
 import { escapeHtml, help, holoFrame, holoFx } from "./common.js";
 
 export function menuNode({ act, icon: ic, label, sub, kind }) {
@@ -310,6 +311,7 @@ export function renderSettings(state) {
         </section>
 
         ${state.active && state.active.state ? renderGameSettings(state.active) : ""}
+        ${state.active && state.active.state ? renderMemorySettings(state.active) : ""}
 
         <section class="holo-panel danger-zone">
           <span class="card-corner tr"></span><span class="card-corner bl"></span>
@@ -344,6 +346,32 @@ export function renderWipeConfirm(w) {
         </div>
       </div>
     </div>`;
+}
+
+// Story memory (PATCH /games/{id}/settings): how the narrator remembers. The
+// mental model in the copy: recent story rides verbatim, everything older is
+// auto-compressed into a recap, so the story is never lost. Three controls;
+// 0 always returns a control to its default. context_tokens is the one that
+// actually CAPS turn latency, so the live meter sits next to it.
+function renderMemorySettings(g) {
+  const st = g.state.settings || {};
+  const saving = g.settingsSaving ? "disabled" : "";
+  const memRow = (key, value, label, sub, min, max, step) => `
+    <label class="set-row mem-row">
+      <span class="set-label">${escapeHtml(label)}<small>${escapeHtml(sub)}</small></span>
+      <input type="number" class="holo-input mem-input" data-mem-setting="${key}" aria-label="${escapeHtml(label)}"
+             value="${Number(value) || 0}" min="0" max="${max}" step="${step}" ${saving} />
+    </label>`;
+  return `
+    <section class="holo-panel memory-settings">
+      <span class="card-corner tr"></span><span class="card-corner bl"></span>
+      <h3 class="panel-head">${icon("gauge")}<span>Story memory</span></h3>
+      <p class="set-note">The narrator re-reads the recent story word for word and automatically compresses everything older into a recap, so the story is never lost. 0 returns a control to its default.</p>
+      ${memRow("history_beats", st.historyBeats, "Memory depth", "How much recent story rides verbatim (8-400). Deeper = richer continuity, slower turns.", 8, 400, 4)}
+      ${memRow("summary_every", st.summaryEvery, "Auto-summarize every N turns", "How often older chapters fold into the recap (2-50).", 2, 50, 1)}
+      ${memRow("context_tokens", st.contextTokens, "Context budget (auto)", "Hard size target for the narrator's reading (4000-120000; 0 = off). This caps turn latency.", 4000, 120000, 1000)}
+      ${contextMeter(g.state.context)}
+    </section>`;
 }
 
 // Per-adventure settings (PATCH /games/{id}/settings), shown only when settings

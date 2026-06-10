@@ -238,12 +238,12 @@ const PROFILE_DATA = {
   carrying: [{ id: "k1", name: "brass key", description: "" }],
   traits: [{ id: "t1", text: "distrusts authority", unlocked: "Day 2, evening" }],
   origin: [{ id: "or1", text: "He ran corp security before the fall.", learned: "Day 2, night" }],
+  relation: "old friend",
   moments: [
-    { turn_index: 3, kind: "dialogue", text: "Stay sharp.", speaker: "character", private: false },
-    { turn_index: 4, kind: "dialogue", text: "Keep this between us.", speaker: "character", private: true },
-    { turn_index: 4, kind: "action", text: "you nod", speaker: "player", private: false },
+    { id: "m1", text: "Turned friendly toward the player.", when: "Day 1, evening" },
+    { id: "m2", text: "Was wounded at the player's side.", when: "Day 2, night" },
   ],
-  memories: [{ image_url: "/media/g2/bar.png", caption: "the bar at night", turn_index: 2 }],
+  memories: [{ image_url: "/media/g2/bar.png", caption: "Jacker behind the bar at night, the neon flickering over a quiet talk.", turn_index: 2 }],
 };
 
 function profileOpen(data, extra = {}) {
@@ -289,14 +289,85 @@ test("the Traits tab lists the unlocked traits with their stamps", () => {
   assert.ok(/unlocked: Day 2, evening/.test(trait.querySelector(".trait-stamp").textContent));
 });
 
-test("the Memory tab holds the shared moments (private marked) and the image memories", () => {
+test("the Memories tab: image strip with FULL concept captions + the pivotal-event timeline", () => {
   const el = parse(renderApp(profileOpen(PROFILE_DATA, { tab: "memory" })));
   const pane = el.querySelector(".profile-pane");
-  const moments = [...pane.querySelectorAll(".moment")];
-  assert.equal(moments.length, 3);
-  assert.ok(moments[1].classList.contains("private"), "the private exchange is marked");
-  assert.ok(/private/.test(moments[1].querySelector(".moment-private").textContent));
+  // moments are a curated event TIMELINE with when-stamps, never chat bubbles
+  const events = [...pane.querySelectorAll(".moment-timeline .moment-event")];
+  assert.equal(events.length, 2);
+  assert.ok(/Turned friendly toward the player\./.test(events[0].textContent));
+  assert.equal(events[0].querySelector(".moment-when").textContent, "Day 1, evening");
+  assert.equal(pane.querySelector(".moment.from-you, .moment.from-them"), null, "no chat-style moments");
+  // memories carry the full 1-3 sentence concept caption
   assert.equal(pane.querySelector(".memory img").getAttribute("src"), "/media/g2/bar.png");
+  assert.ok(/neon flickering over a quiet talk/.test(pane.querySelector(".memory figcaption").textContent), "full caption under the image");
+});
+
+test("the relation badge shows what they ARE to the player, on the card and in the profile", () => {
+  const withRelation = mapGameState({
+    game_id: "gr",
+    scene: { id: "s1", name: "Vault", description: "", status: "calm", exits: [], items: [], available_actions: [] },
+    player: { life: 9, max_life: 20, points: 0, location: "Vault", inventory: [] },
+    characters: [{ id: "c1", name: "Edda", present: true, location: "Vault", alive: true, disposition: "friendly", relation: "old friend", available_actions: [] }],
+  });
+  const col = parse(renderApp({ view: "play", active: { id: "gr", state: withRelation, beats: [], generating: false } }))
+    .querySelector('.char-col[data-char-id="c1"]');
+  const badge = col.querySelector(".relation-badge");
+  assert.ok(badge, "relation badge on the card");
+  assert.equal(badge.textContent, "old friend");
+  // and in the profile header tags (next to the disposition badge)
+  const prof = parse(renderApp(profileOpen(PROFILE_DATA)));
+  assert.equal(prof.querySelector(".profile-pane .relation-badge").textContent, "old friend");
+  // '' until defined -> no badge
+  const bare = parse(renderApp(scenePlay()));
+  assert.equal(bare.querySelector('.char-col[data-char-id="c1"] .relation-badge'), null);
+});
+
+test("the scene inspect sheet shows the place's deeper story when the narrator has written it", () => {
+  const withBg = mapGameState({
+    game_id: "gb",
+    scene: { id: "s1", name: "Vault", description: "A sealed vault.", background: "Built as a seed bank, looted in the first winter.", status: "calm", exits: [], items: [], available_actions: [] },
+    player: { life: 9, max_life: 20, points: 0, location: "Vault", inventory: [] },
+    characters: [],
+  });
+  const el = parse(renderApp({ view: "play", active: { id: "gb", state: withBg, beats: [], generating: false, inspect: { kind: "scene", key: "Vault" } } }));
+  const modal = el.querySelector(".inspect-modal");
+  assert.ok(/What this place is/.test(modal.textContent), "background section title");
+  assert.ok(/seed bank, looted in the first winter/.test(modal.querySelector(".scene-background").textContent));
+  // empty background -> the section is omitted
+  const noBg = mapGameState({
+    game_id: "gb2",
+    scene: { id: "s1", name: "Vault", description: "A sealed vault.", status: "calm", exits: [], items: [], available_actions: [] },
+    player: { life: 9, max_life: 20, points: 0, location: "Vault", inventory: [] },
+    characters: [],
+  });
+  const el2 = parse(renderApp({ view: "play", active: { id: "gb2", state: noBg, beats: [], generating: false, inspect: { kind: "scene", key: "Vault" } } }));
+  assert.equal(/What this place is/.test(el2.querySelector(".inspect-modal").textContent), false);
+  // the deck's scene name is the way in
+  assert.ok(el2.querySelector('.scene-name [data-act="inspect-scene"]'), "scene name opens the sheet");
+});
+
+test("settings: the Story memory panel renders the three controls with current values", () => {
+  const st = mapGameState({
+    game_id: "gm",
+    settings: { narrator_gender: "", difficulty: "normal", history_beats: 80, summary_every: 10, context_tokens: 0 },
+    context: { used: 4300, max: 131072 },
+    scene: { id: "s1", name: "Vault", description: "", status: "calm", exits: [], items: [], available_actions: [] },
+    player: { life: 9, max_life: 20, points: 0, location: "Vault", inventory: [] },
+    characters: [],
+  });
+  const el = parse(renderApp({
+    view: "settings",
+    settings: { voiceEnabled: true, autoplayNarrator: false, autoplayCharacters: false, masterVolume: 0.7 },
+    active: { id: "gm", state: st, beats: [], generating: false },
+  }));
+  const panel = el.querySelector(".memory-settings");
+  assert.ok(panel, "Story memory panel");
+  assert.ok(/compresses everything older into a recap/.test(panel.textContent), "the mental model in the copy");
+  assert.equal(panel.querySelector('[data-mem-setting="history_beats"]').getAttribute("value"), "80");
+  assert.equal(panel.querySelector('[data-mem-setting="summary_every"]').getAttribute("value"), "10");
+  assert.equal(panel.querySelector('[data-mem-setting="context_tokens"]').getAttribute("value"), "0");
+  assert.ok(panel.querySelector(".ctx-meter"), "the live context meter sits beside the budget control");
 });
 
 test("the Whisper tab hosts THE whisper composer (say/do, no look)", () => {

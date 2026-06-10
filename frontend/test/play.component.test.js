@@ -304,11 +304,14 @@ test("clicking a character card opens the FULL-SCREEN profile fed by GET /profil
   await u.click(within(profileEl()).getByRole("tab", { name: /traits/i }));
   expect(within(profileEl()).getByText(/distrusts authority/)).toBeTruthy();
   expect(within(profileEl()).getByText(/unlocked: Day 2, evening/)).toBeTruthy();
-  // Memory tab: moments (private marked) + the image strip
+  // Memories tab: the pivotal-event timeline + the image strip
   await u.click(within(profileEl()).getByRole("tab", { name: /memories/i }));
-  expect(within(profileEl()).getByText("Keep it quiet.")).toBeTruthy();
-  expect(document.querySelector(".moment.private")).toBeTruthy();
+  expect(within(profileEl()).getByText("Turned friendly toward the player.")).toBeTruthy();
+  expect(document.querySelector(".moment-timeline .moment-event .moment-when").textContent).toBe("Day 1, evening");
   expect(document.querySelector('.memory img[src="/media/g-test/bar.png"]')).toBeTruthy();
+  // and the relation badge rides the profile header
+  await u.click(within(profileEl()).getByRole("tab", { name: /^profile$/i }));
+  expect(within(profileEl()).getByText("old friend")).toBeTruthy();
   // closing returns to the scene
   await u.click(within(profileEl()).getByRole("button", { name: /back to the scene/i }));
   expect(document.querySelector(".profile-screen")).toBeNull();
@@ -914,6 +917,73 @@ test("game settings PATCH round-trip: picking a difficulty updates the live game
   await waitFor(() => expect(patchBody).toEqual({ difficulty: "hard" }));
   // the response is the new truth: the radio stays checked after the re-render
   await waitFor(() => expect(screen.getByRole("radio", { name: /hard/i }).checked).toBe(true));
+});
+
+test("story memory: an in-range value PATCHes; out-of-range never leaves the client", async () => {
+  const u = user();
+  const patches = [];
+  server.use(
+    http.patch(`${API}/games/:id/settings`, async ({ request }) => {
+      patches.push(await request.json());
+      return HttpResponse.json({
+        settings: { narrator_gender: "", difficulty: "normal", history_beats: 120, summary_every: 10, context_tokens: 0 },
+        narrator_voice_id: "af_alloy",
+      });
+    }),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /^menu$/i }));
+  const depth = await screen.findByRole("spinbutton", { name: /memory depth/i });
+
+  // in range -> PATCH { history_beats: 120 }
+  await u.clear(depth);
+  await u.type(depth, "120");
+  depth.blur();
+  await waitFor(() => expect(patches).toEqual([{ history_beats: 120 }]));
+
+  // out of range (above 400) -> marked invalid, nothing sent
+  const depth2 = await screen.findByRole("spinbutton", { name: /memory depth/i });
+  await u.clear(depth2);
+  await u.type(depth2, "9999");
+  depth2.blur();
+  await waitFor(() => expect(depth2.classList.contains("invalid")).toBe(true));
+  expect(patches.length).toBe(1);
+
+  // a budget in range -> PATCH { context_tokens: 8000 }
+  const budget = screen.getByRole("spinbutton", { name: /context budget/i });
+  await u.clear(budget);
+  await u.type(budget, "8000");
+  budget.blur();
+  await waitFor(() => expect(patches[1]).toEqual({ context_tokens: 8000 }));
+
+  // 0 = back to the default (cadence starts at 10, so the change really fires)
+  const cadence = screen.getByRole("spinbutton", { name: /auto-summarize/i });
+  await u.clear(cadence);
+  await u.type(cadence, "0");
+  cadence.blur();
+  await waitFor(() => expect(patches[2]).toEqual({ summary_every: 0 }));
+}, 10000);
+
+test("image-beat captions clamp in the chat flow but the lightbox shows the full concept", async () => {
+  const u = user();
+  const CONCEPT = "Vex crouched over the rusted hatch in the cargo bay, red emergency light across her face as the bolts give way.";
+  server.use(
+    http.get(`${API}/games/:id/beats`, ({ request }) =>
+      new URL(request.url).searchParams.has("since")
+        ? HttpResponse.json({ beats: [] })
+        : HttpResponse.json({
+            beats: [makeBeat({ id: "img1", kind: "image", speaker: "narrator", text: CONCEPT, image_url: "/media/g-test/shot.png" })],
+          }),
+    ),
+  );
+  await gotoPlay(u);
+  const fig = document.querySelector('.beat-image[data-beat-id="img1"]');
+  expect(fig.querySelector("figcaption").textContent).toBe(CONCEPT); // CSS clamps it to one line
+  await u.click(fig.querySelector("img"));
+  const box = document.querySelector(".lightbox-overlay");
+  expect(box).toBeTruthy();
+  expect(box.querySelector(".lightbox-caption").textContent).toBe(CONCEPT); // full text in the lightbox
+  await u.keyboard("{Escape}");
 });
 
 test("the autoplay split persists narrator and character voices independently", async () => {

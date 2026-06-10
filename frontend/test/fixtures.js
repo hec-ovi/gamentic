@@ -118,10 +118,10 @@ export function makeProfile(over = {}) {
     carrying: [],
     traits: [{ id: "t1", text: "distrusts authority", unlocked: "Day 2, evening" }],
     origin: [{ id: "or1", text: "He ran corp security before the fall.", learned: "Day 2, night" }],
+    relation: "old friend",
     moments: [
-      { turn_index: 2, kind: "dialogue", text: "What are you drinking?", speaker: "character", private: false },
-      { turn_index: 3, kind: "dialogue", text: "Keep it quiet.", speaker: "character", private: true },
-      { turn_index: 3, kind: "action", text: "you lean closer", speaker: "player", private: false },
+      { id: "m1", text: "Turned friendly toward the player.", when: "Day 1, evening" },
+      { id: "m2", text: "Received the brass key from the player.", when: "Day 2, morning" },
     ],
     memories: [{ image_url: "/media/g-test/bar.png", caption: "the bar at night", turn_index: 2 }],
     ...over,

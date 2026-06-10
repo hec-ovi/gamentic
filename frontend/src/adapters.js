@@ -39,6 +39,9 @@ export function mapGameState(state = {}) {
     // ''|'female'|'male' - the single stored truth (portrait, pronouns and
     // voice all follow it)
     gender: c.gender || "",
+    // what they ARE to the player, free 1-2 words ('' until defined);
+    // humanize backend snake_case ("mystic_stranger" -> "mystic stranger")
+    relation: String(c.relation || "").replace(/_/g, " "),
     disposition: c.disposition || "unknown",
     following: Boolean(c.following),
     // each character is its own agent context on the shared model; 0 until
@@ -67,6 +70,10 @@ export function mapGameState(state = {}) {
     settings: {
       difficulty: (state.settings && state.settings.difficulty) || "normal",
       narratorGender: (state.settings && state.settings.narrator_gender) || "",
+      // story memory: verbatim window depth, recap cadence, hard context cap
+      historyBeats: num(state.settings && state.settings.history_beats),
+      summaryEvery: num(state.settings && state.settings.summary_every),
+      contextTokens: num(state.settings && state.settings.context_tokens),
     },
     // prompt-token usage -> the header context meter (green -> amber -> red)
     context: mapContext(state.context),
@@ -113,6 +120,8 @@ function mapScene(scene) {
     id: scene.id || null,
     name: scene.name || "",
     description: scene.description || "",
+    // the place's deeper story, narrator-written over time ('' until it is)
+    background: scene.background || "",
     status: scene.status || "calm", // calm | tense | dangerous
     imageUrl: scene.image_url || null,
     // render ALL exits (narrator exits + the auto "back to X"); flag the return one
@@ -218,6 +227,7 @@ export function mapProfile(p = {}) {
     name: p.name || "Unknown",
     description: p.description || "",
     gender: p.gender || "",
+    relation: String(p.relation || "").replace(/_/g, " "),
     disposition: p.disposition || "unknown",
     following: Boolean(p.following),
     alive: p.alive !== false,
@@ -232,13 +242,9 @@ export function mapProfile(p = {}) {
     // the pieces of their PAST the player has LEARNED so far (the full
     // backstory is server-private; empty = nothing learned yet)
     origin: (p.origin || []).map((o) => ({ id: o.id || null, text: o.text || "", learned: o.learned || "" })),
-    moments: (p.moments || []).map((m) => ({
-      turnIndex: num(m.turn_index),
-      kind: m.kind || "dialogue",
-      text: m.text || "",
-      speaker: m.speaker === "player" ? "player" : "character",
-      private: Boolean(m.private),
-    })),
+    // CURATED PIVOTAL EVENTS (bonds, wounds, gifts, partings), each with a
+    // story-clock `when` - a timeline, never chat transcript
+    moments: (p.moments || []).map((m) => ({ id: m.id || null, text: m.text || "", when: m.when || "" })),
     memories: (p.memories || []).map((m) => ({
       imageUrl: m.image_url || null,
       caption: m.caption || "",
