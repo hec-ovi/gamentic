@@ -345,7 +345,7 @@ def generate_item_image(gid: str, name: str) -> dict | None:
         g = repo.get_game(conn, gid)
         if not g:
             return None
-        entry = repo.visible_item_index(conn, gid).get(repo.norm_location(name).lower())
+        entry = repo.visible_item_index(conn, gid).get(repo.norm_name(name).lower())
         if not entry or entry.get("image_url"):       # gone from view, or already pictured
             return None
         style = g["art_style"] or g["tone"] or ""

@@ -12,10 +12,10 @@ Resolver-style map of the game brain: find what you want to change, go straight 
 |---|---|
 | `app/main.py` | The REST surface. Every route, request gating, background-task scheduling. Nothing else. |
 | `app/engine.py` | The turn loop: player beats, deterministic adjudication of attempts, the narrator call, the character cascade (bounded), whispers, the context meter, prose scrubbing, the new-item diff. |
-| `app/tools.py` | The model's ONLY way to change state: tool schemas (narrator + character sets) and the validated dispatcher `apply_tool`. A tool the schema does not describe does not exist. |
+| `app/tools/` | The model's ONLY way to change state: one module per domain, each tool's schema and handler side by side, composed by a registry. A tool the schema does not describe does not exist. Own index: `app/tools/INDEX.md`. |
 | `app/prompts.py` | Message assembly for every agent (narrator, characters, interpreter, explainer, image-prompt writer, creator). Computes the state block and decides WHICH protocol blocks inject this turn. |
 | `prompts/*.md` | The actual prose of every prompt, editable without touching code (reloaded per call). See the dispatch table below. |
-| `app/repo.py` | All SQL. State reads/writes, scenes, items, traits, beats, the assembled `game_state`, the character profile. |
+| `app/repo/` | All SQL, one module per domain (games, players, characters, items, scenes, quests, lore, beats, clock, state). Callers still just use `repo.<fn>`. Own index: `app/repo/INDEX.md`. |
 | `app/db.py` | Schema, migrations, WAL connection settings. |
 | `app/models.py` | Pydantic request/response shapes (the wire contract). |
 | `app/integrate.py` | Glue to the media services: image prompt composition (gender net, no-text guard, identity references), voice assignment, all background generation jobs. |
