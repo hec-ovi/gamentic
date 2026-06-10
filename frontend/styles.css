@@ -976,7 +976,7 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 .play-body { position: relative; z-index: 2; flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr clamp(340px, 36vw, 640px); gap: 1rem; padding: 1rem clamp(0.8rem, 2vw, 1.4rem); }
 .play-stage .story { background: linear-gradient(180deg, rgba(12, 20, 32, 0.5), rgba(7, 12, 22, 0.4)); border: 1px solid var(--holo-line-soft); border-radius: 0;
   clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
-  padding: 1.3rem clamp(1rem, 3vw, 2rem); overflow-y: auto; min-height: 0; position: relative; }
+  padding: 1.3rem clamp(1rem, 3vw, 2rem) 2.6rem; overflow-y: auto; min-height: 0; position: relative; }
 .char-column { display: flex; flex-direction: column; min-height: 0; }
 .col-head { display: flex; align-items: center; gap: 0.4rem; font-family: var(--holo-display); font-size: 0.7rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--holo-dim); margin-bottom: 0.6rem; }
 .col-head svg { width: 1em; height: 1em; fill: none; stroke: var(--holo-cyan); stroke-width: 2; }
@@ -1251,7 +1251,7 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 
 /* an image beat: just an inline picture in the story flow, no bubble */
 .beat-image {
-  position: relative; max-width: min(64ch, 92%); margin: 0.4rem auto 1.4rem; overflow: hidden;
+  position: relative; max-width: min(64ch, 92%); margin: 1rem auto 1.6rem; overflow: hidden;
   border: 1px solid var(--holo-line); background: rgba(7, 14, 26, 0.6);
   clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
 }
@@ -1275,7 +1275,14 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
   animation: blink 0.8s infinite;
 }
 .beat-image.img-arrive { animation: img-arrive-k 0.6s cubic-bezier(0.2, 0.9, 0.2, 1) both; }
-@keyframes img-arrive-k { from { opacity: 0; transform: translateY(16px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes img-arrive-k { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
+
+/* two images in a row (a look's hero shot + an item card) must read as two
+   cards, never a pile: extra separation, wrappers included */
+.beat-image + .beat-image,
+.beat-image + .veil-wrap .beat-image,
+.veil-wrap + .veil-wrap .beat-image,
+.veil-wrap + .beat-image { margin-top: 1.6rem; }
 
 /* "new image below" affordance (reader is up the log; never yank them) */
 .new-image-chip {
