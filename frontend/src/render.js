@@ -885,7 +885,7 @@ function renderWhisperChannel(g, name, locked) {
   return `
     <section class="profile-sec whisper-sec">
       <h4 class="profile-sec-head">${icon("mic")}<span>Whisper</span></h4>
-      <p class="pm-hint">Only ${escapeHtml(name)} will ever know this. The others see nothing.</p>
+      <p class="pm-hint">Only ${escapeHtml(name)} will ever know this.</p>
       <div class="pm-thread" id="pmThread">${thread}</div>
       ${renderStack(pf.stack, "pm")}
       <form class="pm-form" data-form="private">
