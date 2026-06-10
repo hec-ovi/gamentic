@@ -30,10 +30,10 @@ def create_game(conn, sheet: WorldSheet) -> str:
         conn.execute(
             "INSERT INTO characters (id, game_id, name, persona, description, knowledge, appearance, "
             "voice_id, color, talkativeness, location, life, max_life, disposition, following, "
-            "gender, origin) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "gender, origin, relation) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (_id(), gid, c.name, c.persona, c.description, c.knowledge, c.appearance,
              c.voice_id, c.color, c.talkativeness, start, c.life, c.max_life,
-             c.disposition, 1 if c.following else 0, gender, c.origin),
+             c.disposition, 1 if c.following else 0, gender, c.origin, c.relation.strip()),
         )
     for q in sheet.quests:
         qid = _id()

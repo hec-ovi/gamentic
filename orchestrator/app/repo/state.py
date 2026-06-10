@@ -11,6 +11,7 @@ def game_state(conn, gid: str) -> dict:
     chars = [
         {"id": c["id"], "name": c["name"], "description": c["description"],
          "gender": characters.character_gender(c),
+         "relation": characters.character_relation(c),
          "voice_id": c["voice_id"], "color": c["color"],
          "present": bool(c["present"]), "location": c["location"],
          "life": c["life"], "max_life": c["max_life"], "alive": bool(c["alive"]),

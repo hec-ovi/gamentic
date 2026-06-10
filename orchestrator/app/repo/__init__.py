@@ -15,11 +15,11 @@ from .characters import (  # noqa: F401
     add_moment, add_origin_fact, add_trait, available_actions, character_add_item,
     character_gender, character_has_images, character_moments,
     character_origin_revealed, character_profile, character_remove_item,
-    character_reveal_item, character_traits, find_character_by_name, gender_hint,
-    get_character, get_characters, kill_character, offer_action, present_characters,
-    resolve_target, set_character_context, set_character_description,
+    character_relation, character_reveal_item, character_traits, find_character_by_name,
+    gender_hint, get_character, get_characters, kill_character, offer_action,
+    present_characters, resolve_target, set_character_context, set_character_description,
     set_character_images, set_character_life, set_character_voice, set_disposition,
-    set_following, spawn_character,
+    set_following, set_relation, spawn_character,
 )
 from .clock import advance_time, elapsed_text, game_time, time_at  # noqa: F401
 from .games import (  # noqa: F401

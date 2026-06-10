@@ -133,7 +133,8 @@ def character_remove_item(conn, cid: str, key: str, qty: int = 1):
 
 def spawn_character(conn, gid: str, name: str, persona: str, appearance: str = "",
                     knowledge: str = "", location: str | None = None,
-                    life: int = 10, gender: str = "", origin: str = "") -> str:
+                    life: int = 10, gender: str = "", origin: str = "",
+                    relation: str = "") -> str:
     """Add a character to the game on the fly (dynamic narrator). Gender is fixed at
     birth: explicit when given, else inferred once from the sheet, so every consumer
     (image, prose, voice) agrees from the first moment."""
@@ -145,8 +146,10 @@ def spawn_character(conn, gid: str, name: str, persona: str, appearance: str = "
     cid = _id()
     conn.execute(
         "INSERT INTO characters (id, game_id, name, persona, knowledge, appearance, "
-        "location, life, max_life, present, gender, origin) VALUES (?,?,?,?,?,?,?,?,?,1,?,?)",
-        (cid, gid, name, persona, knowledge, appearance, location, life, life, gender, origin),
+        "location, life, max_life, present, gender, origin, relation) "
+        "VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?)",
+        (cid, gid, name, persona, knowledge, appearance, location, life, life, gender,
+         origin, relation.strip()),
     )
     return cid
 
@@ -157,6 +160,17 @@ def kill_character(conn, cid: str) -> None:
 
 def set_disposition(conn, cid: str, disposition: str) -> None:
     conn.execute("UPDATE characters SET disposition=? WHERE id=?", (disposition, cid))
+
+
+def set_relation(conn, cid: str, relation: str) -> None:
+    """What this character IS to the player (free 1-2 words: sister, boss, ally, rival).
+    A different axis from disposition: disposition is the 4-mood mechanical dial,
+    relation is the narrative bond, the narrator's free choice."""
+    conn.execute("UPDATE characters SET relation=? WHERE id=?", (relation.strip(), cid))
+
+
+def character_relation(c) -> str:
+    return (c["relation"] or "").strip() if "relation" in c.keys() else ""
 
 
 def set_following(conn, cid: str, following: bool) -> None:
@@ -267,6 +281,7 @@ def character_profile(conn, gid: str, cid: str) -> dict | None:
     return {
         "id": c["id"], "name": c["name"], "description": c["description"],
         "gender": character_gender(c),
+        "relation": character_relation(c),
         "disposition": c["disposition"], "following": bool(c["following"]),
         "alive": bool(c["alive"]), "life": c["life"], "max_life": c["max_life"],
         "face_url": c["face_url"], "body_url": c["body_front_url"],

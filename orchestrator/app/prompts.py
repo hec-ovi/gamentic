@@ -68,10 +68,13 @@ def _state_block(conn, gid: str) -> str:
     def _char_line(c):
         held = ", ".join(i["name"] for i in repo.visible_items(c["inventory"]))
         carry = f", holding {held}" if held else ""
-        # gender leads so pronouns in prose always match the stored truth (and the portrait)
+        # gender leads so pronouns in prose always match the stored truth (and the portrait);
+        # relation is the narrative bond (free word), disposition the mechanical mood
         g_tag = repo.character_gender(c)
         g_tag = f"{g_tag}, " if g_tag else ""
-        return (f"{c['name']} ({g_tag}{c['disposition']}"
+        rel = repo.character_relation(c)
+        rel = f"the player's {rel}, " if rel else ""
+        return (f"{c['name']} ({g_tag}{rel}{c['disposition']}"
                 f"{', following you' if c['following'] else ''}, "
                 f"{c['life']}/{c['max_life']} hp{carry})")
 
@@ -258,6 +261,9 @@ def build_character_messages(conn, gid: str, character, scene_limit: int) -> lis
                     f"{'; '.join(traits)}" if traits else "")
     gender = repo.character_gender(character)
     gender_line = {"female": " You are a woman.", "male": " You are a man."}.get(gender, "")
+    rel = repo.character_relation(character)
+    if rel:
+        gender_line += f" You are the player's {rel}."
     system = render(
         "character.system.md",
         name=character["name"],
@@ -454,6 +460,10 @@ FINALIZE_TOOL = [{
                                               "events, and what they want now. Rich lore, never "
                                               "a single line. Private; the player discovers it "
                                               "through play."},
+                    "relation": {"type": "string",
+                                 "description": "What they are to the player at the start, in one "
+                                                "or two words, your free choice: stranger, sister, "
+                                                "old friend, boss, rival, mentor, wife..."},
                     "knowledge": {"type": "string"},
                     "appearance": {"type": "string",
                                    "description": "Visual description for the character reference images. "

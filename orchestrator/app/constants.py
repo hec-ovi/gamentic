@@ -38,7 +38,9 @@ def world_rules() -> str:
     """One compact block stating the finite vocabularies. Injected once into the narrator prompt."""
     return (
         "WORLD RULES (use these exact values, nothing else):\n"
-        f"- Character disposition toward the player: {' | '.join(DISPOSITIONS)} (set_disposition).\n"
+        f"- Character disposition toward the player: {' | '.join(DISPOSITIONS)} (set_disposition). "
+        "Their RELATION to the player (set_relation) is free, one or two words of your choice: "
+        "stranger, sister, boss, sworn rival...\n"
         "- A character either follows the player or stays put (set_following). Followers move "
         "with you between scenes; others remain where they are and are there again if you return.\n"
         f"- Scene mood: {' | '.join(SCENE_STATUSES)} (set_scene_status).\n"

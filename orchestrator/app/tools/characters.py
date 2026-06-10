@@ -34,6 +34,9 @@ def cue_character(conn, gid, args, actor):
         "knowledge": {"type": "string", "description": "Private things only they know."},
         "origin": {"type": "string",
                    "description": "Their backstory (private; the player discovers it through play)."},
+        "relation": {"type": "string",
+                     "description": "What they are to the player, one or two words (stranger, "
+                                    "old friend, debt collector...)."},
         "life": {"type": "integer"},
     }, "required": ["name", "persona", "sex"]}}})
 def spawn_character(conn, gid, args, actor):
@@ -44,7 +47,8 @@ def spawn_character(conn, gid, args, actor):
         return _invalid(f"spawn_character: '{nm}' already here")
     cid = repo.spawn_character(conn, gid, nm, args.get("persona", ""), args.get("appearance", ""),
                                args.get("knowledge", ""), life=int(args.get("life", 10) or 10),
-                               gender=args.get("sex", ""), origin=args.get("origin", ""))
+                               gender=args.get("sex", ""), origin=args.get("origin", ""),
+                               relation=(args.get("relation") or "").strip())
     return _result("spawn", text=f"{nm} arrives.",
                    cue={"id": cid, "name": nm, "reason": "has just arrived"}, reactions=[cid])
 
@@ -143,6 +147,31 @@ def note_trait(conn, gid, args, actor):
     if not trait:
         return _result("state")  # duplicate or full: silent
     return _result("state", f"Trait unlocked: {ch['name']} - {trait}.")
+
+
+@tool({"type": "function", "function": {
+    "name": "set_relation",
+    "description": "Set what a character IS to the player as the story defines it: one or "
+                   "two words, your free choice (stranger, ally, friend, sister, boss, rival, "
+                   "mentor, sworn enemy...). This is the narrative bond; disposition stays the "
+                   "mood dial. Update it when the relationship truly changes.",
+    "parameters": {"type": "object", "properties": {
+        "name": {"type": "string"},
+        "relation": {"type": "string", "description": "One or two words."},
+    }, "required": ["name", "relation"]}}})
+def set_relation(conn, gid, args, actor):
+    who = (args.get("name") or "").strip()
+    rel = " ".join((args.get("relation") or "").split())[:40].strip()
+    if not rel:
+        return _invalid("set_relation: empty relation")
+    ch = repo.find_character_by_name(conn, gid, who)
+    if not ch:
+        return _invalid(f"set_relation: no character '{who}'")
+    if repo.character_relation(ch).lower() == rel.lower():
+        return _result("state")  # unchanged: silent
+    repo.set_relation(conn, ch["id"], rel)
+    repo.add_moment(conn, ch["id"], f"Became the player's {rel}")
+    return _result("state", f"{ch['name']} is now your {rel}.")
 
 
 @tool({"type": "function", "function": {

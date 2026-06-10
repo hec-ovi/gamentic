@@ -72,7 +72,8 @@ CREATE TABLE IF NOT EXISTS characters (
     gender TEXT DEFAULT '',           -- 'female' | 'male' | '' - SINGLE source of truth for image/prose/voice
     origin TEXT DEFAULT '',           -- their backstory (narrator + the character know it; player discovers it)
     origin_revealed TEXT DEFAULT '[]',-- pieces of the origin the player has learned (JSON list of {id,text,minutes})
-    moments TEXT DEFAULT '[]'         -- PIVOTAL shared events with the player (JSON list of {id,text,minutes})
+    moments TEXT DEFAULT '[]',        -- PIVOTAL shared events with the player (JSON list of {id,text,minutes})
+    relation TEXT DEFAULT ''          -- what they ARE to the player (free 1-2 words: sister, boss, rival...)
 );
 
 CREATE TABLE IF NOT EXISTS quests (
@@ -178,6 +179,7 @@ _MIGRATIONS = {
         "origin": "TEXT DEFAULT ''",
         "origin_revealed": "TEXT DEFAULT '[]'",
         "moments": "TEXT DEFAULT '[]'",
+        "relation": "TEXT DEFAULT ''",
     },
     "games": {
         "scene_status": "TEXT DEFAULT 'calm'",

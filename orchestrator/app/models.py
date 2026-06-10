@@ -31,6 +31,7 @@ class CharacterIn(BaseModel):
     appearance: str = ""          # visual descriptor for the 3-image reference set
     gender: str = ""              # 'female' | 'male' | '' (inferred once at creation if empty)
     origin: str = ""              # backstory; narrator + the character know it, the player discovers it
+    relation: str = ""            # what they are to the player at start (stranger, sister, boss...)
 
     @model_validator(mode="before")
     @classmethod
@@ -169,6 +170,7 @@ class CharacterOut(BaseModel):
     name: str
     description: str = ""
     gender: str = ""              # 'female' | 'male' | '' - single source of truth (image/prose/voice)
+    relation: str = ""            # what they ARE to the player (free 1-2 words: sister, boss, rival...)
     voice_id: Optional[str] = None
     color: Optional[str] = None
     present: bool

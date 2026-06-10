@@ -24,6 +24,13 @@ The first full-playtest feedback batch.
 - `orchestrator/INDEX.md`: a resolver-style map of the brain (which file owns what, and which prompt block injects when), so the codebase is easy to navigate.
 - The README gained a visual chart of how a turn flows through the system.
 
+### Living characters (owner direction: vivid, specific, earned)
+- Moments are now PIVOTAL events, not transcript: a character's memories of the player are curated turning points (a disposition shift, joining or parting, gifts, wounds, a narrator-noted sacrifice or betrayal), each story-clock stamped. Whispers and small talk never appear.
+- Image memories belong only to characters the image actually depicts, and every image now carries its CONCEPT (1-3 sentences of what the moment is) as its caption.
+- Characters PERFORM their past: they hint at it early, open up as trust grows, and give a proper account when plainly asked; the narrator weaves backstories into introductions.
+- Relation joins disposition: what a character IS to the player is now a free label the narrator or creator chooses (sister, boss, old friend, sworn rival), changeable as the story redefines it, with a receipt and a moment when it does. The 4-value disposition stays as the mechanical mood dial.
+- Scenes gained the same depth: the furnish protocol now writes a 2-3 sentence background (what the place is, was, and why it matters). Narrator prose is nudged to anchor every beat in concrete sensory detail.
+
 ### Whole-story memory (owner decision: the story should never fall out of context)
 - The narrator now knows the WHOLE story every turn: a rolling facts-only recap automatically folds chapters older than the recent turns (one background LLM call every N turns, configurable), injected as fenced past facts. Drift-guarded: the recap is scrubbed, capped in length, and can never contain instructions. Characters are deliberately NEVER summarized; their long memory remains the traits/origin/profile machinery.
 - The verbatim story window grew (24 -> 80 beats by default) and became a live per-game setting (`history_beats` on PATCH /settings, up to 400): richer turns at the cost of speed, the player's choice. Prefill on the reference box runs ~600 tokens/s, so the cost is roughly one second per 600 tokens of window per call.
