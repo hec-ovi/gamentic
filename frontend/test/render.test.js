@@ -470,14 +470,47 @@ test("settings: autoplay is split and a live game adds difficulty/voice/export",
   assert.ok(/attempts succeed/.test(game.textContent), "easy copy explains the mode");
   assert.ok(/attempts can be refused/.test(game.textContent), "hard copy explains the mode");
   assert.ok(game.querySelector('[data-game-setting="narrator_gender"][value="female"]'), "narrator voice radios");
-  assert.ok(game.querySelector('[data-act="export-game"][data-kind="template"]'), "share as adventure");
-  assert.ok(game.querySelector('[data-act="export-game"][data-kind="checkpoint"]'), "save this moment");
+  assert.equal(game.querySelector('[data-act="export-game"]'), null, "export lives on the library cards, not here");
 });
 
-test("the library offers Import next to the archive", () => {
-  const el = parse(renderApp({ view: "library", games: [], backendOnline: true, backendError: "" }));
+test("the library offers Import next to the archive and Export on every card", () => {
+  const el = parse(
+    renderApp({
+      view: "library",
+      backendOnline: true,
+      backendError: "",
+      games: [{ id: "g1", title: "Neon Decay", status: "active", created_at: "2026-06-09" }],
+    }),
+  );
   assert.ok(el.querySelector('[data-act="import-game"]'), "Import button");
   assert.ok(el.querySelector("#importFile"), "hidden file input");
+  const exp = el.querySelector('[data-act="ask-export"][data-game-id="g1"]');
+  assert.ok(exp, "card export button next to the trash");
+  assert.equal(exp.dataset.gameTitle, "Neon Decay");
+});
+
+test("the export choice modal offers the two flavors for that card", () => {
+  const el = parse(
+    renderApp({
+      view: "library",
+      backendOnline: true,
+      backendError: "",
+      games: [{ id: "g1", title: "Neon Decay", status: "active", created_at: "2026-06-09" }],
+      exportChoice: { gameId: "g1", title: "Neon Decay" },
+    }),
+  );
+  const modal = el.querySelector(".holo-modal");
+  assert.ok(/Neon Decay/.test(modal.textContent), "names the adventure");
+  assert.ok(modal.querySelector('[data-act="export-game"][data-kind="template"][data-game-id="g1"]'), "share as adventure");
+  assert.ok(modal.querySelector('[data-act="export-game"][data-kind="checkpoint"][data-game-id="g1"]'), "save this moment");
+  assert.ok(modal.querySelector('[data-act="cancel-export"]'), "cancel");
+});
+
+test("the whisper hint sells privacy: only the character is named, never the narrator", () => {
+  const el = parse(renderApp(profileOpen(PROFILE_DATA)));
+  const hint = el.querySelector(".whisper-sec .pm-hint");
+  assert.ok(/Only Jacker will ever know this\./.test(hint.textContent));
+  assert.equal(/narrator/i.test(hint.textContent), false, "no narrator mention in the private channel");
 });
 
 // ---- art loaders / placeholders / the in-prose scene card ----

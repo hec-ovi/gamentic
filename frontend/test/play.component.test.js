@@ -744,7 +744,7 @@ test("the autoplay split persists narrator and character voices independently", 
   expect(saved.autoplayCharacters).toBe(false);
 });
 
-test("Export fetches the adventure JSON and hands it over as a named download", async () => {
+test("a library card's Export opens the share/save choice and hands over a named download", async () => {
   const u = user();
   server.use(
     http.get(`${API}/games/:id/export`, ({ request }) =>
@@ -759,15 +759,20 @@ test("Export fetches the adventure JSON and hands it over as a named download", 
   window.URL.revokeObjectURL = revokeUrl;
   const clicked = vi.spyOn(window.HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
   try {
-    await gotoPlay(u);
-    await u.click(screen.getByRole("button", { name: /^menu$/i }));
-    await u.click(await screen.findByRole("button", { name: /share as adventure/i }));
+    await mountApp();
+    await u.click(await screen.findByRole("button", { name: /enter your saved worlds/i }));
+    await screen.findByText("Test Adventure");
+    // the card carries an Export next to its trash; it opens the two-flavor choice
+    await u.click(screen.getByRole("button", { name: /export adventure/i }));
+    expect(document.querySelector(".holo-modal")).toBeTruthy();
+    await u.click(screen.getByRole("button", { name: /share as adventure/i }));
     await waitFor(() => expect(clicked).toHaveBeenCalled());
     expect(createUrl).toHaveBeenCalled();
     const blob = createUrl.mock.calls[0][0];
     expect(blob.type).toBe("application/json");
     const anchor = clicked.mock.instances[0];
     expect(anchor.download).toBe("test-adventure-template.json");
+    expect(document.querySelector(".holo-modal")).toBeNull(); // the choice closes after exporting
     expect(document.querySelector(".toast")?.textContent || "").toMatch(/exported/i);
   } finally {
     clicked.mockRestore();

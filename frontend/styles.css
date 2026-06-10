@@ -1417,11 +1417,11 @@ button.cast-row:hover { border-color: var(--holo-cyan); }
   border: 1px solid transparent; }
 .set-radio.active { border-color: var(--holo-line-soft); background: rgba(47, 230, 255, 0.05); }
 .set-radio input { accent-color: var(--holo-cyan); margin-top: 0.2rem; }
-.set-export { display: flex; flex-wrap: wrap; gap: 0.6rem; padding: 0.3rem 0 0.5rem; }
 
-/* library import */
+/* library import + per-card export choice */
 .lib-import { font-size: 0.68rem; padding: 0.4rem 0.7rem; }
 .lib-import svg { width: 0.95em; height: 0.95em; }
+.export-actions { flex-wrap: wrap; }
 
 @media (max-width: 760px) {
   .profile-cols { grid-template-columns: 1fr; }

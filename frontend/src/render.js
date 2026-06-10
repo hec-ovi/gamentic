@@ -181,6 +181,7 @@ function renderLibrary(state) {
       </header>
       <main class="lib-main">${body}</main>
       ${state.confirm ? renderConfirm(state.confirm) : ""}
+      ${state.exportChoice ? renderExportChoice(state.exportChoice) : ""}
     </div>`;
 }
 
@@ -195,12 +196,38 @@ function renderGameCard(game) {
         <button class="holo-btn" data-act="continue-game" data-game-id="${escapeHtml(game.id)}">
           ${icon("play")}<span>Enter</span>
         </button>
+        <button class="holo-icon" data-act="ask-export" data-game-id="${escapeHtml(game.id)}"
+                data-game-title="${escapeHtml(game.title)}" aria-label="Export adventure" title="Export">
+          ${icon("send")}
+        </button>
         <button class="holo-icon danger" data-act="ask-delete" data-game-id="${escapeHtml(game.id)}"
                 data-game-title="${escapeHtml(game.title)}" aria-label="Delete adventure" title="Delete">
           ${icon("trash")}
         </button>
       </div>
     </article>`;
+}
+
+// Export choice: one adventure, two flavors. Template = the world as designed
+// (a fresh start anyone can import); checkpoint = the full save, this moment.
+function renderExportChoice(ex) {
+  return `
+    <div class="modal-overlay" data-act="cancel-export">
+      <div class="holo-modal" data-act="noop" role="dialog" aria-modal="true">
+        <span class="card-corner tr"></span><span class="card-corner bl"></span>
+        <h3 class="modal-title">${icon("send")}<span>Export "${escapeHtml(ex.title)}"</span></h3>
+        <p class="modal-body">Share the adventure as a fresh start, or save this exact moment as a full checkpoint. Either downloads a file the library can import.</p>
+        <div class="modal-actions export-actions">
+          <button class="holo-btn" data-act="export-game" data-kind="template" data-game-id="${escapeHtml(ex.gameId)}" data-game-title="${escapeHtml(ex.title)}">
+            ${icon("sparkles")}<span>Share as adventure</span>
+          </button>
+          <button class="holo-btn" data-act="export-game" data-kind="checkpoint" data-game-id="${escapeHtml(ex.gameId)}" data-game-title="${escapeHtml(ex.title)}">
+            ${icon("scroll")}<span>Save this moment</span>
+          </button>
+          <button class="holo-btn" data-act="cancel-export">Cancel</button>
+        </div>
+      </div>
+    </div>`;
 }
 
 function renderConfirm(c) {
@@ -858,7 +885,7 @@ function renderWhisperChannel(g, name, locked) {
   return `
     <section class="profile-sec whisper-sec">
       <h4 class="profile-sec-head">${icon("mic")}<span>Whisper</span></h4>
-      <p class="pm-hint">Only ${escapeHtml(name)} (and the narrator) will ever know this. The others see nothing.</p>
+      <p class="pm-hint">Only ${escapeHtml(name)} will ever know this. The others see nothing.</p>
       <div class="pm-thread" id="pmThread">${thread}</div>
       ${renderStack(pf.stack, "pm")}
       <form class="pm-form" data-form="private">
@@ -1369,17 +1396,6 @@ function renderGameSettings(g) {
         ${radio("narrator_gender", "male", gs.narratorGender, "Male", "Takes effect on the next spoken line")}
       </fieldset>
 
-      <fieldset class="set-group">
-        <legend class="set-legend">Export</legend>
-        <div class="set-export">
-          <button type="button" class="holo-btn" data-act="export-game" data-kind="template" title="The world as designed: a fresh start anyone can import">
-            ${icon("sparkles")}<span>Share as adventure</span>
-          </button>
-          <button type="button" class="holo-btn" data-act="export-game" data-kind="checkpoint" title="The full save: everything as it is right now">
-            ${icon("scroll")}<span>Save this moment</span>
-          </button>
-        </div>
-      </fieldset>
     </section>`;
 }
 

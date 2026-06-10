@@ -23,6 +23,7 @@ const state = {
   active: null, // { id, state(mapped), beats(mapped), generating, composer, profile, give, revealedArt }
   creator: { sessionId: "creator-" + rand(), messages: [], busy: false, error: "" },
   confirm: null, // { gameId, title } when a delete confirmation is open
+  exportChoice: null, // { gameId, title } when a card's export choice (share/save) is open
   settings: loadSettings(),
 };
 
@@ -395,8 +396,17 @@ function onAction(act, el) {
       if (state.active) state.active.profile = null;
       render();
       break;
+    case "ask-export":
+      state.exportChoice = { gameId, title: el.dataset.gameTitle || "adventure" };
+      render();
+      break;
+    case "cancel-export":
+      state.exportChoice = null;
+      render();
+      break;
     case "export-game":
-      exportGame(el.dataset.kind);
+      state.exportChoice = null;
+      exportGame(gameId, el.dataset.kind, el.dataset.gameTitle);
       break;
     case "import-game":
       root.querySelector("#importFile")?.click();
@@ -1169,21 +1179,21 @@ async function patchGameSettings(key, value) {
   }
 }
 
-// Export: fetch the JSON, hand it to the browser as a download.
-async function exportGame(kind) {
-  const g = state.active;
-  if (!g) return;
+// Export an adventure card: fetch the JSON, hand it to the browser as a download.
+async function exportGame(gameId, kind, title) {
+  if (!gameId) return;
   try {
-    const data = await api.exportGame(g.id, kind);
-    const title = (g.state && g.state.title) || "adventure";
+    const data = await api.exportGame(gameId, kind);
+    render(); // the choice modal is gone; reflect it
     const slug =
-      title
+      String(title || "adventure")
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "") || "adventure";
     downloadJson(data, `${slug}-${kind}.json`);
     showToast(kind === "template" ? "Adventure exported - share the file." : "This moment is saved.");
   } catch (err) {
+    render();
     showToast(err.message || "Could not export this adventure.");
   }
 }
