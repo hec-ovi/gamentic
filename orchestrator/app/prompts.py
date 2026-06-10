@@ -443,9 +443,11 @@ FINALIZE_TOOL = [{
                             "description": "Their sex, explicit. Fixed at creation; the portrait, "
                                            "the narration's pronouns and the voice all follow it."},
                     "origin": {"type": "string",
-                               "description": "Their backstory: where they come from, what shaped "
-                                              "them (2-3 sentences). Private; the player discovers "
-                                              "it through play."},
+                               "description": "Their backstory as a small biography, 3-5 full "
+                                              "sentences: where they come from, two formative "
+                                              "events, and what they want now. Rich lore, never "
+                                              "a single line. Private; the player discovers it "
+                                              "through play."},
                     "knowledge": {"type": "string"},
                     "appearance": {"type": "string",
                                    "description": "Visual description for the character reference images. "

@@ -372,8 +372,24 @@ def _persist(gid: str, src_url, name: str):
     return f"/media/{gid}/{name}.png"
 
 
+def _existing_char_urls(gid: str, cid: str) -> dict | None:
+    """Reference images already persisted on disk for this character (a crashed earlier
+    run may have written the files but lost the DB commit). Returns the /media urls,
+    or None when no files exist."""
+    d = os.path.join(settings.GAMES_DATA_DIR, gid, "images")
+    urls = {}
+    for view, key in (("face", "face_url"), ("front", "body_front_url"), ("side", "body_side_url")):
+        if os.path.isfile(os.path.join(d, f"char-{cid}-{view}.png")):
+            urls[key] = f"/media/{gid}/char-{cid}-{view}.png"
+    return urls or None
+
+
 def generate_images_for_game(gid: str) -> None:
-    """Background: generate + persist the 3-image reference set for each character."""
+    """Background: generate + persist the 3-image reference set for each character.
+    Resilient (live bug: a 'database is locked' on ONE character's commit killed the
+    whole loop, leaving every portrait null): each character is independent, files
+    already on disk are RELINKED instead of re-rendered, and the per-turn self-heal
+    re-schedules this job until every character has their set."""
     with db.get_conn() as conn:
         g = repo.get_game(conn, gid)
         if not g:
@@ -383,16 +399,30 @@ def generate_images_for_game(gid: str) -> None:
     for c in chars:
         if repo.character_has_images(c):
             continue
-        result = media.generate_character_images(character_descriptor(c), style)
-        if not result:
-            continue
-        with db.get_conn() as conn:
-            if not repo.get_game(conn, gid):
-                return     # game wiped while rendering: never re-create its media folder
-            face = _persist(gid, result.get("face_url"), f"char-{c['id']}-face")
-            front = _persist(gid, result.get("body_front_url"), f"char-{c['id']}-front")
-            side = _persist(gid, result.get("body_side_url"), f"char-{c['id']}-side")
-            repo.set_character_images(conn, c["id"], face_url=face, body_front_url=front, body_side_url=side)
+        try:
+            urls = _existing_char_urls(gid, c["id"])
+            if not urls:
+                result = media.generate_character_images(character_descriptor(c), style)
+                if not result:
+                    continue
+                with db.get_conn() as conn:
+                    if not repo.get_game(conn, gid):
+                        return   # game wiped while rendering: never re-create its folder
+                    urls = {
+                        "face_url": _persist(gid, result.get("face_url"), f"char-{c['id']}-face"),
+                        "body_front_url": _persist(gid, result.get("body_front_url"), f"char-{c['id']}-front"),
+                        "body_side_url": _persist(gid, result.get("body_side_url"), f"char-{c['id']}-side"),
+                    }
+                    repo.set_character_images(conn, c["id"], **urls)
+            else:
+                with db.get_conn() as conn:   # relink: the render already happened
+                    if not repo.get_game(conn, gid):
+                        return
+                    repo.set_character_images(conn, c["id"], **{
+                        "face_url": None, "body_front_url": None, "body_side_url": None,
+                        **urls})
+        except Exception:
+            continue   # one character's failure never costs the others their portraits
 
 
 def generate_scene_image(gid: str, scene_id: str) -> None:

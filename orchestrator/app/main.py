@@ -187,7 +187,13 @@ def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
         scene = repo.current_scene(conn, gid)
         scene_id = scene["id"]
         need_scene_art = settings.IMAGE_ENABLED and not scene["image_url"]
-    if settings.IMAGE_ENABLED and result.get("spawned"):
+        # portrait self-heal: a crashed background job leaves characters without their
+        # reference set; any later turn notices and re-schedules (idempotent: done
+        # characters are skipped, files on disk are relinked, not re-rendered)
+        need_portraits = settings.IMAGE_ENABLED and any(
+            c["alive"] and not repo.character_has_images(c)
+            for c in repo.get_characters(conn, gid))
+    if settings.IMAGE_ENABLED and (result.get("spawned") or need_portraits):
         background_tasks.add_task(integrate.generate_images_for_game, gid)  # portraits (background)
     if need_scene_art:
         background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)  # new-scene art
