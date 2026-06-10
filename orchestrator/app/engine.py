@@ -71,26 +71,53 @@ def _unquote(text: str) -> str:
     return text
 
 
-# Maya1 emotion vocabulary (natives + the aliases the voice-api maps itself). A speech
-# segment may OPEN with one tag; it becomes the beat's base tone for the voice and is
-# stripped from the display text. Unknown leading tags are scrubbed as artifacts.
-EMOTIONS = {"laugh", "giggle", "chuckle", "sigh", "whisper", "angry", "gasp", "cry",
-            "scream", "excited", "sad", "shout", "yell", "sob", "happy", "scared",
-            "furious", "calm", "nervous", "tired"}
-_EMOTION_TAG = re.compile(r"^\[(\w+)\]\s*")
+# Emotion vocabulary: accepted word -> what the voice-api can actually render ('' = no
+# tone). The model writes the wider set; calm/nervous/tired/etc. were silently dropped
+# voice-side, so the mapping happens HERE and beat.emotion only ever carries renderable
+# tones. All 20 words stay accepted for display-scrubbing. A speech segment may OPEN
+# with one tag ([whisper] or the Maya1-habit <whisper>); it becomes the beat's base tone
+# and is stripped from the display text. Unknown leading tags are scrubbed as artifacts.
+EMOTIONS = {e: e for e in ("laugh", "giggle", "chuckle", "sigh", "whisper", "angry",
+                           "gasp", "cry", "scream", "excited", "sad")}
+EMOTIONS.update({"shout": "scream", "yell": "scream", "sob": "cry", "happy": "excited",
+                 "scared": "gasp", "furious": "angry", "tired": "sigh",
+                 "nervous": "gasp", "calm": ""})
+_EMOTION_TAG = re.compile(r"^[\[<](\w+)[\]>]\s*")
 _ANY_TAG = re.compile(r"\[\w+\]\s*")
+# Stray angle-bracket tags scrub by EMOTION WORD only (opening or closing form): unlike
+# square tags, angle brackets carry legitimate text the model may write.
+_ANGLE_TAG = re.compile(r"</?(?:%s)>\s*" % "|".join(EMOTIONS), re.I)
 
 
 def _extract_emotion(text: str) -> tuple[str, str]:
-    """(emotion, clean_text): a leading known [tag] becomes the line's tone; remaining
-    bracketed single-word tags anywhere are scrubbed so they never show on screen."""
-    emotion = ""
+    """(emotion, clean_text): a leading known [tag] or <tag> becomes the line's tone
+    (mapped to its renderable value); remaining bracketed single-word tags and angle
+    emotion tags anywhere are scrubbed so they never show on screen."""
+    emotion, found = "", False
     m = _EMOTION_TAG.match(text)
     while m and m.group(1).lower() in EMOTIONS:
-        emotion = emotion or m.group(1).lower()   # first tag wins; extras are scrubbed
+        if not found:   # first tag wins; extras are scrubbed
+            emotion, found = EMOTIONS[m.group(1).lower()], True
         text = text[m.end():]
         m = _EMOTION_TAG.match(text)
-    return emotion, _ANY_TAG.sub("", text).strip()
+    return emotion, _ANGLE_TAG.sub("", _ANY_TAG.sub("", text)).strip()
+
+
+# Narrator prose: emotion tags leak in BOTH forms and were shown verbatim AND honored by
+# TTS (live: inline [whisper] on screen). Scrub touches only known emotion words (plus
+# the model's [pause] filler) because prose may carry legitimate bracketed text;
+# clean_prose stays generic (it also cleans summaries).
+_PROSE_TAG = re.compile(r"[\[<]/?(?:%s|pause)[\]>]\s*" % "|".join(EMOTIONS), re.I)
+
+
+def _scrub_narration(text: str) -> tuple[str, str]:
+    """(emotion, clean_text) for narration prose: a leading known tag is lifted as the
+    beat's tone (mapped to its renderable value); every emotion tag is scrubbed."""
+    emotion = ""
+    m = _EMOTION_TAG.match(text or "")
+    if m and m.group(1).lower() in EMOTIONS:
+        emotion = EMOTIONS[m.group(1).lower()]
+    return emotion, _PROSE_TAG.sub("", text or "").strip()
 
 
 def _reclassify_do(content: str) -> tuple[str, str, str]:
@@ -556,8 +583,9 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         prose = clean_prose(reply.content)
         if prose and reply.finish_reason == "length":
             prose = trim_to_sentence(prose)
+        prose_emotion, prose = _scrub_narration(prose)
         if prose:
-            emit("narrator", "Narrator", "narration", prose)
+            emit("narrator", "Narrator", "narration", prose, emotion=prose_emotion)
         else:
             # No prose, but state changed (move/furnish/pickup) or nothing else will speak:
             # a short resolve pass voices the outcome so the turn is never dead air.
@@ -569,9 +597,9 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                     max_tokens=settings.NARRATOR_RESOLVE_MAX_TOKENS,
                 )
                 track["ctx"] = max(track["ctx"], (resolve.usage or {}).get("prompt_tokens", 0) or 0)
-                rtext = clean_prose(resolve.content)
+                remotion, rtext = _scrub_narration(clean_prose(resolve.content))
                 if rtext:
-                    emit("narrator", "Narrator", "narration", rtext)
+                    emit("narrator", "Narrator", "narration", rtext, emotion=remotion)
         for note in state_notes:
             emit("system", None, "system", note)
         for cue in cues[: settings.MAX_CHARACTER_REACTIONS]:

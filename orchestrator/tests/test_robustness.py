@@ -178,6 +178,78 @@ def test_unknown_or_stray_tags_are_scrubbed_not_voiced(client, fake_llm, world):
     assert line["text"] == "Fine. Take it."                    # all stray tags scrubbed
 
 
+def test_alias_emotions_map_to_what_the_voice_can_render(client, fake_llm, world):
+    """voice-api silently dropped calm/nervous/tired; the brain maps aliases at
+    extraction so beat.emotion only ever carries renderable tones."""
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(T("cue_character", name="Mara"), content="Mara slumps.")
+    fake_llm.character_replies = {
+        "Mara": llm.LLMReply(content='[say][tired] Let me rest a moment.[/say]')}
+    d = client.post(f"/games/{gid}/action", json={"action": "We keep walking."}).json()
+    line = next(b for b in d["beats"] if b["kind"] == "dialogue")
+    assert line["emotion"] == "sigh"                           # tired -> sigh (renderable)
+    assert line["text"] == "Let me rest a moment."
+    # calm maps to NO tone; the tag is still stripped from display
+    fake_llm.character_replies = {
+        "Mara": llm.LLMReply(content='[say][calm] It is fine. Breathe.[/say]')}
+    d = client.post(f"/games/{gid}/action", json={"action": "I panic."}).json()
+    line = next(b for b in d["beats"] if b["kind"] == "dialogue")
+    assert line["emotion"] == "" and line["text"] == "It is fine. Breathe."
+
+
+def test_angle_bracket_emotion_tags_extract_and_never_display(client, fake_llm, world):
+    """Maya1 training habit: the model emits <whisper> instead of [whisper]."""
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(T("cue_character", name="Mara"), content="Mara leans close.")
+    fake_llm.character_replies = {
+        "Mara": llm.LLMReply(content='[say]<whisper> They are listening.[/say]')}
+    d = client.post(f"/games/{gid}/action", json={"action": "What is wrong?"}).json()
+    line = next(b for b in d["beats"] if b["kind"] == "dialogue")
+    assert line["emotion"] == "whisper" and line["text"] == "They are listening."
+    # mid-line angle tags are scrubbed (not voiced: one tone per beat, the opener's)
+    fake_llm.character_replies = {
+        "Mara": llm.LLMReply(content='[say]Get <angry> out of my sight.[/say]')}
+    d = client.post(f"/games/{gid}/action", json={"action": "I stay."}).json()
+    line = next(b for b in d["beats"] if b["kind"] == "dialogue")
+    assert line["emotion"] == "" and line["text"] == "Get out of my sight."
+
+
+# ---------- narrator prose: emotion tags lift to the beat's tone, never display ----------
+
+def test_narrator_prose_leading_tag_becomes_the_narration_tone(client, fake_llm, world):
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(content="[whisper] The dark stirs.")
+    d = client.post(f"/games/{gid}/action", json={"action": "I listen."}).json()
+    nar = next(b for b in d["beats"] if b["kind"] == "narration")
+    assert nar["emotion"] == "whisper"
+    assert nar["text"] == "The dark stirs."
+    # a no-tone opener ([calm]) is scrubbed and carries no emotion
+    fake_llm.narrator = _nar(content="[calm] The water stills.")
+    d = client.post(f"/games/{gid}/action", json={"action": "I wait."}).json()
+    nar = next(b for b in d["beats"] if b["kind"] == "narration")
+    assert nar["emotion"] == "" and nar["text"] == "The water stills."
+
+
+def test_narrator_prose_inline_tags_are_scrubbed_both_forms(client, fake_llm, world):
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(
+        content="The door creaks. [pause] Something <gasp> moves beyond it.")
+    d = client.post(f"/games/{gid}/action", json={"action": "I push the door."}).json()
+    nar = next(b for b in d["beats"] if b["kind"] == "narration")
+    assert nar["emotion"] == ""                                # mid-line tags set no tone
+    assert nar["text"] == "The door creaks. Something moves beyond it."
+
+
+def test_resolve_pass_narration_is_scrubbed_too(client, fake_llm, world):
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(T("add_item", name="rope"), content="")
+    fake_llm.resolve = llm.LLMReply(content="[whisper] Your fingers close on rough hemp.")
+    d = client.post(f"/games/{gid}/action", json={"action": "I grab the rope."}).json()
+    nar = next(b for b in d["beats"] if b["kind"] == "narration")
+    assert nar["emotion"] == "whisper"
+    assert nar["text"] == "Your fingers close on rough hemp."
+
+
 # ---------- speech to the absent bounces deterministically ----------
 
 def test_directed_say_to_an_absent_character_bounces(client, fake_llm, world):
