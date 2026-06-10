@@ -13,7 +13,8 @@ export function maybeOpenLightbox(e) {
   if (!src.startsWith("/")) return; // only our same-origin game media
   e.preventDefault();
   e.stopPropagation();
-  openLightbox(src, img.getAttribute("alt") || "");
+  // prefer the rich description a renderer attached over the bare alt name
+  openLightbox(src, img.dataset.caption || img.getAttribute("alt") || "");
 }
 
 export function openLightbox(src, alt) {

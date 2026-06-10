@@ -71,9 +71,10 @@ export function sceneArtCard(s) {
   if (!scene) return "";
   const name = scene.name || "";
   if (scene.imageUrl) {
+    const caption = [name, scene.description].filter(Boolean).join(" - ");
     return `<figure class="prose-art">
               <span class="card-corner tr"></span><span class="card-corner bl"></span>
-              <img data-art="${escapeHtml(scene.imageUrl)}" src="${escapeHtml(scene.imageUrl)}" alt="${escapeHtml(name)}" loading="lazy" />
+              <img data-art="${escapeHtml(scene.imageUrl)}" src="${escapeHtml(scene.imageUrl)}" alt="${escapeHtml(name)}" data-caption="${escapeHtml(caption)}" loading="lazy" />
               ${name ? `<figcaption>${escapeHtml(name)}</figcaption>` : ""}
             </figure>`;
   }

@@ -225,7 +225,8 @@ export function renderCharColumn(c, s, locked, g = {}) {
 // null + images off -> a static color+initial figure, no loader.
 export function bodyArt(c, s) {
   if (c.bodyUrl) {
-    return `<img class="col-body" data-art="${escapeHtml(c.bodyUrl)}" src="${escapeHtml(c.bodyUrl)}" alt="${escapeHtml(c.name)}" loading="lazy" />`;
+    const caption = [c.name, c.description].filter(Boolean).join(" - ");
+    return `<img class="col-body" data-art="${escapeHtml(c.bodyUrl)}" src="${escapeHtml(c.bodyUrl)}" alt="${escapeHtml(c.name)}" data-caption="${escapeHtml(caption)}" loading="lazy" />`;
   }
   if (s.imagesEnabled) {
     return `<div class="col-body art-loading" role="img" aria-label="${escapeHtml(c.name)} (art is being painted)">

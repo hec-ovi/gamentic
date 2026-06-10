@@ -72,8 +72,9 @@ export const GROW_NOTE = `<p class="profile-empty muted">The more you interact w
 export function profileBody(s, g, d) {
   const pf = g.profile;
   const tab = pf.tab || "profile";
+  const artCaption = [d.name, d.description].filter(Boolean).join(" - ");
   const art = d.bodyUrl || d.faceUrl
-    ? `<img class="profile-art" data-art="${escapeHtml(d.bodyUrl || d.faceUrl)}" src="${escapeHtml(d.bodyUrl || d.faceUrl)}" alt="${escapeHtml(d.name)}" />`
+    ? `<img class="profile-art" data-art="${escapeHtml(d.bodyUrl || d.faceUrl)}" src="${escapeHtml(d.bodyUrl || d.faceUrl)}" alt="${escapeHtml(d.name)}" data-caption="${escapeHtml(artCaption)}" />`
     : `<div class="profile-art fallback" role="img" aria-label="${escapeHtml(d.name)}"><span class="col-initial">${escapeHtml(initials(d.name))}</span></div>`;
 
   const tabBar = `

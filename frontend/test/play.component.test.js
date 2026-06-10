@@ -986,6 +986,17 @@ test("image-beat captions clamp in the chat flow but the lightbox shows the full
   await u.keyboard("{Escape}");
 });
 
+test("expanding ANY game image shows its description, not just the picture", async () => {
+  const u = user();
+  server.use(http.get(`${API}/games/:id/state`, () => HttpResponse.json(IMAGED())));
+  await gotoPlay(u);
+  // the scene art card expands with "name - description"
+  await u.click(document.querySelector("#storyStream .prose-art img"));
+  const box = document.querySelector(".lightbox-overlay");
+  expect(box.querySelector(".lightbox-caption").textContent).toBe("The Last Breath - d");
+  await u.keyboard("{Escape}");
+});
+
 test("the autoplay split persists narrator and character voices independently", async () => {
   const u = user();
   const app = await mountApp();

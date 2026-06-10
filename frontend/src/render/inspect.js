@@ -60,10 +60,12 @@ export function findInspectItem(s, key) {
   return pools.find((it) => (it.id && it.id === key) || it.name === key) || null;
 }
 
-export function inspectImage(url, alt) {
-  // not wrapped in a button: the global lightbox listener picks the click up
+export function inspectImage(url, alt, caption = "") {
+  // not wrapped in a button: the global lightbox listener picks the click up.
+  // `caption` is the thing's description, shown when the image expands.
+  const full = [alt, caption].filter(Boolean).join(" - ");
   return url
-    ? `<div class="ins-figure"><img data-art="${escapeHtml(url)}" src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" loading="lazy" /></div>`
+    ? `<div class="ins-figure"><img data-art="${escapeHtml(url)}" src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" data-caption="${escapeHtml(full)}" loading="lazy" /></div>`
     : "";
 }
 
@@ -84,7 +86,7 @@ export function inspectItem(s, ins, g) {
   return {
     title: it.name,
     body: `
-      ${inspectImage(it.imageUrl, it.name)}
+      ${inspectImage(it.imageUrl, it.name, it.description)}
       <p class="ins-tags">${tags.map((t) => `<span class="ins-tag">${escapeHtml(t)}</span>`).join("")}</p>
       ${it.description ? `<p class="modal-body">${escapeHtml(it.description)}</p>` : ""}`,
     actions,
@@ -102,7 +104,7 @@ function inspectScene(s) {
   return {
     title: scene.name || "This place",
     body: `
-      ${inspectImage(scene.imageUrl, scene.name)}
+      ${inspectImage(scene.imageUrl, scene.name, scene.description)}
       <p class="ins-tags"><span class="mood-badge mood-${escapeHtml(scene.status)}">${escapeHtml(scene.status)}</span></p>
       ${scene.description ? `<p class="modal-body">${escapeHtml(scene.description)}</p>` : ""}
       ${
