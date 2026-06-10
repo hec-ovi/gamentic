@@ -25,10 +25,29 @@ _CHAR_CLOSE = re.compile(r"\[/?(?:say|do)\]", re.I)
 # ("[attack{amount:10,target: \"player\"}]") and stray tag debris ("*]", trailing "*").
 _PSEUDO_TOOL = re.compile(r"\[\w+\s*\{[^\[\]]*\}\s*\]?")
 _TAG_DEBRIS = re.compile(r"(\*+\]|\[+\*+|[\[\]*]+$)")
+# Tool-call shapes leaked AS PROSE (live: the model occasionally printed call syntax like
+# move_location("the docks") instead of calling the tool). Any line carrying a known tool
+# name followed by ( or { is junk, as is a bare JSON-object line or a fenced code block.
+_TOOL_NAMES = sorted({t["function"]["name"] for t in tools.NARRATOR_TOOLS + tools.CHARACTER_TOOLS}
+                     | {"reject_attempt", "submit_segments", "save_world"})
+_TOOL_CALL = re.compile(r"\b(?:%s)\s*[({]" % "|".join(_TOOL_NAMES))
+_JSON_LINE = re.compile(r"^\s*[\[{].*[\]}]\s*,?\s*$")
+_FENCE = re.compile(r"```.*?(?:```|$)", re.S)
+
+
+def clean_prose(text: str) -> str:
+    """Scrub model leakage from prose shown to the player: fenced code blocks, bare JSON
+    lines, lines written in tool-call syntax, and inline pseudo tool calls."""
+    text = _FENCE.sub("", text or "")
+    lines = [ln for ln in text.splitlines()
+             if not _TOOL_CALL.search(ln) and not _JSON_LINE.match(ln)]
+    text = _PSEUDO_TOOL.sub("", "\n".join(lines))
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def _clean_segment(text: str) -> str:
     text = _PSEUDO_TOOL.sub("", text)
+    text = "\n".join(ln for ln in text.splitlines() if not _TOOL_CALL.search(ln))
     text = _TAG_DEBRIS.sub("", text)
     return text.strip()
 
@@ -129,17 +148,25 @@ def _character_reply(conn, gid, ch, emit, private_with=None, track=None):
     """Run one character turn (POV + tools). Returns the reaction targets to enqueue.
     `track` is the turn's context-meter accumulator: each character agent has its OWN
     context, so its prompt size is recorded per character and folded into the turn max."""
-    creply = llm.chat(
-        prompts.build_character_messages(conn, gid, ch, settings.SCENE_BEATS),
-        tools=tools.CHARACTER_TOOLS, tool_choice="auto",
-        temperature=settings.CHARACTER_TEMPERATURE, max_tokens=settings.CHARACTER_MAX_TOKENS,
-    )
-    tok = (creply.usage or {}).get("prompt_tokens", 0) or 0
-    if tok:
-        repo.set_character_context(conn, ch["id"], tok)
-        if track is not None:
-            track["ctx"] = max(track["ctx"], tok)
-    for kind, txt in parse_character_output(creply.content):
+    segs: list[tuple[str, str]] = []
+    creply = llm.LLMReply(content="")
+    for _ in range(2):
+        # one retry: a character occasionally returns nothing usable (live: spoken to,
+        # no reply), and a silent addressed character reads as a bug, not a choice
+        creply = llm.chat(
+            prompts.build_character_messages(conn, gid, ch, settings.SCENE_BEATS),
+            tools=tools.CHARACTER_TOOLS, tool_choice="auto",
+            temperature=settings.CHARACTER_TEMPERATURE, max_tokens=settings.CHARACTER_MAX_TOKENS,
+        )
+        tok = (creply.usage or {}).get("prompt_tokens", 0) or 0
+        if tok:
+            repo.set_character_context(conn, ch["id"], tok)
+            if track is not None:
+                track["ctx"] = max(track["ctx"], tok)
+        segs = parse_character_output(creply.content)
+        if segs or creply.tool_calls:
+            break
+    for kind, txt in segs:
         # [say] -> dialogue (speech bubble); [do] -> action (a character's physical action)
         emit(ch["id"], ch["name"], "dialogue" if kind == "say" else "action", txt,
              private_with=private_with)
@@ -335,8 +362,9 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
             if out["kind"] == "state" and out["text"]:
                 state_notes.append(out["text"])
             enqueue(out["reactions"])
-        if reply.content:
-            emit("narrator", "Narrator", "narration", reply.content)
+        prose = clean_prose(reply.content)
+        if prose:
+            emit("narrator", "Narrator", "narration", prose)
         else:
             # No prose, but state changed (move/furnish/pickup) or nothing else will speak:
             # a short resolve pass voices the outcome so the turn is never dead air.
@@ -348,8 +376,9 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
                     max_tokens=settings.NARRATOR_RESOLVE_MAX_TOKENS,
                 )
                 track["ctx"] = max(track["ctx"], (resolve.usage or {}).get("prompt_tokens", 0) or 0)
-                if resolve.content:
-                    emit("narrator", "Narrator", "narration", resolve.content)
+                rtext = clean_prose(resolve.content)
+                if rtext:
+                    emit("narrator", "Narrator", "narration", rtext)
         for note in state_notes:
             emit("system", None, "system", note)
         for cue in cues[: settings.MAX_CHARACTER_REACTIONS]:

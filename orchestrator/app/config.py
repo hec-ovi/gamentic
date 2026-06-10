@@ -23,7 +23,9 @@ class Settings:
     # Falls back to the raw text on any failure. One extra call (~1-2s) per typed turn.
     INTERPRET_FREE_TEXT = os.getenv("INTERPRET_FREE_TEXT", "true").lower() == "true"
     INTERPRET_MAX_TOKENS = int(os.getenv("INTERPRET_MAX_TOKENS", "300"))
-    CHARACTER_MAX_TOKENS = int(os.getenv("CHARACTER_MAX_TOKENS", "220"))
+    # Roomy enough for a character to actually tell something (owner feedback: replies
+    # felt clipped); the prompt still says to stop when the point is made.
+    CHARACTER_MAX_TOKENS = int(os.getenv("CHARACTER_MAX_TOKENS", "420"))
 
     # Context budgeting
     HISTORY_BEATS = int(os.getenv("HISTORY_BEATS", "24"))   # raw recent beats fed to narrator

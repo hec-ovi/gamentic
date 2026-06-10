@@ -44,7 +44,8 @@ class FakeLLM:
                  max_tokens=400, stop=None):
         sys = messages[0]["content"] if messages else ""
         names = [t["function"]["name"] for t in (tools or [])]
-        self.calls.append({"messages": messages, "tools": tools, "system": sys, "names": names})
+        self.calls.append({"messages": messages, "tools": tools, "system": sys, "names": names,
+                           "max_tokens": max_tokens})
         if "save_world" in names:
             return self.finalize
         if "submit_segments" in names:               # input interpreter
@@ -64,7 +65,10 @@ class FakeLLM:
         # otherwise a character call (may carry CHARACTER_TOOLS attack/give, or none)
         m = re.match(r"You are (.+?),", sys)          # "You are <Name>, a character..."
         nm = m.group(1) if m else ""
-        return self.character_replies.get(nm, self.character)
+        rep = self.character_replies.get(nm, self.character)
+        if isinstance(rep, list):                     # a queue: consumed call by call
+            rep = rep.pop(0) if len(rep) > 1 else rep[0]
+        return rep
 
     def narrator_calls(self):
         return [c for c in self.calls if "cue_character" in c["names"]]
