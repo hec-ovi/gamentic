@@ -37,8 +37,9 @@ def chat(
         "model": settings.LLM_MODEL,
         "messages": messages,
         "temperature": temperature,
-        "max_tokens": max_tokens,
     }
+    if max_tokens and max_tokens > 0:   # 0/None = uncapped: the prompt governs length
+        payload["max_tokens"] = max_tokens
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = tool_choice

@@ -13,7 +13,7 @@ class Settings:
     # Sampling
     NARRATOR_TEMPERATURE = float(os.getenv("NARRATOR_TEMPERATURE", "0.8"))
     CHARACTER_TEMPERATURE = float(os.getenv("CHARACTER_TEMPERATURE", "0.9"))
-    NARRATOR_MAX_TOKENS = int(os.getenv("NARRATOR_MAX_TOKENS", "900"))
+    NARRATOR_MAX_TOKENS = int(os.getenv("NARRATOR_MAX_TOKENS", "0"))    # 0 = uncapped (prompt governs length)
     # Follow-up "resolve" narration pass: when the narrator changed state via tools but wrote
     # no prose, a short second pass voices the outcome so no turn is dead air.
     NARRATOR_RESOLVE_MAX_TOKENS = int(os.getenv("NARRATOR_RESOLVE_MAX_TOKENS", "180"))
@@ -23,9 +23,7 @@ class Settings:
     # Falls back to the raw text on any failure. One extra call (~1-2s) per typed turn.
     INTERPRET_FREE_TEXT = os.getenv("INTERPRET_FREE_TEXT", "true").lower() == "true"
     INTERPRET_MAX_TOKENS = int(os.getenv("INTERPRET_MAX_TOKENS", "300"))
-    # Roomy enough for a character to actually tell something (owner feedback: replies
-    # felt clipped); the prompt still says to stop when the point is made.
-    CHARACTER_MAX_TOKENS = int(os.getenv("CHARACTER_MAX_TOKENS", "1400"))
+    CHARACTER_MAX_TOKENS = int(os.getenv("CHARACTER_MAX_TOKENS", "0"))  # 0 = uncapped (prompt governs length)
 
     # Context budgeting. The verbatim window is GENEROUS by owner decision (slower turns
     # are an accepted trade for a richer story); it is also a per-game live setting

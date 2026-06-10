@@ -204,5 +204,5 @@ def test_character_reply_budget_is_roomy(client, fake_llm, world):
     fake_llm.narrator = _nar(T("cue_character", name="Mara"), content="Mara leans in.")
     client.post(f"/games/{gid}/action", json={"action": "Tell me everything, Mara."})
     call = fake_llm.character_calls()[-1]
-    assert call["max_tokens"] == settings.CHARACTER_MAX_TOKENS >= 400
+    assert call["max_tokens"] == settings.CHARACTER_MAX_TOKENS == 0   # UNCAPPED: prompt governs
     assert "Keep it short" not in call["system"]         # the old clamp is gone
