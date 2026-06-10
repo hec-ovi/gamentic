@@ -53,6 +53,29 @@ def test_player_gives_item_to_character(client, fake_llm):
     assert any(b["speaker_name"] == "Mara" for b in d["beats"])    # recipient reacts
 
 
+def test_character_produces_an_item_on_the_fly(client, fake_llm):
+    """Owner spec: a character may give what the fiction says they have, even when
+    their carrying list does not show it (a key from a pocket). Player stays strict."""
+    gid = _new(client, [_char("Mara")])
+    fake_llm.narrator = llm.LLMReply(content="Mara reaches into her coat.",
+                                     tool_calls=[llm.ToolCall("cue_character", {"name": "Mara"})])
+    fake_llm.character_replies = {"Mara": llm.LLMReply(
+        content='[say]Take it. You will need it below.[/say]',
+        tool_calls=[llm.ToolCall("give_item", {"item": "rusted signal key",
+                                               "description": "an old maintenance key",
+                                               "target": "player"})])}
+    d = client.post(f"/games/{gid}/action", json={"action": "Is there any way past the hatch, Mara?"}).json()
+    inv = d["state"]["player"]["inventory"]
+    assert [i["name"] for i in inv] == ["rusted signal key"]       # materialized + handed over
+    assert inv[0]["description"] == "an old maintenance key"
+    assert any(b["kind"] == "system" and b["text"] == "Mara gives rusted signal key to you."
+               for b in d["beats"])
+    # ...but the PLAYER still cannot give what they do not hold
+    d = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "give", "item": "golden crown", "target": "Mara"}]}).json()
+    assert any("don't have" in b["text"] for b in d["beats"] if b["kind"] == "system")
+
+
 def test_character_attacks_player(client, fake_llm):
     gid = _new(client, [_char("Mara")])
     fake_llm.narrator = llm.LLMReply(content="Mara bristles.",

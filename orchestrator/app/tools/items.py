@@ -7,9 +7,13 @@ from .base import _SCENE_WORDS, _invalid, _result, alias, tool
 # The character agents' own give schema (same handler, actor-aware wording).
 CHARACTER_GIVE = {"type": "function", "function": {
     "name": "give_item",
-    "description": "Hand an item you hold to a target ('player' or a character name).",
+    "description": "Hand an item to a target ('player' or a character name). If it is not "
+                   "in your carrying list it is produced from your person (a pocket, a "
+                   "pack, a sheath) - give only what you would plausibly HAVE on you.",
     "parameters": {"type": "object", "properties": {
-        "item": {"type": "string"}, "target": {"type": "string"}}, "required": ["item", "target"]}}}
+        "item": {"type": "string"},
+        "description": {"type": "string", "description": "One short line: what it is."},
+        "target": {"type": "string"}}, "required": ["item", "target"]}}}
 
 
 @tool({"type": "function", "function": {
@@ -137,7 +141,12 @@ def give_item(conn, gid, args, actor):
     else:
         moved = repo.character_remove_item(conn, actor["id"], item)
         if not moved:
-            return _invalid(f"give: {actor['name']} has no '{item}'")
+            # owner spec: a character may PRODUCE an item on the fly (a key from a
+            # pocket, a coin from a sleeve) - the fiction says they have it, so they do.
+            # Only characters get this; the player's possessions stay strict.
+            moved = {"name": repo.norm_name(item),
+                     "description": (args.get("description") or "").strip(),
+                     "image_url": None}
         giver = f"{actor['name']} gives"
     nm, desc, img = moved["name"], moved.get("description", ""), moved.get("image_url")
     if kind_t == "player":
