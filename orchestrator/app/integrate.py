@@ -263,7 +263,8 @@ def _reference_url(stored: str | None) -> str | None:
     return f"{settings.IMAGE_API_URL}{stored}"
 
 
-def generate_view_snapshot(gid: str, focus: str | None = None) -> dict | None:
+def generate_view_snapshot(gid: str, focus: str | None = None,
+                           private_with: str | None = None) -> dict | None:
     """The 'See' button: render the scene WITH the characters present in it, as it is NOW.
     Synchronous (the player watches a loader); persists the image and lands it as an image
     beat in the story flow (the focus, when given, becomes the beat's caption text).
@@ -299,8 +300,9 @@ def generate_view_snapshot(gid: str, focus: str | None = None) -> dict | None:
                            _clip(_strip_quoted(sc["description"]), 30))
         turn = repo.next_turn_index(conn, gid)
         url = _persist(gid, result["image_url"], f"view-t{turn}")
+        # private_with: a quiet study from the private panel lands IN that thread
         return repo.add_beat(conn, gid, "narrator", None, "image", caption, loc,
-                             turn_index=turn, image_url=url)
+                             turn_index=turn, image_url=url, private_with=private_with)
 
 
 def generate_directed_image(gid: str, description: str, caption: str = "") -> dict | None:

@@ -135,6 +135,26 @@ def test_look_without_show_image_falls_back_to_a_snapshot(client, fake_llm, worl
     assert scheduled == []
 
 
+def test_private_look_lands_in_the_whisper_thread(client, fake_llm, world,
+                                                  monkeypatch, tmp_path):
+    """Owner spec: a quiet study from the private panel keeps its image PRIVATE."""
+    captured = []
+    _enable_images(monkeypatch, tmp_path, captured)
+    gid = client.post("/games", json=world).json()["game_id"]
+    d = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "whisper", "mode": "look", "target": "Mara", "text": ""}]}).json()
+    mara_id = next(c["id"] for c in d["state"]["characters"] if c["name"] == "Mara")
+    player = next(b for b in d["beats"] if b["speaker"] == "player")
+    assert player["text"] == "you quietly study Mara"
+    assert player["private_with"] == mara_id
+    assert not any(b["kind"] == "dialogue" for b in d["beats"])    # no reply owed to a gaze
+    assert not fake_llm.narrator_calls()                           # and no public turn ran
+    beats = client.get(f"/games/{gid}/beats").json()["beats"]
+    img = next(b for b in beats if b["kind"] == "image")
+    assert img["private_with"] == mara_id                          # the image is private too
+    assert "mara" in img["text"].lower()
+
+
 def test_spontaneous_show_image_is_paced(client, fake_llm, world, monkeypatch, tmp_path):
     """Without a player look, narrator-initiated images respect the cooldown; a look
     bypasses it."""

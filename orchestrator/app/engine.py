@@ -563,17 +563,30 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             exchanges[-1][1].append(w)
         else:
             exchanges.append((row, [w]))
+    private_looks: list[tuple[str, str]] = []   # (character id, focus) -> private snapshots
     for row, segs in exchanges:
+        spoke = False
         for w in segs:
             text = (w.get("text") or "").strip()
-            if (w.get("mode") or "say").lower() == "do":
+            mode = (w.get("mode") or "say").lower()
+            if mode == "look":
+                # a quiet study of the character from the private panel: the snapshot
+                # lands IN the private thread (owner spec); no reply is owed to a gaze
+                emit("player", None, "action",
+                     f"you quietly study {row['name']}" + (f": {text}" if text else ""),
+                     private_with=row["id"])
+                private_looks.append((row["id"], text or f"at {row['name']}"))
+                continue
+            spoke = True
+            if mode == "do":
                 # a discreet private action (slip a note, flash a badge): only they notice
                 emit("player", None, "action",
                      f"(only {row['name']} notices) you {text}", private_with=row["id"])
             else:
                 emit("player", None, "action",
                      f'you whisper to {row["name"]}: "{text}"', private_with=row["id"])
-        _character_reply(conn, gid, row, emit, private_with=row["id"])
+        if spoke:
+            _character_reply(conn, gid, row, emit, private_with=row["id"])
 
     if arrival_at_start:
         repo.clear_arrival_note(conn, gid)
@@ -590,6 +603,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         # description wins when it fired; otherwise fall back to the deterministic
         # state-grounded snapshot with the look's focus.
         result["view_fallback"] = ((look_seg or {}).get("text") or "").strip()
+    if private_looks:
+        result["private_looks"] = private_looks   # snapshots bound to the private thread
     new_items = [v for k, v in repo.visible_item_index(conn, gid).items()
                  if k not in items_before and not v.get("image_url")]
     if new_items:

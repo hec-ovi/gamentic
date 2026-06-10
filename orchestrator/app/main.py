@@ -206,6 +206,9 @@ def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
     fallback = result.pop("view_fallback", None)             # a look the narrator didn't render
     if settings.IMAGE_ENABLED and fallback is not None:
         background_tasks.add_task(integrate.generate_view_snapshot, gid, fallback or None)
+    for cid, focus in result.pop("private_looks", []):       # quiet studies -> private thread
+        if settings.IMAGE_ENABLED:
+            background_tasks.add_task(integrate.generate_view_snapshot, gid, focus, cid)
     new_items = result.pop("new_items", None) or []          # items newly visible this turn
     if settings.IMAGE_ENABLED and settings.IMAGE_ITEMS:
         # self-heal like portraits: pick up items whose card never rendered (per-turn cap
