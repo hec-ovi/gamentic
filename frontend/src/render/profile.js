@@ -243,7 +243,9 @@ export function renderWhisperChannel(s, g, d, locked) {
   const pf = g.profile;
   const name = d.name;
   const presence = profilePresence(s, d);
-  const beats = g.beats.filter((b) => b.privateWith === pf.charId);
+  // the thread shows the private exchange PLUS anything launched from this
+  // panel (a look's prose and its late image mirror here, public or not)
+  const beats = g.beats.filter((b) => b.privateWith === pf.charId || b.viaProfile === pf.charId);
   const veiled = g.revealQueue && g.revealQueue.length ? new Set(g.revealQueue) : null;
   const thread = beats.length
     ? beats
@@ -257,6 +259,12 @@ export function renderWhisperChannel(s, g, d, locked) {
         presence.present ? `Say something only ${escapeHtml(name)} will hear.` : "Nothing has passed between you in private."
       }</p>`;
 
+  // visible processing feedback: a whisper turn shows its thinking right here
+  const thinking =
+    locked && presence.present
+      ? `<div class="narrating pm-thinking" role="status" aria-live="polite"><span class="dot"></span><span class="dot"></span><span class="dot"></span><em>${escapeHtml(name)} considers...</em></div>`
+      : "";
+
   const channel = presence.present
     ? `${renderStack(pf.stack, "pm")}
        <form class="pm-form" data-form="private">
@@ -264,9 +272,11 @@ export function renderWhisperChannel(s, g, d, locked) {
            id: "pm",
            mode: pf.mode,
            locked,
+           modes: ["say", "do", "look"],
            placeholders: {
              say: `Whisper to ${name}...`,
              do: `A discreet act only ${name} notices...`,
+             look: `Look at what? (${name}, a detail, the room...)`,
            },
            submitLabel: locked ? "Resolving..." : "Whisper",
          })}
@@ -277,7 +287,7 @@ export function renderWhisperChannel(s, g, d, locked) {
     <section class="profile-sec whisper-sec">
       <h4 class="profile-sec-head">${icon("mic")}<span>Whisper</span></h4>
       ${presence.present ? `<p class="pm-hint">Only ${escapeHtml(name)} will ever know this.</p>` : ""}
-      <div class="pm-thread" id="pmThread">${thread}</div>
+      <div class="pm-thread" id="pmThread">${thread}${thinking}</div>
       ${channel}
     </section>`;
 }
@@ -287,6 +297,15 @@ export function renderWhisperChannel(s, g, d, locked) {
 // stays unlabeled here too (no "Narrator" tag anywhere), and no literal quote
 // marks: the player's own speech echoes show just what was said.
 export function renderPmBeat(beat) {
+  if (beat.kind === "image") {
+    if (!beat.imageUrl) return "";
+    return `<div class="pm-line pm-image" data-beat-id="${escapeHtml(beat.id)}">
+              <figure>
+                <img data-art="${escapeHtml(beat.imageUrl)}" src="${escapeHtml(beat.imageUrl)}" alt="${escapeHtml(beat.text || "A glimpse")}" loading="lazy" />
+                ${beat.text ? `<figcaption>${escapeHtml(beat.text)}</figcaption>` : ""}
+              </figure>
+            </div>`;
+  }
   if (beat.kind === "system") {
     return `<div class="pm-line pm-system" data-beat-id="${escapeHtml(beat.id)}">${escapeHtml(beat.text)}</div>`;
   }

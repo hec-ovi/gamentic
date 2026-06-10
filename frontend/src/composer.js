@@ -90,11 +90,13 @@ export function clearComposer(editor) {
 // text) or something specific; the narrator decides whether it earns an image.
 export function buildSegment({ mode, text, refs, channel }) {
   const base = refs && refs.length ? { refs } : {};
+  if (mode === "look") {
+    // a look is a look wherever it is typed (the whisper composer offers it
+    // too); chip names are already inline in the text
+    return { type: "look", text };
+  }
   if (channel && channel.kind === "whisper") {
     return { type: "whisper", text, target: channel.target, mode: mode === "do" ? "do" : "say", ...base };
-  }
-  if (mode === "look") {
-    return { type: "look", text }; // chip names are already inline in the text
   }
   if (mode === "say") {
     const target = channel ? channel.target : undefined;

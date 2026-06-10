@@ -182,6 +182,8 @@ export function mapBeat(beat = {}) {
     speaker: beat.speaker || "narrator",
     speakerName: beat.speaker_name || null,
     text: beat.text || "",
+    // voice acting: '' | 'angry' | 'whisper' | 'sad' | ... - rides /voice/speak
+    emotion: beat.emotion || "",
     location: beat.location || null,
     imageUrl: beat.image_url || null,
     audioUrl: beat.audio_url || null,

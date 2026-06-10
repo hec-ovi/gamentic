@@ -370,14 +370,31 @@ test("settings: the Story memory panel renders the three controls with current v
   assert.ok(panel.querySelector(".ctx-meter"), "the live context meter sits beside the budget control");
 });
 
-test("the Whisper tab hosts THE whisper composer (say/do, no look)", () => {
+test("the Whisper tab hosts THE whisper composer (say/do/look)", () => {
   const el = parse(renderApp(profileOpen(PROFILE_DATA, { tab: "whisper" })));
   const whisper = el.querySelector(".profile-pane .whisper-sec");
   assert.ok(whisper, "whisper channel lives in the profile's whisper tab");
   assert.ok(/only jacker/i.test(whisper.querySelector(".pm-hint").textContent), "explains privacy");
   assert.ok(whisper.querySelector("#pmInput"), "own composer");
   assert.ok(whisper.querySelector('[data-act="pm-mode"][data-mode="do"]'), "say/do modes");
-  assert.equal(whisper.querySelector('[data-act="pm-mode"][data-mode="look"]'), null, "no look in the private channel");
+  assert.ok(whisper.querySelector('[data-act="pm-mode"][data-mode="look"]'), "look joins the panel composer");
+});
+
+test("the whisper thread renders look results: prose/images launched from this panel mirror in", () => {
+  const beats = mapBeats([
+    { id: "lkp", turn_index: 5, seq: 0, speaker: "narrator", kind: "narration", text: "Her scar catches the light." },
+    { id: "lki", turn_index: 6, seq: 0, speaker: "narrator", kind: "image", text: "A thin scar over Jacker's brow, old and clean.", image_url: "/media/g2/scar.png" },
+    { id: "pub", turn_index: 4, seq: 0, speaker: "narrator", kind: "narration", text: "Elsewhere, rain falls." },
+  ]).map((b) => (b.id === "pub" ? b : { ...b, viaProfile: "c1" }));
+  const st = profileOpen(PROFILE_DATA, { tab: "whisper" });
+  st.active.beats = beats;
+  const el = parse(renderApp(st));
+  const thread = el.querySelector("#pmThread");
+  assert.ok(/Her scar catches the light/.test(thread.textContent), "panel-launched prose mirrors in");
+  const img = thread.querySelector('.pm-image[data-beat-id="lki"] img');
+  assert.equal(img.getAttribute("src"), "/media/g2/scar.png", "the look image renders in the thread");
+  assert.ok(/old and clean/.test(thread.querySelector(".pm-image figcaption").textContent), "with its full concept caption");
+  assert.equal(/Elsewhere, rain falls/.test(thread.textContent), false, "unrelated public beats stay out");
 });
 
 test("a fresh character's profile shows the grow-from-interactions empty-state copy", () => {
@@ -910,4 +927,31 @@ test("whispered replies carry the per-message speak button (voiced like the stor
   st.active.beats = mineBeats;
   const el2 = parse(renderApp(st));
   assert.equal(el2.querySelector('#pmThread [data-act="speak-beat"]'), null);
+});
+
+test("a whisper turn shows its thinking IN the thread (visible processing feedback)", () => {
+  const st = profileOpen(PROFILE_DATA, { tab: "whisper" });
+  st.active.generating = true;
+  const el = parse(renderApp(st));
+  const dots = el.querySelector("#pmThread + .pm-thinking, #pmThread .pm-thinking");
+  assert.ok(dots, "thinking dots in the whisper thread while the turn resolves");
+  assert.ok(/Jacker considers/.test(dots.textContent));
+  // idle: no dots
+  const idle = parse(renderApp(profileOpen(PROFILE_DATA, { tab: "whisper" })));
+  assert.equal(idle.querySelector(".pm-thinking"), null);
+});
+
+test("character deeds in the whisper thread are plain lines (pm-deed), speech stays a bubble", () => {
+  const beats = mapBeats([
+    { id: "wd1", turn_index: 1, seq: 0, speaker: "c1", speaker_name: "Jacker", kind: "action", text: "She takes a step closer.", private_with: "c1" },
+    { id: "ws1", turn_index: 1, seq: 1, speaker: "c1", speaker_name: "Jacker", kind: "dialogue", text: "Listen.", private_with: "c1" },
+  ]);
+  const st = profileOpen(PROFILE_DATA, { tab: "whisper" });
+  st.active.beats = beats;
+  const el = parse(renderApp(st));
+  const deed = el.querySelector('[data-beat-id="wd1"]');
+  assert.ok(deed.classList.contains("pm-deed"), "deed line marked");
+  const speech = el.querySelector('[data-beat-id="ws1"]');
+  assert.equal(speech.classList.contains("pm-deed"), false, "speech stays a bubble");
+  assert.ok(speech.classList.contains("pm-them"));
 });

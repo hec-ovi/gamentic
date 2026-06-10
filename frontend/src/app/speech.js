@@ -30,7 +30,7 @@ export async function speakBeat(beatId) {
     return;
   }
   setSpeaking({ beatId, phase: "loading" });
-  const prepared = await voice.prepare({ text: beat.text, voiceId: beat.voiceId });
+  const prepared = await voice.prepare({ text: beat.text, voiceId: beat.voiceId, emotion: beat.emotion });
   if (!speaking || speaking.beatId !== beatId) return; // stopped or superseded meanwhile
   if (!prepared) return setSpeaking(null); // synth failed; the text is on screen
   const el = voice.playUrl(prepared.audioUrl, beat.speaker);

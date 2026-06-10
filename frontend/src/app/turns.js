@@ -18,14 +18,16 @@ import { render } from "./ui.js";
 // Take a turn. `input` is either a plain string (freeform) or an array of tagged
 // segments (what the composers build). One POST -> { beats, state }; only the
 // state-mutating surfaces lock until the response lands (the partial busy-lock).
-export async function takeTurn(input) {
+// `via` (a character id) marks a turn fired from that character's panel: its
+// results mirror into the whisper thread, public or not.
+export async function takeTurn(input, via = null) {
   const g = state.active;
   if (!g || g.generating) return;
   const empty = Array.isArray(input) ? !input.length : !String(input || "").trim();
   if (empty) return;
   const wish = captureWish(g);
   const look = Array.isArray(input) && input.some((s) => s.type === "look");
-  await resolveTurn(g, () => api.takeAction(g.id, input, wish), { look, echo: echoBeats(g, input), restore: input, wish });
+  await resolveTurn(g, () => api.takeAction(g.id, input, wish), { look, echo: echoBeats(g, input, via), restore: input, wish, via });
 }
 
 // Optimistic echo: the player's own line shows the moment they send it (the
@@ -33,7 +35,7 @@ export async function takeTurn(input) {
 // mirror the wire's echo phrasing so speech renders as speech immediately.
 export let pendingSeq = 0;
 
-export function echoBeats(g, input) {
+export function echoBeats(g, input, via = null) {
   const mk = (text, privateWith = null) => ({
     id: `pending-${++pendingSeq}`,
     turnIndex: null,
@@ -47,6 +49,7 @@ export function echoBeats(g, input) {
     audioUrl: null,
     privateWith,
     voiceId: null,
+    viaProfile: via,
     pending: true,
   });
   if (!Array.isArray(input)) return [mk(String(input))];
@@ -102,7 +105,7 @@ export function captureWish(g) {
 // canonical player echoes when the response lands; on failure the echo is
 // taken back and the typed content (`restore`, plus the wish) returns to its
 // composer so nothing is lost.
-export async function resolveTurn(g, send, { look = false, echo = null, restore = null, wish = null } = {}) {
+export async function resolveTurn(g, send, { look = false, echo = null, restore = null, wish = null, via = null } = {}) {
   g.generating = true;
   g.skipReveal = true; // fast-forward any reveal still running from last turn
   stopLateWatch(); // the new turn supersedes the previous watch window
@@ -119,8 +122,9 @@ export async function resolveTurn(g, send, { look = false, echo = null, restore 
     const seen = new Set(g.beats.map((b) => b.id));
     const newBeats = mapBeats(turn.beats || [])
       .filter((b) => !seen.has(b.id))
-      .map((b) => withVoice(b));
+      .map((b) => (via ? { ...withVoice(b), viaProfile: via } : withVoice(b)));
     g.beats = [...g.beats, ...newBeats];
+    g.lastVia = via; // late image beats from this turn mirror to the same panel
     g.lastTurnIndex = lastTurnIndexOf(g.beats, g.lastTurnIndex);
     g.revealQueue = newBeats.map((b) => b.id); // staged reveal, in seq order
     g.skipReveal = false;
@@ -227,6 +231,9 @@ export function watchLateBeats(g) {
       g.beats = [...g.beats, ...fresh];
       g.lastTurnIndex = lastTurnIndexOf(g.beats, g.lastTurnIndex);
       if (fresh.some((b) => b.kind === "image" && b.speaker !== "system")) g.pendingView = false;
+      // a panel-launched look's image lands here, seconds later: mirror it
+      const tagged = g.lastVia ? fresh.map((b) => (b.kind === "image" ? { ...b, viaProfile: g.lastVia } : b)) : fresh;
+      if (g.lastVia) g.beats = [...g.beats.filter((b) => !tagged.some((t) => t.id === b.id)), ...tagged];
       g.revealQueue = [...(g.revealQueue || []), ...fresh.map((b) => b.id)];
       render();
       startReveal(g);

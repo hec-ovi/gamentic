@@ -644,6 +644,35 @@ test("the speak button walks loading -> playing -> back to idle", async () => {
   expect(btn.getAttribute("aria-label")).toMatch(/play voice/i);
 });
 
+test("Look from the whisper panel: sends a look segment and the results mirror into the thread", async () => {
+  const u = user();
+  let body;
+  server.use(
+    http.post(`${API}/games/:id/action`, async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({
+        beats: [makeBeat({ id: "lk-n", kind: "narration", text: "Her scar catches the light." })],
+        state: makeState(),
+      });
+    }),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getByRole("tab", { name: /whisper/i })).toBeTruthy());
+  await u.click(within(profileEl()).getByRole("tab", { name: /whisper/i }));
+  await waitFor(() => expect(within(profileEl()).getByRole("button", { name: /^look$/i })).toBeTruthy());
+
+  await u.click(within(profileEl()).getByRole("button", { name: /^look$/i }));
+  await u.type(pmBox(/what you look at/i), "her scar");
+  await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
+  await waitFor(() => expect(body).toBeTruthy());
+  expect(body.segments).toEqual([{ type: "look", text: "her scar" }]);
+
+  // the look's prose mirrors into the panel thread (it is public on the wire)
+  await waitFor(() => expect(within(document.querySelector("#pmThread")).getByText(/scar catches the light/)).toBeTruthy(), { timeout: 4000 });
+}, 10000);
+
 test("the profile composer's Do mode whispers a discreet private action (mode: do)", async () => {
   const u = user();
   let body;

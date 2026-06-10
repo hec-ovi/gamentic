@@ -189,3 +189,18 @@ test("prepare() failures resolve null and do not poison the queue", async () => 
   assert.equal(await v.prepare({ text: "bad", voiceId: "vx" }), null);
   assert.deepEqual(await v.prepare({ text: "good", voiceId: "vx" }), { audioUrl: "/audio/ok.wav", duration: 1 });
 });
+
+test("prepare passes the beat's emotion through to /voice/speak (omitted when empty)", async () => {
+  const calls = [];
+  const fetchImpl = async (url, opts) => {
+    calls.push(JSON.parse(opts.body));
+    return { ok: true, json: async () => ({ audio_url: "/audio/e.wav", duration_s: 1 }) };
+  };
+  const v = new Voice({ fetchImpl, AudioImpl: null });
+  await v.prepare({ text: "Stay back.", voiceId: "v1", emotion: "angry" });
+  assert.deepEqual(calls[0], { text: "Stay back.", voice_id: "v1", emotion: "angry" });
+  // same line, no emotion: a separate render, and the field stays off the wire
+  await v.prepare({ text: "Stay back.", voiceId: "v1" });
+  assert.equal(calls.length, 2);
+  assert.equal("emotion" in calls[1], false);
+});

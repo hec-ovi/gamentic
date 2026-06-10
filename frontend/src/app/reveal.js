@@ -83,9 +83,9 @@ export async function revealBeat(g, beat) {
   // (public dialogue AND private whispers) follow `autoplayCharacters`.
   let prepared = null;
   if (autoplayFor(beat) && beat.voiceId && voice.enabled) {
-    const current = voice.prepare({ text: beat.text, voiceId: beat.voiceId });
+    const current = voice.prepare({ text: beat.text, voiceId: beat.voiceId, emotion: beat.emotion });
     const next = nextVoicedBeat(g, beat.id);
-    if (next) voice.prepare({ text: next.text, voiceId: next.voiceId });
+    if (next) voice.prepare({ text: next.text, voiceId: next.voiceId, emotion: next.emotion });
     prepared = await current;
   }
 

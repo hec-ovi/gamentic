@@ -17,7 +17,6 @@ export const MODE_PLACEHOLDERS = {
 
 export function setComposerMode(holder, scope, mode) {
   if (!holder || (mode !== "say" && mode !== "do" && mode !== "look")) return;
-  if (scope === "pm" && mode === "look") return; // the private channel has no look
   holder.mode = mode;
   root.querySelectorAll(`[data-act="${scope}-mode"]`).forEach((b) => {
     const on = b.dataset.mode === mode;
@@ -32,7 +31,9 @@ export function setComposerMode(holder, scope, mode) {
       scope === "pm"
         ? mode === "say"
           ? `Whisper to ${name}...`
-          : `A discreet act only ${name} notices...`
+          : mode === "look"
+            ? `Look at what? (${name}, a detail, the room...)`
+            : `A discreet act only ${name} notices...`
         : MODE_PLACEHOLDERS.cmp[mode];
     input.setAttribute(
       "aria-label",
@@ -119,7 +120,8 @@ export function executePrivate() {
   const segments = [...pf.stack];
   const seg = currentSegment("pm");
   if (seg) segments.push(seg);
+  else if (pf.mode === "look" && !segments.length) segments.push({ type: "look", text: "" });
   if (!segments.length) return;
   pf.stack = [];
-  takeTurn(segments);
+  takeTurn(segments, pf.charId); // results mirror into this character's panel
 }

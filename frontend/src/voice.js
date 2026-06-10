@@ -48,12 +48,12 @@ export class Voice {
   // Synthesize WITHOUT playing: returns { audioUrl, duration } or null.
   // Queued FIFO (one generation at a time); cached per (voice, text). This is
   // the pipelining primitive: call it for beat N+1 while beat N plays.
-  prepare({ text, voiceId } = {}) {
+  prepare({ text, voiceId, emotion } = {}) {
     if (!this.enabled) return Promise.resolve(null);
     const clean = cleanText(text);
     if (!clean || !voiceId) return Promise.resolve(null);
 
-    const key = `${voiceId} ${clean}`;
+    const key = `${voiceId}|${emotion || ""} ${clean}`;
     const hit = this._cache.get(key);
     if (hit) return Promise.resolve(hit);
 
@@ -64,7 +64,7 @@ export class Voice {
         const res = await this._fetch("/voice/speak", {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ text: clean, voice_id: voiceId }),
+          body: JSON.stringify({ text: clean, voice_id: voiceId, ...(emotion ? { emotion } : {}) }),
         });
         if (!res || !res.ok) return null;
         const data = await res.json();
@@ -98,8 +98,8 @@ export class Voice {
 
   // Synthesize + play a single beat (the per-beat play button). Returns the
   // audio_url that was played, or null if skipped (disabled / no voice / error).
-  async speak({ text, voiceId, speakerId } = {}) {
-    const prepared = await this.prepare({ text, voiceId });
+  async speak({ text, voiceId, speakerId, emotion } = {}) {
+    const prepared = await this.prepare({ text, voiceId, emotion });
     if (!prepared) return null;
     if (!this._Audio) return prepared.audioUrl; // headless: report intent
     this.playUrl(prepared.audioUrl, speakerId);

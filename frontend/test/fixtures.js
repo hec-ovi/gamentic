@@ -91,6 +91,7 @@ export function makeBeat(over = {}) {
     speaker_name: "Narrator",
     kind: "narration",
     text: "Something happens.",
+    emotion: "",
     location: "The Last Breath",
     image_url: null,
     audio_url: null,
