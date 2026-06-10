@@ -1,11 +1,11 @@
 // Real TTS playback (Maya1 stack).
 //
-// Preferred path is the STREAMING endpoint: `POST /voice/stream { text, voice_id }`
-// returns a WAV that we play as it arrives (~0.3s to first audio; a full
-// /voice/speak render of a 10s line takes 11-12s at ~1.1x realtime). Chunks are
-// decoded as 16-bit PCM and scheduled back-to-back on an AudioContext. Where no
-// AudioContext / streaming body exists (old browser, tests), we fall back to
-// `POST /voice/speak` -> { audio_url } -> <audio> playback.
+// Playback uses `POST /voice/speak { text, voice_id }` -> { audio_url, duration_s }
+// -> <audio>. NOT /voice/stream: verified in play, streamed WAV through an
+// <audio> element cuts off mid-line (the stream's placeholder-size WAV header
+// makes the element stop early). The render wait (~1.1x realtime) is masked by
+// PIPELINING at the call site: prepare() beat N+1's audio while N plays, and
+// the staged story reveal shows a speech beat when ITS audio is ready.
 //
 // Rules (voice-requirements.md + frontend-api.md s5):
 //  - voice_id null/empty  -> SKIP entirely (the server 400s on empty voice_id).
@@ -14,28 +14,24 @@
 //  - disabled             -> do nothing (text already on screen).
 //  - fetch/play error      -> swallow; never block the game on audio.
 //  - volume               -> master * per-speaker (0..1).
-//  - stop()               -> halts current playback (element or stream).
-//  - one generation at a time: speak() always stops the previous line first;
-//    never fire requests in parallel (one GPU serves one generation).
+//  - stop()               -> halts current playback.
+//  - ONE GPU serves one generation: synthesis requests go through a strict
+//    FIFO queue, never in parallel. Identical requests hit the server cache
+//    (stable audio_url) and our local cache.
 
 export class Voice {
-  constructor({ fetchImpl, AudioImpl, AudioContextImpl } = {}) {
+  constructor({ fetchImpl, AudioImpl } = {}) {
     // Injectable for tests; default to the browser globals.
     this._fetch = fetchImpl || ((...a) => fetch(...a));
     this._Audio = AudioImpl || (typeof Audio !== "undefined" ? Audio : null);
-    this._AC =
-      AudioContextImpl ||
-      (typeof AudioContext !== "undefined"
-        ? AudioContext
-        : (typeof window !== "undefined" && window.webkitAudioContext) || null);
     this.enabled = true;
     this.masterVolume = 0.7;
     this.speakerVolumes = {}; // { [speakerId]: 0..1 }
-    this._audio = null; // legacy <audio> playback
-    this._ctx = null; // lazy AudioContext (one per app)
-    this._stream = null; // active streaming session { cancelled, sources, gain }
-    // Cache (text|voice) -> audio_url so legacy replays don't re-synthesize.
+    this._audio = null;
+    // Cache (text|voice) -> { audioUrl, duration } so replays don't re-synthesize.
     this._cache = new Map();
+    // FIFO synthesis queue: the next render starts only when the previous done.
+    this._queue = Promise.resolve();
   }
 
   applySettings(settings = {}) {
@@ -49,114 +45,21 @@ export class Voice {
     return clamp01(this.masterVolume * per);
   }
 
-  // Synthesize + play a single beat. Returns the url that was played
-  // ("/voice/stream" for streamed playback), or null if skipped/failed.
-  async speak({ text, voiceId, speakerId } = {}) {
-    if (!this.enabled) return null;
+  // Synthesize WITHOUT playing: returns { audioUrl, duration } or null.
+  // Queued FIFO (one generation at a time); cached per (voice, text). This is
+  // the pipelining primitive: call it for beat N+1 while beat N plays.
+  prepare({ text, voiceId } = {}) {
+    if (!this.enabled) return Promise.resolve(null);
     const clean = cleanText(text);
-    if (!clean) return null;
-    if (!voiceId) return null; // no voice assigned -> skip, never call the server
+    if (!clean || !voiceId) return Promise.resolve(null);
 
-    this.stop();
+    const key = `${voiceId} ${clean}`;
+    const hit = this._cache.get(key);
+    if (hit) return Promise.resolve(hit);
 
-    if (this._AC) {
-      const streamed = await this._streamSpeak(clean, voiceId, speakerId);
-      if (streamed) return streamed;
-      // stream endpoint missing/failed: fall through to the legacy render
-    }
-    return this._renderSpeak(clean, voiceId, speakerId);
-  }
-
-  // --- streaming path: /voice/stream WAV chunks -> AudioContext ---
-
-  async _streamSpeak(clean, voiceId, speakerId) {
-    let res;
-    try {
-      res = await this._fetch("/voice/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "audio/wav" },
-        body: JSON.stringify({ text: clean, voice_id: voiceId }),
-      });
-    } catch {
-      return null;
-    }
-    if (!res || !res.ok || !res.body || typeof res.body.getReader !== "function") return null;
-
-    let ctx = this._ctx;
-    try {
-      if (!ctx) ctx = this._ctx = new this._AC();
-      if (ctx.state === "suspended" && typeof ctx.resume === "function") ctx.resume().catch?.(() => {});
-    } catch {
-      return null; // no working audio output; let the caller fall back
-    }
-
-    const gain = ctx.createGain();
-    gain.gain.value = this.volumeFor(speakerId);
-    gain.connect(ctx.destination);
-    const session = { cancelled: false, sources: [], gain };
-    this._stream = session;
-
-    const reader = res.body.getReader();
-    let fmt = null;
-    let pending = new Uint8Array(0);
-    let playAt = 0;
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (session.cancelled) {
-          reader.cancel?.().catch?.(() => {});
-          break;
-        }
-        if (value && value.length) pending = concatBytes(pending, value);
-        if (!fmt) {
-          const parsed = parseWavHeader(pending);
-          if (parsed && parsed.bad) break; // not a WAV we can play
-          if (parsed && parsed.ok) {
-            fmt = parsed;
-            pending = pending.subarray(parsed.dataOffset);
-          }
-        }
-        if (fmt) {
-          const frameBytes = fmt.channels * 2; // 16-bit PCM
-          const usable = pending.length - (pending.length % frameBytes);
-          if (usable >= frameBytes) {
-            playAt = this._schedule(ctx, session, pending.subarray(0, usable), fmt, playAt);
-            pending = pending.subarray(usable);
-          }
-        }
-        if (done) break;
-      }
-    } catch {
-      /* network died mid-stream; whatever was scheduled keeps playing */
-    }
-    return fmt ? "/voice/stream" : null;
-  }
-
-  // Decode one PCM chunk into an AudioBuffer and queue it gaplessly.
-  _schedule(ctx, session, bytes, fmt, playAt) {
-    const frames = bytes.length / (fmt.channels * 2);
-    const buffer = ctx.createBuffer(fmt.channels, frames, fmt.sampleRate);
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    for (let ch = 0; ch < fmt.channels; ch++) {
-      const out = buffer.getChannelData(ch);
-      for (let i = 0; i < frames; i++) {
-        out[i] = view.getInt16((i * fmt.channels + ch) * 2, true) / 32768;
-      }
-    }
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    src.connect(session.gain);
-    const at = Math.max(playAt, ctx.currentTime + 0.05);
-    src.start(at);
-    session.sources.push(src);
-    return at + buffer.duration;
-  }
-
-  // --- legacy path: /voice/speak -> audio_url -> <audio> ---
-
-  async _renderSpeak(clean, voiceId, speakerId) {
-    let audioUrl = this._cache.get(`${voiceId} ${clean}`);
-    if (!audioUrl) {
+    const job = this._queue.then(async () => {
+      const again = this._cache.get(key); // a queued duplicate may have landed
+      if (again) return again;
       try {
         const res = await this._fetch("/voice/speak", {
           method: "POST",
@@ -165,44 +68,45 @@ export class Voice {
         });
         if (!res || !res.ok) return null;
         const data = await res.json();
-        audioUrl = data && data.audio_url;
-        if (!audioUrl) return null;
-        this._cache.set(`${voiceId} ${clean}`, audioUrl);
+        if (!data || !data.audio_url) return null;
+        const entry = { audioUrl: data.audio_url, duration: Number(data.duration_s) || null };
+        this._cache.set(key, entry);
+        return entry;
       } catch {
         return null; // synthesis failed; text stays on screen
       }
-    }
+    });
+    this._queue = job.catch(() => {}); // the queue itself never rejects
+    return job;
+  }
 
-    if (!this._Audio) return audioUrl; // headless: nothing to play, but report intent
+  // Play an already-rendered audio_url. Returns the element (or null headless).
+  playUrl(audioUrl, speakerId) {
+    if (!this.enabled || !audioUrl || !this._Audio) return null;
+    this.stop();
     try {
       const el = new this._Audio(audioUrl);
       el.volume = this.volumeFor(speakerId);
       this._audio = el;
       const p = el.play();
       if (p && typeof p.catch === "function") p.catch(() => {});
+      return el;
     } catch {
-      // autoplay blocked or element error; ignore
+      return null; // autoplay blocked or element error; ignore
     }
-    return audioUrl;
+  }
+
+  // Synthesize + play a single beat (the per-beat play button). Returns the
+  // audio_url that was played, or null if skipped (disabled / no voice / error).
+  async speak({ text, voiceId, speakerId } = {}) {
+    const prepared = await this.prepare({ text, voiceId });
+    if (!prepared) return null;
+    if (!this._Audio) return prepared.audioUrl; // headless: report intent
+    this.playUrl(prepared.audioUrl, speakerId);
+    return prepared.audioUrl;
   }
 
   stop() {
-    if (this._stream) {
-      this._stream.cancelled = true;
-      for (const src of this._stream.sources) {
-        try {
-          src.stop();
-        } catch {
-          /* already ended */
-        }
-      }
-      try {
-        this._stream.gain.disconnect();
-      } catch {
-        /* ignore */
-      }
-      this._stream = null;
-    }
     if (this._audio) {
       try {
         this._audio.pause();
@@ -213,50 +117,6 @@ export class Voice {
       this._audio = null;
     }
   }
-}
-
-// Walk the RIFF chunks for "fmt " + "data". Returns:
-//   { ok, channels, sampleRate, dataOffset } when both found (16-bit PCM),
-//   { bad: true } when this is definitely not playable, null when we simply
-//   need more bytes.
-export function parseWavHeader(bytes) {
-  if (bytes.length < 12) return null;
-  if (ascii(bytes, 0, 4) !== "RIFF" || ascii(bytes, 8, 4) !== "WAVE") return { bad: true };
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let offset = 12;
-  let fmt = null;
-  while (offset + 8 <= bytes.length) {
-    const id = ascii(bytes, offset, 4);
-    const size = view.getUint32(offset + 4, true);
-    if (id === "fmt ") {
-      if (offset + 8 + 16 > bytes.length) return null;
-      const audioFormat = view.getUint16(offset + 8, true);
-      const channels = view.getUint16(offset + 10, true);
-      const sampleRate = view.getUint32(offset + 12, true);
-      const bits = view.getUint16(offset + 22, true);
-      if (audioFormat !== 1 || bits !== 16 || !channels || !sampleRate) return { bad: true };
-      fmt = { channels, sampleRate };
-    } else if (id === "data") {
-      if (!fmt) return { bad: true }; // data before fmt: malformed
-      return { ok: true, ...fmt, dataOffset: offset + 8 };
-    }
-    offset += 8 + size + (size % 2); // chunks are word-aligned
-  }
-  return null; // header continues in the next network chunk
-}
-
-function ascii(bytes, start, len) {
-  let out = "";
-  for (let i = start; i < start + len && i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
-  return out;
-}
-
-function concatBytes(a, b) {
-  if (!a.length) return b instanceof Uint8Array ? b : new Uint8Array(b);
-  const out = new Uint8Array(a.length + b.length);
-  out.set(a, 0);
-  out.set(b, a.length);
-  return out;
 }
 
 // Strip light markdown / stray emphasis so we send clean speakable text.

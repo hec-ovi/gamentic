@@ -22,7 +22,7 @@ export const HELP = {
   scene: "Where you are right now. Its mood (calm, tense, dangerous) shifts with the story, and the clock is story time, not yours. Alongside are the objects revealed here, the things you can try, and the ways out. A dead end means no way out has been revealed yet.",
   inventory: "What you are carrying. Empty slots show how much more you can hold. Use a character's Give button to hand something over.",
   story: "The story itself. Plain flowing text is the narrator telling the tale, just read it. Coloured cards with a name are characters speaking to you. Small badges are things that just happened (damage, items, points). Scene art develops here like a photograph as it is painted.",
-  action: "Choose Do or Say, write in your own words, and press Send. The @ button tags a character or item into your words so the game knows exactly who or what you mean. The + button stacks several lines (a word and a deed) to execute together as one turn.",
+  action: "Just type what you do or say in your own words and press Enter - the game understands speech, deeds, attacks, gifts and even whispers from plain text. The Do/Say buttons, the @ tag (so it knows exactly who or what you mean) and the + stack (several lines as one turn) are there when you want precise control.",
   creator: "Describe the world you want in plain language and chat with the world-builder. When it has enough, press Begin the Adventure and it spins up a real game.",
   settings: "Sound options, out of the way. Turn voice on or off, autoplay each new line as it arrives, or set the master volume. The game server connects automatically.",
   library: "Your saved adventures. Continue one, or start a brand new world. These are real games stored on the backend.",
@@ -335,6 +335,7 @@ function renderPlay(state) {
       ${g.privateChat ? "" : renderActionBar(g, s, locked)}
       ${g.privateChat ? renderPrivateModal(s, g) : ""}
       ${g.give ? renderGiveModal(s, g.give, locked) : ""}
+      ${g.inspect ? renderInspectModal(s, g) : ""}
       ${locked ? `<div class="busy-veil" aria-hidden="true"><span class="busy-bar"></span></div>` : ""}
     </div>`;
 }
@@ -442,7 +443,7 @@ function renderPlayDeck(s, locked, g = {}) {
           ${help("hud")}
         </div>
         ${contextMeter(s.context)}
-        ${s.currentGoal ? `<div class="hud-goal" title="Current goal">${icon("compass")}<span>${escapeHtml(s.currentGoal)}</span></div>` : ""}
+        ${s.currentGoal ? `<button type="button" class="hud-goal" data-act="inspect-goal" title="Current goal - tap for the quest log" ${dis}>${icon("compass")}<span>${escapeHtml(s.currentGoal)}</span></button>` : ""}
       </div>
 
       <div class="deck-nav">
@@ -504,7 +505,7 @@ function renderCharColumn(c, s, locked) {
       : "";
   return `
     <article class="char-col${c.alive ? "" : " dead"}" data-char-id="${escapeHtml(c.id)}" style="--speaker:${escapeHtml(c.color)}">
-      <div class="col-art">
+      <button type="button" class="col-art" data-act="inspect-char" data-char-id="${escapeHtml(c.id)}" title="Inspect ${escapeHtml(c.name)}" aria-label="Inspect ${escapeHtml(c.name)}" ${locked ? "disabled" : ""}>
         ${bodyArt(c, s)}
         <div class="col-grad" aria-hidden="true"></div>
         <span class="disp-badge disp-${escapeHtml(c.disposition)}">${escapeHtml(c.disposition)}</span>
@@ -512,10 +513,10 @@ function renderCharColumn(c, s, locked) {
           <span class="char-name">${escapeHtml(c.name)}${c.following ? ` <span class="follow-tag" title="Following you">${icon("compass")}</span>` : ""}</span>
           ${hp}
         </div>
-      </div>
+      </button>
       ${c.description ? `<p class="char-desc">${escapeHtml(c.description)}</p>` : ""}
       ${contextMeter(c.context, { mini: true, label: `${c.name}'s memory` })}
-      <div class="char-inv-row">
+      <div class="char-inv">
         <span class="inv-mini-label">Carrying</span>
         ${slotGrid(c.inventory, 3, "char-items")}
       </div>
@@ -564,10 +565,10 @@ function castRow(c) {
   else if (c.present === false) where = "gone";
   else if (c.location) where = `at ${titleCase(c.location)}`;
   else where = "elsewhere";
-  return `<div class="cast-row${c.alive ? "" : " dead"}" style="--speaker:${escapeHtml(c.color)}" title="${escapeHtml(c.name)} - ${escapeHtml(where)}">
+  return `<button type="button" class="cast-row${c.alive ? "" : " dead"}" data-act="inspect-char" data-char-id="${escapeHtml(c.id)}" style="--speaker:${escapeHtml(c.color)}" title="${escapeHtml(c.name)} - ${escapeHtml(where)}">
             <span class="cast-portrait">${avatar}</span>
             <span class="cast-id"><span class="cast-name">${escapeHtml(c.name)}</span><span class="cast-where">${escapeHtml(where)}</span></span>
-          </div>`;
+          </button>`;
 }
 
 // --- action buttons (button -> segment mapping is resolved in app.js) ---
@@ -601,21 +602,19 @@ function slotTip(it) {
   return it.description ? `${it.name}: ${it.description}` : it.name;
 }
 
-// non-interactive display slot (player / character inventories)
+// inventory display slot (player / character): tappable -> the inspect modal
 function filledSlot(it) {
-  return `<span class="slot filled" data-item-id="${escapeHtml(it.id || "")}" data-item-name="${escapeHtml(it.name)}" title="${escapeHtml(slotTip(it))}">${slotInner(it)}</span>`;
+  return `<button type="button" class="slot filled" data-act="inspect-item" data-item-id="${escapeHtml(it.id || "")}" data-item-name="${escapeHtml(it.name)}" title="${escapeHtml(slotTip(it))}" aria-label="Inspect ${escapeHtml(it.name)}">${slotInner(it)}</button>`;
 }
 
-// interactive scene-item slot: loot (fixed:false) can be TAKEN, scenery
-// (fixed:true) can only be EXAMINED (the backend refuses to pocket the furniture).
+// scene-item slot: tappable -> the inspect modal (which offers Take for loose
+// loot, Examine for fixed scenery, and "ask what this is" for both).
 function sceneItemSlot(it, locked) {
-  const act = it.fixed ? "examine-item" : "take-item";
   const kind = it.fixed ? "scenery" : "loot";
   const tag = it.fixed
     ? `<span class="slot-tag fixed" aria-hidden="true">${icon("landmark")}</span>`
     : `<span class="slot-tag loot" aria-hidden="true">${icon("plus")}</span>`;
-  const verb = it.fixed ? "Examine" : "Take";
-  return `<button type="button" class="slot filled item-${kind}" data-act="${act}" data-item-id="${escapeHtml(it.id || "")}" data-item-name="${escapeHtml(it.name)}" title="${escapeHtml(slotTip(it))} - ${verb}" aria-label="${verb} ${escapeHtml(it.name)}" ${locked ? "disabled" : ""}>${slotInner(it)}${tag}</button>`;
+  return `<button type="button" class="slot filled item-${kind}" data-act="inspect-item" data-item-id="${escapeHtml(it.id || "")}" data-item-name="${escapeHtml(it.name)}" title="${escapeHtml(slotTip(it))}" aria-label="Inspect ${escapeHtml(it.name)}" ${locked ? "disabled" : ""}>${slotInner(it)}${tag}</button>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -675,7 +674,7 @@ function renderActionBar(g, s, locked) {
           mode: cmp.mode,
           locked,
           placeholderSay: "What do you say?",
-          placeholderDo: "What do you do?",
+          placeholderDo: "Do or say anything... (Enter sends)",
           submitLabel: "Send",
         })}
       </form>
@@ -699,8 +698,15 @@ function renderPrivateModal(s, g) {
   const beats = whisper
     ? g.beats.filter((b) => b.privateWith === pm.charId)
     : g.beats.filter((b) => !b.privateWith && b.speaker === pm.charId);
+  const veiled = g.revealQueue && g.revealQueue.length ? new Set(g.revealQueue) : null;
   const thread = beats.length
-    ? beats.slice(-40).map((b) => renderPmBeat(b)).join("")
+    ? beats
+        .slice(-40)
+        .map((b) => {
+          const html = renderPmBeat(b);
+          return veiled && veiled.has(b.id) ? `<div class="veil-wrap veiled">${html}</div>` : html;
+        })
+        .join("")
     : `<p class="pm-empty muted">${
         whisper ? `Say something only ${escapeHtml(name)} will hear.` : `Speak, and ${escapeHtml(name)} will answer aloud.`
       }</p>`;
@@ -748,22 +754,187 @@ function renderPrivateModal(s, g) {
     </div>`;
 }
 
-// Compact beat rendering inside the private modal thread.
+// ---------------------------------------------------------------------------
+// Tap-to-inspect: every small thing on screen (items, characters, the goal,
+// quests, system receipts) expands into a detail modal with the facts already
+// in /state plus an "ask what this is" narrator aside (POST /explain,
+// spoiler-safe by construction). Its image click opens the lightbox.
+// ---------------------------------------------------------------------------
+function renderInspectModal(s, g) {
+  const ins = g.inspect; // { kind, key, beatId, asking, answer }
+  const locked = Boolean(g.generating);
+  const view = inspectView(s, g, ins);
+  const ask = `
+    <div class="ins-ask">
+      ${
+        ins.asking
+          ? `<div class="narrating"><span class="dot"></span><span class="dot"></span><span class="dot"></span><em>the narrator considers...</em></div>`
+          : ins.answer != null
+            ? `<p class="ins-answer">${escapeHtml(ins.answer)}</p>`
+            : ""
+      }
+      <button type="button" class="holo-btn" data-act="inspect-ask" ${ins.asking || locked ? "disabled" : ""}>
+        ${icon("sparkles")}<span>${ins.answer != null ? "Ask again" : "Ask what this is"}</span>
+      </button>
+    </div>`;
+
+  return `
+    <div class="modal-overlay" data-act="close-inspect">
+      <div class="holo-modal inspect-modal" data-act="noop" role="dialog" aria-modal="true" aria-label="${escapeHtml(view.title)}">
+        <span class="card-corner tr"></span><span class="card-corner bl"></span>
+        <header class="ins-head">
+          <h3 class="ins-title">${escapeHtml(view.title)}</h3>
+          <button type="button" class="holo-icon" data-act="close-inspect" aria-label="Close" title="Close">${icon("x")}</button>
+        </header>
+        ${view.body}
+        ${view.actions ? `<div class="ins-actions">${view.actions}</div>` : ""}
+        ${ask}
+      </div>
+    </div>`;
+}
+
+function inspectView(s, g, ins) {
+  if (ins.kind === "item") return inspectItem(s, ins, g);
+  if (ins.kind === "character") return inspectCharacter(s, ins);
+  if (ins.kind === "goal") return inspectGoal(s);
+  if (ins.kind === "quest") return inspectQuest(s, ins);
+  if (ins.kind === "beat") return inspectBeat(g, ins);
+  return { title: "Unknown", body: `<p class="modal-body">Nothing to see.</p>`, actions: "" };
+}
+
+function findInspectItem(s, key) {
+  const pools = [
+    ...(((s.scene && s.scene.items) || []).map((it) => ({ ...it, where: "here in the scene", inScene: true }))),
+    ...((s.player.inventory || []).map((it) => ({ ...it, where: "in your pack" }))),
+    ...((s.characters || []).flatMap((c) => (c.inventory || []).map((it) => ({ ...it, where: `carried by ${c.name}` })))),
+  ];
+  return pools.find((it) => (it.id && it.id === key) || it.name === key) || null;
+}
+
+function inspectImage(url, alt) {
+  // not wrapped in a button: the global lightbox listener picks the click up
+  return url
+    ? `<div class="ins-figure"><img data-art="${escapeHtml(url)}" src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" loading="lazy" /></div>`
+    : "";
+}
+
+function inspectItem(s, ins, g) {
+  const it = findInspectItem(s, ins.key);
+  if (!it) return { title: "Gone", body: `<p class="modal-body">It is no longer here.</p>`, actions: "" };
+  const locked = Boolean(g.generating);
+  const tags = [
+    it.where,
+    it.qty > 1 ? `x${it.qty}` : "",
+    it.inScene ? (it.fixed ? "part of the scene" : "can be taken") : "",
+  ].filter(Boolean);
+  const actions = it.inScene
+    ? it.fixed
+      ? `<button type="button" class="holo-btn" data-act="examine-item" data-item-name="${escapeHtml(it.name)}" ${locked ? "disabled" : ""}>${icon("eye")}<span>Examine ${escapeHtml(it.name)}</span></button>`
+      : `<button type="button" class="holo-btn primary" data-act="take-item" data-item-name="${escapeHtml(it.name)}" ${locked ? "disabled" : ""}>${icon("plus")}<span>Take ${escapeHtml(it.name)}</span></button>`
+    : "";
+  return {
+    title: it.name,
+    body: `
+      ${inspectImage(it.imageUrl, it.name)}
+      <p class="ins-tags">${tags.map((t) => `<span class="ins-tag">${escapeHtml(t)}</span>`).join("")}</p>
+      ${it.description ? `<p class="modal-body">${escapeHtml(it.description)}</p>` : ""}`,
+    actions,
+  };
+}
+
+function inspectCharacter(s, ins) {
+  const c = (s.characters || []).find((x) => x.id === ins.key || x.name === ins.key);
+  if (!c) return { title: "Gone", body: `<p class="modal-body">No trace of them remains.</p>`, actions: "" };
+  const hp =
+    c.life != null && c.maxLife
+      ? `<div class="char-hp" title="${c.life}/${c.maxLife}"><div class="hp-track"><div class="hp-fill" style="width:${Math.max(0, Math.min(100, (c.life / c.maxLife) * 100))}%"></div></div></div>`
+      : "";
+  return {
+    title: c.name,
+    body: `
+      ${inspectImage(c.bodyUrl || c.faceUrl, c.name)}
+      <p class="ins-tags">
+        <span class="disp-badge disp-${escapeHtml(c.disposition)}">${escapeHtml(c.disposition)}</span>
+        ${c.following ? `<span class="ins-tag">following you</span>` : ""}
+        ${!c.alive ? `<span class="ins-tag">fallen</span>` : ""}
+      </p>
+      ${hp}
+      ${c.description ? `<p class="modal-body">${escapeHtml(c.description)}</p>` : ""}
+      ${contextMeter(c.context, { mini: true, label: `${c.name}'s memory` })}
+      ${
+        (c.inventory || []).length
+          ? `<p class="ins-tags">${c.inventory.map((it) => `<span class="ins-tag">${escapeHtml(it.name)}</span>`).join("")}</p>`
+          : ""
+      }`,
+    actions: "",
+  };
+}
+
+function inspectGoal(s) {
+  const quests = (s.quests || []).filter((q) => q.status === "active");
+  const questRows = quests
+    .map(
+      (q) => `
+        <button type="button" class="ins-quest" data-act="inspect-quest" data-quest-id="${escapeHtml(q.id)}">
+          ${icon("scroll")}<span class="ins-quest-name">${escapeHtml(q.title)}</span>
+          <span class="ins-quest-progress">${q.objectives.filter((o) => o.done).length}/${q.objectives.length}</span>
+        </button>`,
+    )
+    .join("");
+  return {
+    title: "Current goal",
+    body: `
+      <p class="modal-body goal-line">${icon("compass")}<span>${escapeHtml(s.currentGoal || "No goal right now.")}</span></p>
+      ${quests.length ? `<p class="ins-tags"><span class="ins-tag">quest log</span></p>${questRows}` : ""}`,
+    actions: "",
+  };
+}
+
+function inspectQuest(s, ins) {
+  const q = (s.quests || []).find((x) => x.id === ins.key);
+  if (!q) return { title: "Quest", body: `<p class="modal-body">That thread of the story is gone.</p>`, actions: "" };
+  const objectives = q.objectives
+    .map(
+      (o) => `
+        <li class="${o.done ? "done" : ""}">
+          <span class="check">${o.done ? icon("check") : ""}</span><span>${escapeHtml(o.text)}</span>
+        </li>`,
+    )
+    .join("");
+  return {
+    title: q.title,
+    body: `
+      ${q.description ? `<p class="modal-body">${escapeHtml(q.description)}</p>` : ""}
+      <ul class="ins-objectives quest">${objectives}</ul>`,
+    actions: "",
+  };
+}
+
+function inspectBeat(g, ins) {
+  const beat = g.beats.find((b) => b.id === ins.beatId);
+  return {
+    title: "What just happened",
+    body: `<p class="modal-body">${escapeHtml((beat && beat.text) || "")}</p>`,
+    actions: "",
+  };
+}
+
+// Compact beat rendering inside the private modal thread. data-beat-id + the
+// .pm-text span let the staged reveal typewrite private replies too.
 function renderPmBeat(beat) {
   if (beat.kind === "system") {
-    return `<div class="pm-line pm-system">${escapeHtml(beat.text)}</div>`;
+    return `<div class="pm-line pm-system" data-beat-id="${escapeHtml(beat.id)}">${escapeHtml(beat.text)}</div>`;
   }
   const mine = !beat.speaker || beat.speaker === "player";
   const deed = beat.kind === "action";
-  return `<div class="pm-line ${mine ? "pm-you" : "pm-them"}${deed ? " pm-deed" : ""}">
-            ${!mine && beat.speakerName ? `<b>${escapeHtml(beat.speakerName)}</b> ` : ""}${escapeHtml(beat.text)}
+  return `<div class="pm-line ${mine ? "pm-you" : "pm-them"}${deed ? " pm-deed" : ""}" data-beat-id="${escapeHtml(beat.id)}">
+            ${!mine && beat.speakerName ? `<b>${escapeHtml(beat.speakerName)}</b> ` : ""}<span class="pm-text">${escapeHtml(beat.text)}</span>
           </div>`;
 }
 
 // The story log. Only public beats (private_with == null) ever render here;
 // private exchanges live in the private modal. The current scene's art is mixed
-// INTO the prose: a collection-style card floated inside the latest narration,
-// revealed with a card effect once the image exists.
+// INTO the prose, anchored at the ESTABLISHING beat of the current scene visit.
 function renderStory(g) {
   const beats = g.beats.filter((b) => !b.privateWith);
   const artCard = sceneArtCard(g.state);
@@ -782,13 +953,43 @@ function renderStory(g) {
   }
   const trim = trimmed ? `<p class="story-trim muted small">${trimmed} earlier moments are behind you.</p>` : "";
 
-  let lastNarration = -1;
-  shown.forEach((b, i) => {
-    if (b.kind === "narration") lastNarration = i;
+  // ANCHORING RULE (round-2 fix): the scene-art card pins to the FIRST
+  // narration of the CURRENT scene visit - its establishing beat - never the
+  // latest one (anchoring to "latest" relocated the image on every new
+  // narration). The current visit is the trailing run of beats whose location
+  // matches where the player is now (location-less beats don't break the run).
+  // If the visit has no narration in the window, the card stands alone at the
+  // top of this visit's beats.
+  const here = g.state && (g.state.player.location || (g.state.scene && g.state.scene.name)) || null;
+  let visitStart = 0;
+  for (let i = shown.length - 1; i >= 0; i--) {
+    if (here && shown[i].location && !sameLocation(shown[i].location, here)) {
+      visitStart = i + 1;
+      break;
+    }
+  }
+  let anchorIdx = -1;
+  for (let i = visitStart; i < shown.length; i++) {
+    if (shown[i].kind === "narration") {
+      anchorIdx = i;
+      break;
+    }
+  }
+
+  // beats queued for the staged reveal render veiled until their turn
+  const veiled = g.revealQueue && g.revealQueue.length ? new Set(g.revealQueue) : null;
+  const parts = shown.map((b, i) => {
+    const html = renderBeat(b, g, i === anchorIdx ? artCard : "");
+    return veiled && veiled.has(b.id) ? `<div class="veil-wrap veiled">${html}</div>` : html;
   });
-  const body = shown.map((b, i) => renderBeat(b, g, i === lastNarration ? artCard : "")).join("");
-  // no narration on screen (e.g. directed-say turns only): show the art standalone
-  return trim + (lastNarration === -1 ? artCard : "") + body;
+  if (anchorIdx === -1 && artCard) parts.splice(visitStart, 0, artCard);
+  return trim + parts.join("");
+}
+
+// Mirror of the backend's norm_location (underscore/space collapse).
+function sameLocation(a, b) {
+  const norm = (v) => String(v || "").toLowerCase().replace(/[_\s]+/g, " ").trim();
+  return norm(a) === norm(b);
 }
 
 // The scene image as a collectible card living inside the prose. Loader rule:
@@ -832,19 +1033,24 @@ function renderBeat(beat, g, embed = "") {
 }
 
 // IMAGE beat (the "See" result): just an inline picture in the story flow.
-// No bubble, no label; persists in the log and re-renders on reload.
+// No bubble; the beat's text (the See focus, when one was given) is a small
+// caption under the image. Persists in the log and re-renders on reload.
 function renderImageBeat(beat) {
   if (!beat.imageUrl) return "";
   return `<figure class="beat-image" data-beat-id="${escapeHtml(beat.id)}">
             <span class="card-corner tr"></span><span class="card-corner bl"></span>
-            <img data-art="${escapeHtml(beat.imageUrl)}" src="${escapeHtml(beat.imageUrl)}" alt="The scene as it is right now" loading="lazy" />
+            <img data-art="${escapeHtml(beat.imageUrl)}" src="${escapeHtml(beat.imageUrl)}" alt="${escapeHtml(beat.text || "The scene as it is right now")}" loading="lazy" />
+            ${beat.text ? `<figcaption>${escapeHtml(beat.text)}</figcaption>` : ""}
           </figure>`;
 }
 
 // action beats are either the player's own echoed action or a CHARACTER's deed
-// (e.g. "Vergonica draws her blade."). Render each distinctly.
+// (e.g. "Vergonica draws her blade."). Render each distinctly; a player echo
+// that is SPEECH (say/whisper) becomes a mirrored dialogue bubble.
 function renderActionBeat(beat, g) {
   if (!beat.speaker || beat.speaker === "player" || beat.speaker === "narrator") {
+    const sp = playerSpeech(beat);
+    if (sp) return renderPlayerSpeech(beat, sp);
     return renderPlayerAction(beat);
   }
   const ch = (g.state.characters || []).find((c) => c.id === beat.speaker);
@@ -853,6 +1059,38 @@ function renderActionBeat(beat, g) {
   return `<p class="char-deed" data-beat-id="${escapeHtml(beat.id)}" style="--speaker:${escapeHtml(color)}">
             ${name ? `<b>${escapeHtml(name)}</b> ` : ""}${escapeHtml(beat.text)}
           </p>`;
+}
+
+const PLAYER_COLOR = "#2fe6ff";
+
+// Detect a player SPEECH echo. The wire gives player echoes as kind "action"
+// with texts like `you say "..." to Vex` or `you whisper to Mara: "..."`;
+// the quoted span is what was said.
+export function playerSpeech(beat) {
+  if (beat.kind !== "action" || (beat.speaker && beat.speaker !== "player")) return null;
+  const t = String(beat.text || "");
+  const m = t.match(/^you\s+(say|whisper|tell|ask|shout|reply|respond|call)\b/i);
+  if (!m) return null;
+  const q = t.match(/[“]([\s\S]+?)[”]|"([\s\S]+?)"/);
+  if (!q) return null;
+  const quote = q[1] != null ? q[1] : q[2];
+  const tm = t.match(/\bto\s+([^:."“]+?)\s*(?::|\.|$)/i);
+  return { quote, verb: m[1].toLowerCase(), target: tm ? tm[1].trim() : null };
+}
+
+// Player speech = a dialogue bubble MIRRORED: right-aligned, avatar on the
+// right, the player's color. Speech should look like speech (owner playtest).
+function renderPlayerSpeech(beat, sp) {
+  const whisper = sp.verb === "whisper";
+  const meta = sp.target ? `${whisper ? "whispered to" : "to"} ${sp.target}` : whisper ? "whispered" : "";
+  return `
+    <article class="dialogue from-player${whisper ? " whispered" : ""}" data-beat-id="${escapeHtml(beat.id)}" style="--speaker:${PLAYER_COLOR}">
+      <span class="bubble-avatar fallback you" style="background:${PLAYER_COLOR}">YOU</span>
+      <div class="bubble">
+        <span class="bubble-name">You${meta ? ` <i class="bubble-meta">${escapeHtml(meta)}</i>` : ""}</span>
+        <p>${escapeHtml(sp.quote)}</p>
+      </div>
+    </article>`;
 }
 
 // NARRATION = prose. No bubble, no speaker label. Just the story text, set like
@@ -901,12 +1139,13 @@ function renderPlayerAction(beat) {
           </p>`;
 }
 
-// SYSTEM = small animated badge (the juice).
+// SYSTEM = small animated badge (the juice). Tappable: a receipt like
+// "Obtained: brass key" opens the inspect modal to ask what it was about.
 function renderSystem(beat) {
   const tone = systemTone(beat.text);
-  return `<div class="system-badge ${tone}" data-beat-id="${escapeHtml(beat.id)}" role="status">
+  return `<button type="button" class="system-badge ${tone}" data-beat-id="${escapeHtml(beat.id)}" data-act="inspect-beat" role="status" title="Tap to inspect">
             ${icon(systemIcon(tone))}<span>${escapeHtml(beat.text)}</span>
-          </div>`;
+          </button>`;
 }
 
 function speakBtn(beat) {

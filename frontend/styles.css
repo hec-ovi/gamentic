@@ -1019,8 +1019,10 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .follow-tag svg { width: 0.9em; height: 0.9em; fill: none; stroke: var(--green); stroke-width: 2; }
 .char-col .char-desc { padding: 0 0.6rem; }
-.char-col .char-inv-row, .char-col .char-actions { padding: 0 0.6rem; }
-.char-col .char-actions { padding-bottom: 0.7rem; }
+/* carrying: label ROW above the items ROW, full card width (was an ugly
+   2-column wrap with the label squeezed beside the slots) */
+.char-col .char-inv { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; padding: 0 0.6rem; margin: 0.4rem 0; width: 100%; }
+.char-col .char-actions { padding: 0 0.6rem 0.7rem; }
 
 /* art loading skeleton (images_enabled + url still null = it is being painted) */
 .art-loading { position: relative; display: grid; place-items: center; overflow: hidden;
@@ -1057,7 +1059,6 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 .hp-track { height: 5px; background: rgba(10, 20, 36, 0.85); border: 1px solid var(--holo-line-soft); overflow: hidden; }
 .hp-fill { height: 100%; background: linear-gradient(90deg, var(--rose), #ff9bb0); transition: width 0.4s; }
 .char-desc { margin: 0.6rem 0 0.5rem; font-size: 0.8rem; color: var(--holo-dim); line-height: 1.4; }
-.char-inv-row { display: flex; align-items: center; gap: 0.5rem; margin: 0.4rem 0; }
 .inv-mini-label { font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--holo-dim); }
 .char-items .slot { width: 30px; height: 30px; }
 .char-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
@@ -1085,7 +1086,9 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 .mode-btn.active { color: var(--holo-cyan); border-color: var(--holo-cyan); background: rgba(47, 230, 255, 0.12); box-shadow: inset 0 0 12px rgba(47, 230, 255, 0.2); }
 .mode-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.composer-input { flex: 1; min-height: 2.6em; display: block; line-height: 1.5; overflow-x: hidden; overflow-y: auto; max-height: 5.5em; cursor: text; }
+/* free typing is THE main path (the backend interprets plain text into
+   say/do/attack/give/whisper); make the line generous */
+.composer-input { flex: 1; min-height: 3em; display: block; font-size: 1.02rem; line-height: 1.55; overflow-x: hidden; overflow-y: auto; max-height: 6em; cursor: text; }
 .composer-input:empty::before { content: attr(data-placeholder); color: var(--holo-dim); pointer-events: none; }
 .composer-input[contenteditable="false"] { opacity: 0.55; cursor: not-allowed; }
 
@@ -1212,6 +1215,111 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 }
 .beat-image img { width: 100%; display: block; }
 .beat-image .card-corner { z-index: 2; }
+/* the See focus as a small caption under the image */
+.beat-image figcaption {
+  padding: 0.45rem 0.7rem; font-family: var(--holo-display); font-size: 0.64rem;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--holo-dim);
+  border-top: 1px solid var(--holo-line-soft);
+}
+
+/* ---- simulated streaming: staged beat reveal ---- */
+.veil-wrap.veiled { display: none; }
+.typing .speak-btn { visibility: hidden; } /* controls appear once the line lands */
+.narration.typing > p:last-of-type::after,
+.dialogue.typing .bubble p::after,
+.pm-line.typing .pm-text::after {
+  content: "▍"; color: var(--holo-cyan); margin-left: 1px;
+  animation: blink 0.8s infinite;
+}
+.beat-image.img-arrive { animation: img-arrive-k 0.6s cubic-bezier(0.2, 0.9, 0.2, 1) both; }
+@keyframes img-arrive-k { from { opacity: 0; transform: translateY(16px) scale(0.97); } to { opacity: 1; transform: none; } }
+
+/* "new image below" affordance (reader is up the log; never yank them) */
+.new-image-chip {
+  position: sticky; bottom: 0.6rem; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 0.45rem; padding: 0.4rem 0.9rem;
+  background: rgba(9, 16, 28, 0.95); border: 1px solid var(--holo-cyan); color: var(--holo-cyan);
+  font-family: var(--holo-display); font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5), 0 0 14px rgba(47, 230, 255, 0.3);
+  animation: pop 0.4s cubic-bezier(0.2, 1.4, 0.5, 1) both; z-index: 5;
+}
+.new-image-chip svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; }
+
+/* ---- the See focus popover ---- */
+.see-pop {
+  position: absolute; z-index: 96; display: flex; gap: 0.5rem; width: min(330px, 92vw); padding: 0.55rem;
+  background: linear-gradient(180deg, rgba(20, 38, 60, 0.97), rgba(9, 16, 28, 0.97));
+  border: 1px solid var(--holo-line); box-shadow: var(--shadow);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+.see-pop .holo-input { flex: 1; min-width: 0; font-size: 0.85rem; }
+.see-pop .holo-btn { padding: 0.45rem 0.7rem; }
+
+/* ---- image lightbox: stored files are larger than their slots ---- */
+.lightbox-overlay {
+  position: fixed; inset: 0; z-index: 140; display: grid; place-items: center;
+  background: rgba(2, 6, 14, 0.88); backdrop-filter: blur(5px); cursor: zoom-out;
+  animation: fade-in 0.16s ease both;
+}
+.lightbox-overlay img {
+  max-width: 94vw; max-height: 92vh; object-fit: contain;
+  border: 1px solid var(--holo-line); box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7), 0 0 50px rgba(47, 230, 255, 0.12);
+  animation: node-rise 0.22s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+
+/* ---- tap-to-inspect: the detail modal ---- */
+.inspect-modal { width: min(460px, 92vw); display: flex; flex-direction: column; gap: 0.6rem; max-height: 88vh; overflow-y: auto; overflow-x: hidden; }
+.inspect-modal .card-corner { border-color: var(--holo-cyan); }
+.ins-head { display: flex; align-items: center; gap: 0.6rem; }
+.ins-title { margin: 0; flex: 1; font-family: var(--holo-display); letter-spacing: 0.06em; font-size: 1.05rem; color: var(--holo-ink); }
+.ins-figure { overflow: hidden; border: 1px solid var(--holo-line); background: rgba(7, 14, 26, 0.6);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px); }
+.ins-figure img { width: 100%; max-height: 44vh; object-fit: contain; display: block; cursor: zoom-in; }
+.ins-tags { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0; align-items: center; }
+.ins-tag { font-family: var(--holo-display); font-size: 0.62rem; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--holo-dim); border: 1px solid var(--holo-line-soft); padding: 0.18rem 0.5rem;
+  clip-path: polygon(5px 0, 100% 0, 100% 100%, 0 100%, 0 5px); }
+.inspect-modal .modal-body { margin: 0; }
+.goal-line { display: flex; align-items: center; gap: 0.5rem; color: var(--holo-cyan); }
+.goal-line svg { width: 1.1em; height: 1.1em; fill: none; stroke: currentColor; stroke-width: 2; flex: 0 0 auto; }
+.ins-quest { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.5rem 0.6rem; text-align: left;
+  background: rgba(16, 32, 52, 0.5); border: 1px solid var(--holo-line-soft); color: var(--holo-ink); font-size: 0.88rem;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+.ins-quest:hover { border-color: var(--holo-cyan); }
+.ins-quest svg { width: 1em; height: 1em; fill: none; stroke: var(--holo-cyan); stroke-width: 2; flex: 0 0 auto; }
+.ins-quest-name { flex: 1; }
+.ins-quest-progress { font-family: var(--holo-display); font-size: 0.72rem; color: var(--holo-dim); }
+.ins-objectives { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.ins-objectives li { display: flex; gap: 0.5rem; align-items: flex-start; font-size: 0.88rem; color: var(--holo-dim); }
+.ins-objectives li.done { color: var(--holo-dim); opacity: 0.6; text-decoration: line-through; }
+.ins-objectives .check { width: 1rem; flex: 0 0 auto; color: var(--green); }
+.ins-objectives .check svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2.5; }
+.ins-actions { display: flex; gap: 0.5rem; }
+.ins-ask { display: flex; flex-direction: column; gap: 0.6rem; border-top: 1px solid var(--holo-line-soft); padding-top: 0.7rem; }
+.ins-answer { margin: 0; font-family: var(--serif); font-style: italic; font-size: 0.98rem; line-height: 1.55; color: #e7e0d2; }
+.ins-ask .narrating { margin: 0; color: var(--holo-dim); }
+.ins-ask .holo-btn { align-self: flex-start; }
+
+/* tappable state things keep their look as buttons */
+button.hud-goal:hover { box-shadow: 0 0 14px rgba(47, 230, 255, 0.3); }
+button.system-badge { cursor: pointer; }
+button.system-badge:hover { border-style: solid; box-shadow: 0 0 12px rgba(47, 230, 255, 0.2); }
+button.col-art { display: block; width: 100%; padding: 0; border: 0; background: rgba(7, 14, 26, 0.6); text-align: inherit; cursor: pointer; }
+button.cast-row { width: 100%; text-align: left; cursor: pointer; }
+button.cast-row:hover { border-color: var(--holo-cyan); }
+
+/* ---- player speech: a dialogue bubble, mirrored ---- */
+.dialogue.from-player { flex-direction: row-reverse; }
+.dialogue.from-player .bubble {
+  border-left: 1px solid var(--holo-line-soft); border-right: 3px solid var(--speaker);
+  border-radius: 14px 4px 14px 14px; background: rgba(27, 159, 255, 0.10);
+}
+.dialogue.from-player .bubble-name { text-align: right; }
+.bubble-avatar.you { font-size: 0.62rem; font-family: var(--holo-display); letter-spacing: 0.04em; }
+.bubble-meta { font-style: normal; font-weight: 400; font-size: 0.68rem; color: var(--holo-dim); text-transform: none; letter-spacing: 0.02em; }
+.dialogue.from-player.whispered .bubble { border-right-color: var(--gold); background: rgba(242, 184, 75, 0.08); }
+.dialogue.from-player.whispered .bubble-name { color: var(--gold); }
 
 /* per-character context meter (their own agent memory): the mini variant */
 .ctx-meter.mini { gap: 0.35rem; }

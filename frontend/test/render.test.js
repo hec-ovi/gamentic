@@ -346,7 +346,78 @@ test("images on + scene art not ready -> a developing-card loader inside the sto
   assert.ok(art.classList.contains("art-loading"), "renders as a loader while generating");
 });
 
-test("scene art present -> the image card floats inside the latest narration", () => {
+test("anchoring: the scene card pins to the FIRST narration of the current visit, not the latest", () => {
+  const st = mapGameState({
+    game_id: "g8",
+    images_enabled: true,
+    scene: { id: "s2", name: "Vault", description: "", status: "calm", image_url: "/media/g8/vault.png", exits: [], items: [], available_actions: [] },
+    player: { life: 9, max_life: 20, points: 0, location: "Vault", inventory: [] },
+    characters: [],
+  });
+  const beats = mapBeats([
+    { id: "a1", turn_index: 1, seq: 0, kind: "narration", speaker: "narrator", text: "The bar hums.", location: "The Bar" },
+    { id: "b1", turn_index: 2, seq: 0, kind: "narration", speaker: "narrator", text: "You enter the vault.", location: "Vault" },
+    { id: "b2", turn_index: 3, seq: 0, kind: "narration", speaker: "narrator", text: "Dust settles.", location: "Vault" },
+    { id: "b3", turn_index: 4, seq: 0, kind: "narration", speaker: "narrator", text: "A coin glints.", location: "Vault" },
+  ]);
+  const story = parse(renderApp({ view: "play", active: { id: "g8", state: st, beats, generating: false } })).querySelector("#storyStream");
+  const holder = story.querySelector(".prose-art").closest(".narration");
+  assert.equal(holder.dataset.beatId, "b1", "art lives in the visit's establishing narration");
+  // and the previous scene's narration does NOT get it
+  assert.equal(story.querySelector('[data-beat-id="a1"] .prose-art'), null);
+});
+
+test("anchoring fallback: a visit with no narration shows the card standalone at its top", () => {
+  const st = mapGameState({
+    game_id: "g9",
+    images_enabled: true,
+    scene: { id: "s2", name: "Vault", description: "", status: "calm", image_url: "/media/g9/vault.png", exits: [], items: [], available_actions: [] },
+    player: { life: 9, max_life: 20, points: 0, location: "Vault", inventory: [] },
+    characters: [],
+  });
+  const beats = mapBeats([
+    { id: "a1", turn_index: 1, seq: 0, kind: "narration", speaker: "narrator", text: "The bar hums.", location: "The Bar" },
+    { id: "b1", turn_index: 2, seq: 0, kind: "dialogue", speaker: "c9", speaker_name: "Edda", text: "In here.", location: "Vault" },
+  ]);
+  const story = parse(renderApp({ view: "play", active: { id: "g9", state: st, beats, generating: false } })).querySelector("#storyStream");
+  const art = story.querySelector(".prose-art");
+  assert.ok(art, "card present");
+  assert.equal(art.closest(".narration"), null, "standalone, not inside the other scene's narration");
+  // it sits before the visit's first beat
+  assert.equal(art.nextElementSibling.dataset.beatId, "b1");
+});
+
+test("player speech echoes render as MIRRORED dialogue bubbles; deeds stay quiet markers", () => {
+  const beats = mapBeats([
+    { id: "e1", turn_index: 1, seq: 0, kind: "action", speaker: "player", text: 'you say "hello there" to Jacker' },
+    { id: "e2", turn_index: 1, seq: 1, kind: "action", speaker: "player", text: 'you whisper to Jacker: "psst, the key"' },
+    { id: "e3", turn_index: 1, seq: 2, kind: "action", speaker: "player", text: "you kick the door open" },
+  ]);
+  const el = parse(renderApp(playState({ beats })));
+  const say = el.querySelector('[data-beat-id="e1"]');
+  assert.ok(say.classList.contains("from-player"), "say echo is a player bubble");
+  assert.equal(say.querySelector(".bubble p").textContent, "hello there", "the quote is the bubble body");
+  assert.ok(/You/.test(say.querySelector(".bubble-name").textContent));
+  assert.ok(/to Jacker/.test(say.querySelector(".bubble-meta").textContent));
+  const whisper = el.querySelector('[data-beat-id="e2"]');
+  assert.ok(whisper.classList.contains("whispered"), "whisper echo styled as a whisper");
+  assert.equal(whisper.querySelector(".bubble p").textContent, "psst, the key");
+  const deed = el.querySelector('[data-beat-id="e3"]');
+  assert.ok(deed.classList.contains("player-action"), "a deed stays the quiet inline marker");
+  assert.equal(deed.querySelector(".bubble"), null);
+});
+
+test("character card carrying block stacks label ABOVE the items (rows, not columns)", () => {
+  const col = parse(renderApp(scenePlay())).querySelector('.char-col[data-char-id="c1"]');
+  const inv = col.querySelector(".char-inv");
+  assert.ok(inv, "carrying block present");
+  assert.equal(col.querySelector(".char-inv-row"), null, "old 2-column row layout is gone");
+  const kids = [...inv.children];
+  assert.ok(kids[0].classList.contains("inv-mini-label"), "label is the first row");
+  assert.ok(kids[1].classList.contains("slot-grid"), "items grid is the row below");
+});
+
+test("scene art present -> the image card floats inside the establishing narration", () => {
   const withArt = mapGameState({
     game_id: "g4",
     images_enabled: true,

@@ -30,6 +30,10 @@ const voice = new Voice();
 voice.applySettings(state.settings);
 let api = createApi(state.settings.backendUrl);
 let pollTimer = null;
+// document-level dismiss listeners for the transient popovers (tracked so a
+// stale one can never close the next popover)
+let seeDismiss = null;
+let taggerDismiss = null;
 
 // ---------------------------------------------------------------------------
 // boot. Exported so tests can mount the app against a fresh DOM + mocked network
@@ -43,10 +47,54 @@ export function init(opts = {}) {
   // file is still being persisted). Retry failed game images a few times with
   // backoff instead of leaving a dead slot. error events don't bubble -> capture.
   root.addEventListener("error", retryFailedImage, true);
+  // Lightbox: any game image opens full size (stored files are larger than
+  // their slots). Capture phase so it also works inside modal wrappers; images
+  // inside action buttons (item slots) keep their own click meaning.
+  root.addEventListener("click", maybeOpenLightbox, true);
   resetCreator();
   render();
   refreshLibrary();
   return { state, voice };
+}
+
+// ---------------------------------------------------------------------------
+// image lightbox: click any game image -> full-size viewer overlay
+// ---------------------------------------------------------------------------
+
+function maybeOpenLightbox(e) {
+  const img = e.target;
+  if (!img || img.tagName !== "IMG") return;
+  if (img.closest("button")) return; // item-slot buttons keep their own click
+  const src = img.getAttribute("src") || "";
+  if (!src.startsWith("/")) return; // only our same-origin game media
+  e.preventDefault();
+  e.stopPropagation();
+  openLightbox(src, img.getAttribute("alt") || "");
+}
+
+function openLightbox(src, alt) {
+  closeLightbox();
+  const ov = document.createElement("div");
+  ov.className = "lightbox-overlay";
+  ov.setAttribute("role", "dialog");
+  ov.setAttribute("aria-modal", "true");
+  ov.setAttribute("aria-label", alt || "Image viewer");
+  const img = document.createElement("img");
+  img.src = src;
+  img.alt = alt;
+  ov.appendChild(img);
+  ov.addEventListener("click", closeLightbox); // click anywhere closes
+  document.body.appendChild(ov);
+  document.addEventListener("keydown", lightboxKey);
+}
+
+function lightboxKey(e) {
+  if (e.key === "Escape") closeLightbox();
+}
+
+function closeLightbox() {
+  document.querySelectorAll(".lightbox-overlay").forEach((o) => o.remove());
+  document.removeEventListener("keydown", lightboxKey);
 }
 
 function retryFailedImage(e) {
@@ -105,15 +153,29 @@ function saveSettings() {
 
 function render() {
   closeTagger();
+  closeSeePopover();
+  // chat scroll rule: keep the reader's place across rebuilds; pin to the
+  // bottom only when they were already reading at the bottom.
+  const story = root.querySelector("#storyStream");
+  const stick = !story || storyNearBottom(story);
+  const prevTop = story ? story.scrollTop : 0;
   root.dataset.view = state.view;
   root.innerHTML = renderApp(state);
   bind();
   if (state.view === "play") {
-    scrollStory();
+    const fresh = root.querySelector("#storyStream");
+    if (fresh) {
+      if (stick) scrollStory();
+      else fresh.scrollTop = prevTop;
+    }
     if (state.active && state.active.privateChat) scrollToBottom("#pmThread");
     markArtReveals(state.active);
   }
   if (state.view === "creator") scrollCreator();
+}
+
+function storyNearBottom(el) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 140;
 }
 
 function bind() {
@@ -151,6 +213,11 @@ function bind() {
       if (typeof form.requestSubmit === "function") form.requestSubmit();
       else form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
+  });
+  // a click on the story instant-finishes the staged reveal
+  root.querySelector("#storyStream")?.addEventListener("click", () => {
+    const g = state.active;
+    if (g && g.revealing) g.skipReveal = true;
   });
   root.querySelector('[data-form="creator"]')?.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -230,7 +297,7 @@ function onAction(act, el) {
       speakBeat(el.dataset.beatId);
       break;
     case "see-scene":
-      seeScene();
+      openSeePopover(el);
       break;
     case "creator-restart":
       clearCreatorSession();
@@ -245,10 +312,35 @@ function onAction(act, el) {
       takeTurn([{ type: "do", text: "go to " + (el.dataset.label || "") }]);
       break;
     case "take-item":
+      if (state.active) state.active.inspect = null; // acting closes the modal
       takeTurn([{ type: "do", text: "take the " + (el.dataset.itemName || "item") }]);
       break;
     case "examine-item":
+      if (state.active) state.active.inspect = null;
       takeTurn([{ type: "do", text: "examine the " + (el.dataset.itemName || "item") }]);
+      break;
+    // --- tap-to-inspect: the detail modal + "ask what this is" ---
+    case "inspect-item":
+      openInspect({ kind: "item", key: el.dataset.itemId || el.dataset.itemName });
+      break;
+    case "inspect-char":
+      openInspect({ kind: "character", key: el.dataset.charId });
+      break;
+    case "inspect-goal":
+      openInspect({ kind: "goal", key: (state.active && state.active.state.currentGoal) || "goal" });
+      break;
+    case "inspect-quest":
+      openInspect({ kind: "quest", key: el.dataset.questId });
+      break;
+    case "inspect-beat":
+      openInspect({ kind: "beat", beatId: el.dataset.beatId });
+      break;
+    case "close-inspect":
+      if (state.active) state.active.inspect = null;
+      render();
+      break;
+    case "inspect-ask":
+      doExplain();
       break;
     case "char-action":
       onCharAction(el);
@@ -371,7 +463,7 @@ function setComposerMode(holder, scope, mode) {
           ? whisper
             ? `A discreet act only ${name} notices...`
             : "Do something..."
-          : "What do you do?";
+          : "Do or say anything... (Enter sends)";
     input.setAttribute("aria-label", mode === "say" ? "What you say" : "What you do");
     input.focus();
   }
@@ -459,6 +551,10 @@ function focusComposer(selector) {
 
 function closeTagger() {
   document.querySelectorAll(".tagger-pop").forEach((p) => p.remove());
+  if (taggerDismiss) {
+    document.removeEventListener("click", taggerDismiss);
+    taggerDismiss = null;
+  }
 }
 
 function openTagger(btn) {
@@ -505,13 +601,44 @@ function openTagger(btn) {
   const r = btn.getBoundingClientRect();
   pop.style.left = `${Math.max(8, Math.min(window.innerWidth - 248, r.left + window.scrollX - 110))}px`;
   pop.style.top = `${Math.max(8, r.top + window.scrollY - pop.offsetHeight - 8)}px`;
-  const dismiss = (ev) => {
-    if (!pop.contains(ev.target) && ev.target !== btn) {
-      closeTagger();
-      document.removeEventListener("click", dismiss);
-    }
+  taggerDismiss = (ev) => {
+    if (!pop.contains(ev.target) && ev.target !== btn) closeTagger();
   };
-  setTimeout(() => document.addEventListener("click", dismiss), 0);
+  setTimeout(() => {
+    if (taggerDismiss) document.addEventListener("click", taggerDismiss);
+  }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// tap-to-inspect: the detail modal + the /explain narrator aside
+// ---------------------------------------------------------------------------
+
+function openInspect(spec) {
+  const g = state.active;
+  if (!g || !g.state) return;
+  g.inspect = { ...spec, asking: false, answer: null };
+  render();
+}
+
+async function doExplain() {
+  const g = state.active;
+  const ins = g && g.inspect;
+  if (!ins || ins.asking) return;
+  ins.asking = true;
+  ins.answer = null;
+  render();
+  try {
+    const payload = ins.kind === "beat" ? { kind: "beat", beat_id: ins.beatId } : { kind: ins.kind, key: ins.key };
+    const res = await api.explain(g.id, payload);
+    ins.answer = (res && res.text) || "";
+  } catch (err) {
+    ins.answer = err.status === 404 ? "Nothing more can be seen." : "The narrator is silent right now.";
+  } finally {
+    if (g.inspect === ins) {
+      ins.asking = false;
+      render();
+    }
+  }
 }
 
 function doGive(item, target) {
@@ -576,6 +703,7 @@ async function openGame(gameId) {
     generating: true,
     privateChat: null, // { charId, name, channel: talk|whisper, mode: say|do, stack }
     give: null,
+    inspect: null, // { kind, key|beatId, asking, answer } - the tap-to-inspect modal
     composer: { mode: "do", stack: [] },
     revealedArt: new Set(), // art urls already card-revealed (the effect plays once)
   };
@@ -610,6 +738,7 @@ async function takeTurn(input) {
   if (empty) return;
 
   g.generating = true;
+  g.skipReveal = true; // fast-forward any reveal still running from last turn
   render();
 
   try {
@@ -619,12 +748,9 @@ async function takeTurn(input) {
     g.changes = diffState(prevState, g.state); // what transitioned this turn
     const newBeats = mapBeats(turn.beats || []).map((b) => withVoice(b));
     g.beats = [...g.beats, ...newBeats];
+    g.revealQueue = newBeats.map((b) => b.id); // staged reveal, in seq order
+    g.skipReveal = false;
     state.backendOnline = true;
-
-    render();
-    applyTransitions(g); // notices + one-shot flashes from the diff
-
-    if (state.settings.autoplayVoice) autoplay(newBeats);
   } catch (err) {
     state.backendError = err.message || "Turn failed";
     if (err.status === 0) state.backendOnline = false;
@@ -632,8 +758,203 @@ async function takeTurn(input) {
   } finally {
     g.generating = false;
     render();
+    applyTransitions(g); // notices + one-shot flashes from the diff
+    startReveal(g);
     maybePollForArt();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Simulated streaming: the backend computes a turn atomically (real token
+// streaming is impossible by design), so the PACING is ours. Per beat kind, in
+// seq order: system beats + the player's own echo are INSTANT; narration /
+// dialogue / private whispers get a fast typewriter (instant-finish on story
+// click); image beats fade in when reached. With voice autoplay on, a speech
+// beat reveals when ITS audio is ready and the typewriter paces with the
+// audio's duration (the next beat's audio renders while this one plays).
+// ---------------------------------------------------------------------------
+
+const REVEAL_CPS = 45; // default typewriter speed (chars/second)
+const REVEAL_TICK = 45; // ms per typewriter tick
+
+function reducedMotion() {
+  try {
+    return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+}
+
+async function startReveal(g) {
+  if (!g || g.revealing || !g.revealQueue || !g.revealQueue.length) return;
+  g.revealing = true;
+  try {
+    while (g.revealQueue && g.revealQueue.length && state.active === g && state.view === "play") {
+      const beat = g.beats.find((b) => b.id === g.revealQueue[0]);
+      await revealBeat(g, beat);
+      g.revealQueue.shift();
+    }
+  } finally {
+    if (g.revealQueue) g.revealQueue.length = 0;
+    g.revealing = false;
+    g.skipReveal = false;
+  }
+}
+
+async function revealBeat(g, beat) {
+  if (!beat) return;
+  // a beat can render in two places at once (the story AND the talk-modal
+  // thread); reveal every copy
+  const find = () => [...root.querySelectorAll(`[data-beat-id="${cssId(beat.id)}"]`)];
+  const unveil = () => {
+    const els = find();
+    els.forEach((el) => el.closest(".veil-wrap")?.classList.remove("veiled"));
+    return els[0] || null;
+  };
+
+  const instant = g.skipReveal || reducedMotion();
+  if (beat.kind === "image") {
+    const el = unveil();
+    if (el) {
+      el.classList.add("img-arrive");
+      followStory();
+      announceImage(el);
+    }
+    if (!instant) await sleep(350);
+    return;
+  }
+
+  const fromPlayer = !beat.speaker || beat.speaker === "player";
+  const typed = (beat.kind === "narration" || beat.kind === "dialogue") && !fromPlayer;
+  if (!typed) {
+    unveil();
+    followStory();
+    if (!instant) await sleep(90);
+    return;
+  }
+
+  // voice pairing: render this beat's audio first (reveal when ready), then
+  // queue the NEXT voiced beat behind it so it renders while this one plays.
+  let prepared = null;
+  if (state.settings.autoplayVoice && beat.voiceId && voice.enabled) {
+    const current = voice.prepare({ text: beat.text, voiceId: beat.voiceId });
+    const next = nextVoicedBeat(g, beat.id);
+    if (next) voice.prepare({ text: next.text, voiceId: next.voiceId });
+    prepared = await current;
+  }
+
+  const el = unveil();
+  if (!el) return;
+  if (prepared) voice.playUrl(prepared.audioUrl, beat.speaker);
+  if (instant) return;
+
+  const chars = String(beat.text || "").length || 1;
+  const cps = prepared && prepared.duration ? Math.min(80, Math.max(15, chars / prepared.duration)) : REVEAL_CPS;
+  await typewrite(g, beat, cps);
+}
+
+function nextVoicedBeat(g, afterId) {
+  const queue = g.revealQueue || [];
+  const from = queue.indexOf(afterId);
+  for (let i = from + 1; i < queue.length; i++) {
+    const b = g.beats.find((x) => x.id === queue[i]);
+    if (b && b.voiceId && (b.kind === "narration" || b.kind === "dialogue")) return b;
+  }
+  return null;
+}
+
+// Where the typewriter writes, per card shape. Counts mirror the renderers.
+function typeTargets(el) {
+  if (el.classList.contains("narration")) return [...el.querySelectorAll(":scope > p")];
+  const bubble = el.querySelector(".bubble p");
+  if (bubble) return [bubble];
+  const pm = el.querySelector(".pm-text");
+  if (pm) return [pm];
+  return [];
+}
+
+// Texts come from the BEAT (same paragraph split as the renderer), not the
+// DOM: a mid-reveal re-render rebuilds the nodes with full text, and we keep
+// typing into the fresh ones from our own position.
+async function typewrite(g, beat, cps) {
+  const paras = beat.kind === "narration" ? String(beat.text || "").split(/\n{2,}/) : [String(beat.text || "")];
+  const step = Math.max(1, Math.round((cps * REVEAL_TICK) / 1000));
+  const els = () => [...root.querySelectorAll(`[data-beat-id="${cssId(beat.id)}"]`)];
+
+  const first = els();
+  if (!first.length) return;
+  first.forEach((el) => {
+    typeTargets(el).forEach((t) => (t.textContent = ""));
+    el.classList.add("typing");
+  });
+
+  for (let i = 0; i < paras.length; i++) {
+    let pos = 0;
+    while (pos < paras[i].length) {
+      if (g.skipReveal || state.active !== g || state.view !== "play") {
+        finishTyping(beat, paras);
+        return;
+      }
+      pos = Math.min(paras[i].length, pos + step);
+      const copies = els();
+      if (!copies.length) return; // windowed out mid-type
+      for (const el of copies) {
+        el.closest(".veil-wrap")?.classList.remove("veiled"); // survive re-renders
+        const targets = typeTargets(el);
+        for (let j = 0; j < targets.length; j++) {
+          targets[j].textContent = j < i ? paras[j] : j === i ? paras[i].slice(0, pos) : "";
+        }
+      }
+      followStory();
+      await sleep(REVEAL_TICK);
+    }
+  }
+  finishTyping(beat, paras);
+}
+
+function finishTyping(beat, paras) {
+  root.querySelectorAll(`[data-beat-id="${cssId(beat.id)}"]`).forEach((el) => {
+    el.closest(".veil-wrap")?.classList.remove("veiled");
+    typeTargets(el).forEach((t, j) => (t.textContent = paras[j] ?? ""));
+    el.classList.remove("typing");
+  });
+  followStory();
+}
+
+// Keep following the story while it grows, but only if the reader is at the
+// bottom (scrolling up to read pauses the follow).
+function followStory() {
+  const story = root.querySelector("#storyStream");
+  if (story && storyNearBottom(story)) story.scrollTop = story.scrollHeight;
+}
+
+// A new image landed in the flow: bring it into view when the reader is at the
+// bottom; otherwise offer a small "new image below" affordance instead of
+// yanking them away from what they are reading.
+function announceImage(el) {
+  const story = root.querySelector("#storyStream");
+  if (!story) return;
+  if (storyNearBottom(story)) {
+    if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    else followStory();
+    return;
+  }
+  if (story.querySelector(".new-image-chip")) return;
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "new-image-chip";
+  chip.innerHTML = `${icon("eye")}<span>New image below</span>`;
+  chip.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", behavior: "smooth" });
+    chip.remove();
+  });
+  story.appendChild(chip);
+  setTimeout(() => chip.remove(), 15000);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ---------------------------------------------------------------------------
@@ -642,14 +963,57 @@ async function takeTurn(input) {
 // a persisted `kind: "image"` beat rendered inline in the story.
 // ---------------------------------------------------------------------------
 
-async function seeScene() {
+// The eye opens a small "look at what?" popover first: empty = the whole
+// scene, a focus ("what Layla is doing") frames the shot on it.
+function openSeePopover(btn) {
+  const g = state.active;
+  if (!g || !g.state || !g.state.imagesEnabled || g.seeing || g.generating) return;
+  closeSeePopover();
+  const pop = document.createElement("form");
+  pop.className = "see-pop";
+  pop.innerHTML = `
+    <input name="seeFocus" class="holo-input" autocomplete="off"
+           placeholder="Look at what? (empty = whole scene)" aria-label="Look at what?" />
+    <button class="holo-btn" type="submit">${icon("eye")}<span>See</span></button>`;
+  pop.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const focus = String(new FormData(pop).get("seeFocus") || "").trim();
+    closeSeePopover();
+    seeScene(focus);
+  });
+  document.body.appendChild(pop);
+  const r = btn.getBoundingClientRect();
+  pop.style.top = `${r.bottom + window.scrollY + 8}px`;
+  pop.style.left = `${Math.max(8, Math.min(window.innerWidth - 330, r.left + window.scrollX - 40))}px`;
+  pop.querySelector("input").focus();
+  seeDismiss = (ev) => {
+    if (!pop.contains(ev.target) && ev.target !== btn) closeSeePopover();
+  };
+  setTimeout(() => {
+    if (seeDismiss) document.addEventListener("click", seeDismiss);
+  }, 0);
+}
+
+function closeSeePopover() {
+  document.querySelectorAll(".see-pop").forEach((p) => p.remove());
+  if (seeDismiss) {
+    document.removeEventListener("click", seeDismiss);
+    seeDismiss = null;
+  }
+}
+
+async function seeScene(focus) {
   const g = state.active;
   if (!g || !g.state || !g.state.imagesEnabled || g.seeing || g.generating) return;
   g.seeing = true;
   render();
   try {
-    const res = await api.viewScene(g.id);
-    if (res && res.beat) g.beats = [...g.beats, ...mapBeats([res.beat])];
+    const res = await api.viewScene(g.id, focus);
+    if (res && res.beat) {
+      const beats = mapBeats([res.beat]);
+      g.beats = [...g.beats, ...beats];
+      g.revealQueue = [...(g.revealQueue || []), ...beats.map((b) => b.id)];
+    }
   } catch (err) {
     if (err.status === 409) {
       // images are disabled server-side: hide the button by trusting the flag
@@ -662,6 +1026,7 @@ async function seeScene() {
     if (state.active === g) {
       g.seeing = false;
       render();
+      startReveal(g);
     }
   }
 }
@@ -807,10 +1172,8 @@ function speakBeat(beatId) {
   voice.speak({ text: beat.text, voiceId: beat.voiceId, speakerId: beat.speaker });
 }
 
-function autoplay(beats) {
-  const beat = beats.find((b) => b.voiceId && (b.kind === "narration" || b.kind === "dialogue"));
-  if (beat) voice.speak({ text: beat.text, voiceId: beat.voiceId, speakerId: beat.speaker });
-}
+// (turn autoplay is handled by the staged reveal: each speech beat's audio is
+// prepared in a pipeline and played when that beat reveals)
 
 // ---------------------------------------------------------------------------
 // late-arriving art: media is optional + async (image gen lags). Poll /state
@@ -846,7 +1209,15 @@ function maybePollForArt() {
       });
       const gainedScene = mapped.scene && mapped.scene.imageUrl && !(prev.scene && prev.scene.imageUrl);
       state.active.state = mapped;
-      if ((gainedPortrait || gainedScene) && state.view === "play") render();
+      // don't yank the DOM out from under a running typewriter; the art shows
+      // on the next natural render
+      if ((gainedPortrait || gainedScene) && state.view === "play" && !state.active.revealing) {
+        render();
+        if (gainedScene) {
+          const art = root.querySelector("#storyStream .prose-art img");
+          if (art) announceImage(art.closest(".prose-art") || art);
+        }
+      }
       if (!artMissing(mapped)) stopPolling();
     } catch {
       /* keep trying */

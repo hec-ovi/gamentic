@@ -59,8 +59,14 @@ export function createApi(backendUrl) {
     deleteGame: (id) => request(`/games/${encodeURIComponent(id)}`, { method: "DELETE" }),
     clearBeats: (id) => request(`/games/${encodeURIComponent(id)}/beats`, { method: "DELETE" }),
     // "See" the scene: synchronous image of the current scene with the present
-    // characters (5-10s). 409 = images disabled, 502 = image service down.
-    viewScene: (id) => request(`/games/${encodeURIComponent(id)}/view`, { method: "POST" }),
+    // characters (5-10s). Optional focus ("what Layla is doing") frames the
+    // shot; empty = the whole scene. 409 = images disabled, 502 = service down.
+    viewScene: (id, focus) =>
+      request(`/games/${encodeURIComponent(id)}/view`, { method: "POST", ...(focus ? { body: { focus } } : {}) }),
+    // Tap-to-explain: an in-world, spoiler-safe aside about a visible thing.
+    // payload: { kind: item|character|scene|quest|goal|beat, key } or
+    // { kind: "beat", beat_id }. 404 = nothing visible matches.
+    explain: (id, payload) => request(`/games/${encodeURIComponent(id)}/explain`, { method: "POST", body: payload }),
     creatorMessage: (sessionId, message) =>
       request("/create/message", { method: "POST", body: { session_id: sessionId, message } }),
     creatorFinalize: (sessionId) =>
