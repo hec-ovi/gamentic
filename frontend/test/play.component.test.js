@@ -673,8 +673,11 @@ test("Give opens an item picker and sends a give segment with the item id", asyn
     }),
   );
   await gotoPlay(u);
-  const col = document.querySelector('.char-col[data-char-id="c1"]');
-  await u.click(within(col).getByRole("button", { name: /give/i }));
+  // the offers fold behind the card's Actions button
+  const col = () => document.querySelector('.char-col[data-char-id="c1"]');
+  expect(within(col()).queryByRole("button", { name: /give/i })).toBeNull();
+  await u.click(within(col()).getByRole("button", { name: /^actions$/i }));
+  await u.click(within(col()).getByRole("button", { name: /give/i }));
   // picker lists the player's inventory item; the segment carries its id
   const pick = await screen.findByRole("button", { name: /^credstick$/i });
   await u.click(pick);

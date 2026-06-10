@@ -43,7 +43,7 @@ export function renderPlay(state) {
 
         <aside class="char-column">
           <div class="col-head">${icon("mask")}<span>In the scene</span>${help("party")}</div>
-          ${renderCharacters(s, locked)}
+          ${renderCharacters(s, locked, g)}
         </aside>
       </div>
 
@@ -164,14 +164,14 @@ export function renderPlayDeck(s, locked, g = {}) {
     </header>`;
 }
 
-export function renderCharacters(s, locked) {
+export function renderCharacters(s, locked, g = {}) {
   const present = presentCharacters(s);
   const presentIds = new Set(present.map((c) => c.id));
   // everyone known but not standing here: followers lagging, those left behind, the fallen.
   const elsewhere = (s.characters || []).filter((c) => c.name && !presentIds.has(c.id));
 
   const here = present.length
-    ? `<div class="char-deck cols-${present.length}">${present.map((c) => renderCharColumn(c, s, locked)).join("")}</div>`
+    ? `<div class="char-deck cols-${present.length}">${present.map((c) => renderCharColumn(c, s, locked, g)).join("")}</div>`
     : `<p class="muted small char-empty">No one else is here right now.</p>`;
 
   const roster = elsewhere.length
@@ -185,12 +185,11 @@ export function renderCharacters(s, locked) {
 }
 
 // A character is a tall vertical card column: the full-body reference art fills
-// the column, identity reads off a plate at its foot, and the inventory +
-// action buttons hang below. Art is tall-portrait by contract (frontend-api 5b).
-// Tapping the card opens the FULL-SCREEN profile (traits, moments, memories,
-// the private whisper channel). "Talk" is gone: whisper IS the private channel
-// and it lives in the profile, which keeps the action row light.
-export function renderCharColumn(c, s, locked) {
+// the column, identity reads off a plate at its foot, and only the Carrying
+// row + one "Actions" button hang below (the description lives in the
+// profile, not on the card). "Actions" expands the offer buttons (Give,
+// Provoke, ...); tapping the card opens the FULL-SCREEN profile.
+export function renderCharColumn(c, s, locked, g = {}) {
   const hp =
     c.life != null && c.maxLife
       ? `<div class="char-hp" title="${c.life}/${c.maxLife}">
@@ -198,6 +197,16 @@ export function renderCharColumn(c, s, locked) {
          </div>`
       : "";
   const actions = c.actions.filter((a) => a.type !== "talk");
+  const open = g.actionsFor === c.id;
+  const actionsBlock = actions.length
+    ? `<div class="char-actions">
+         <button type="button" class="chip-btn actions-toggle${open ? " open" : ""}" data-act="toggle-char-actions"
+                 data-char-id="${escapeHtml(c.id)}" aria-expanded="${open}" title="What you can do to ${escapeHtml(c.name)}">
+           ${icon("zap")}<span>Actions</span>
+         </button>
+         ${open ? actions.map((a) => charActionBtn(a, c, locked)).join("") : ""}
+       </div>`
+    : "";
   return `
     <article class="char-col${c.alive ? "" : " dead"}" data-char-id="${escapeHtml(c.id)}" style="--speaker:${escapeHtml(c.color)}">
       <button type="button" class="col-art" data-act="open-profile" data-char-id="${escapeHtml(c.id)}" data-char-name="${escapeHtml(c.name)}" title="Open ${escapeHtml(c.name)}'s profile" aria-label="Open ${escapeHtml(c.name)}'s profile">
@@ -209,15 +218,12 @@ export function renderCharColumn(c, s, locked) {
           ${hp}
         </div>
       </button>
-      ${c.description ? `<p class="char-desc">${escapeHtml(c.description)}</p>` : ""}
       ${contextMeter(c.context, { mini: true, label: `${c.name}'s memory` })}
       <div class="char-inv">
         <span class="inv-mini-label">Carrying</span>
         ${slotGrid(c.inventory, 3, "char-items")}
       </div>
-      <div class="char-actions">
-        ${actions.map((a) => charActionBtn(a, c, locked)).join("")}
-      </div>
+      ${actionsBlock}
     </article>`;
 }
 

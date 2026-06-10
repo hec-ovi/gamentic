@@ -1061,13 +1061,17 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 .char-desc { margin: 0.6rem 0 0.5rem; font-size: 0.8rem; color: var(--holo-dim); line-height: 1.4; }
 .inv-mini-label { font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--holo-dim); }
 .char-items .slot { width: 30px; height: 30px; }
-/* character offers read light, not "brute": quiet text-buttons that glow on hover */
-.char-actions { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
+/* character offers fold behind ONE quiet "Actions" button; the expanded
+   buttons stay light text-buttons that glow on hover */
+.char-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin-top: 0.5rem; }
 .char-actions .chip-btn {
   font-size: 0.68rem; padding: 0.22rem 0.45rem;
   background: transparent; border-color: transparent; color: var(--holo-dim);
 }
 .char-actions .chip-btn:hover:not(:disabled) { color: var(--holo-cyan); border-color: var(--holo-line-soft); background: rgba(47, 230, 255, 0.06); }
+.char-actions .actions-toggle { border-color: var(--holo-line-soft); display: inline-flex; align-items: center; gap: 0.3rem; }
+.char-actions .actions-toggle svg { width: 0.9em; height: 0.9em; fill: none; stroke: currentColor; stroke-width: 2; }
+.char-actions .actions-toggle.open { color: var(--holo-cyan); border-color: var(--holo-cyan); background: rgba(47, 230, 255, 0.08); }
 
 /* action bar */
 .play-actionbar { position: relative; z-index: 3; border-top: 1px solid var(--holo-line-soft); background: linear-gradient(0deg, rgba(10, 20, 36, 0.7), transparent); padding: 0.7rem clamp(0.8rem, 2vw, 1.4rem); display: flex; flex-direction: column; gap: 0.6rem; }

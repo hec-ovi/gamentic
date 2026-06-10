@@ -224,6 +224,13 @@ export function onAction(act, el) {
     case "char-action":
       onCharAction(el);
       break;
+    case "toggle-char-actions":
+      // expand/collapse a card's offer buttons (read-only: works mid-turn too)
+      if (state.active) {
+        state.active.actionsFor = state.active.actionsFor === el.dataset.charId ? null : el.dataset.charId;
+        render();
+      }
+      break;
     case "open-profile":
       openProfile(el.dataset.charId, el.dataset.charName);
       break;

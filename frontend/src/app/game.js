@@ -85,6 +85,7 @@ export async function openGame(gameId) {
     wish: "", // the optional "what do you wish to happen next?" line
     lastTurnIndex: 0, // high-water mark for GET /beats?since= polling
     pendingView: false, // a look turn's image may still be rendering
+    actionsFor: null, // which character card has its Actions list expanded
     revealedArt: new Set(), // art urls already card-revealed (the effect plays once)
   };
   state.view = "play";
