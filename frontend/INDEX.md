@@ -12,13 +12,27 @@ Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> `adap
 |---|---|
 | `index.html` | Document shell, favicon, the CSS/JS entrypoints. Nothing else. |
 | `styles.css` | The whole visual system: prose narration, dialogue bubbles, the deck, character columns, the profile screen, animations, scrollbars. |
-| `src/app.js` | The controller: state, view routing, event wiring, the turn loop (action/continue/wish), the partial busy-lock, the staged reveal engine, art + late-beat polling, the character profile fetch, game settings PATCH, export/import, lightbox, toasts. Exports `init()` for tests. |
+| `src/app.js` | The BOOT facade: `init()` (exported for tests) + auto-init. The controller lives in `src/app/`. |
+| `src/app/ctx.js` | The ONE in-memory state, the voice engine, the api client and root element, shared as live bindings. |
+| `src/app/ui.js` | `render()` (full or scoped re-bind), `bind()`, the `[data-act]` action dispatcher, the partial busy-lock gate. |
+| `src/app/turns.js` | The turn loop: action/continue, the optimistic echo + failure restore, the wish, the late-image-beat watch. |
+| `src/app/reveal.js` | The staged reveal: typewriter, veils, voice pacing, follow-scroll, the new-image affordances. |
+| `src/app/game.js` | Library, open/resume, delete, wipe-all, export/import, late-art /state polling. |
+| `src/app/playctl.js` | Scene/character action buttons, tap-to-inspect + /explain, the give flow, the @ tagger. |
+| `src/app/profilectl.js` | Profile open/refetch and the in-place (flick-free) tab switch. |
+| `src/app/composerctl.js` | Composer modes, the current line as a segment, stacking, the public/private execute paths. |
+| `src/app/creatorctl.js` | Creator chat sessions, restore-on-entry, finalize. |
+| `src/app/speech.js` | Per-beat voice resolution + the speak-button state machine. |
+| `src/app/settingsctl.js` | FE-local settings + the per-game PATCH. |
+| `src/app/cues.js` | Transition notices, one-shot flashes, toasts, help popovers. |
+| `src/app/media.js` | The image lightbox and the failed-image retry. |
 | `src/api.js` | `createApi(backendUrl)`: the thin orchestrator REST client. Every endpoint the UI calls, in one place. |
 | `src/adapters.js` | Raw wire JSON -> the view model: `mapGameState`, `mapBeats`, `mapProfile`, `voiceForBeat`, `presentCharacters`. Media URLs stay relative. |
 | `src/composer.js` | The tagged-segment composer helpers: entity chips, `buildSegment` (say/do/look x public/whisper), `serializeComposer`, `describeSegment`. |
 | `src/transitions.js` | `diffState(prev, next)` + `buildNotices()`: the pure state-diff engine that makes every turn's changes legible. |
 | `src/voice.js` | `Voice`: Maya1 TTS via `POST /voice/speak` only (never /voice/stream into an `<audio>`). `prepare()`/`playUrl()` split + a strict FIFO synth queue power the reveal pipeline. |
-| `src/render.js` | Pure-ish HTML builders for every screen + the `HELP` copy map. |
+| `src/render.js` | The render FACADE: `renderApp` + the public surface (HELP, escapeHtml, playerSpeech, renderProfilePane...). |
+| `src/render/` | The builders, one module per concern: `common.js`, `widgets.js`, `screens.js`, `play.js`, `story.js`, `profile.js`, `inspect.js`. |
 | `src/icons.js` | The inline SVG icon set. |
 
 ## Feature resolver

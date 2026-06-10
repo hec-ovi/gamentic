@@ -1,0 +1,49 @@
+// Settings controllers: FE-local audio settings and the per-game PATCH.
+
+import { api, saveSettings, setApi, state, voice } from "./ctx.js";
+import { showToast } from "./cues.js";
+import { render } from "./ui.js";
+
+export function updateSetting(el) {
+  const key = el.dataset.setting;
+  let value = el.value;
+  if (el.type === "checkbox") value = el.checked;
+  if (el.type === "range") value = Number(el.value);
+  state.settings[key] = value;
+  if (key === "backendUrl") setApi(value);
+  if (key === "voiceEnabled" && !value) voice.stop();
+  voice.applySettings(state.settings);
+  saveSettings();
+  if (el.type !== "range") render();
+}
+
+// (the old synchronous "See" eye-flow is gone: LOOK is a first-class action
+// segment now, and its image arrives async as a late image beat)
+
+// ---------------------------------------------------------------------------
+// game settings (PATCH /games/{id}/settings) + export / import
+// ---------------------------------------------------------------------------
+
+export async function patchGameSettings(key, value) {
+  const g = state.active;
+  if (!g || !g.state || g.settingsSaving) return;
+  g.settingsSaving = true;
+  render();
+  try {
+    const res = await api.patchSettings(g.id, { [key]: value });
+    if (res && res.settings) {
+      g.state.settings = {
+        difficulty: res.settings.difficulty || "normal",
+        narratorGender: res.settings.narrator_gender || "",
+      };
+    }
+    // a narrator_gender change redesigns the narrator voice from the next line
+    if (res && "narrator_voice_id" in res) g.state.narratorVoiceId = res.narrator_voice_id || null;
+    state.backendOnline = true;
+  } catch (err) {
+    showToast(err.message || "Could not change that setting.");
+  } finally {
+    g.settingsSaving = false;
+    render();
+  }
+}

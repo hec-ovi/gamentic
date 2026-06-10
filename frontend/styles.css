@@ -1350,8 +1350,9 @@ button.cast-row:hover { border-color: var(--holo-cyan); }
 .profile-screen {
   position: fixed; inset: 0; z-index: 110; display: flex; flex-direction: column;
   background: radial-gradient(120% 120% at 50% 0%, rgba(16, 32, 52, 0.97), rgba(4, 7, 14, 0.99));
-  animation: fade-in 0.18s ease both;
 }
+/* the entrance fade plays ONCE, on open - never on tab switches or refetches */
+.profile-screen.arrive { animation: fade-in 0.18s ease both; }
 .profile-bar { display: flex; align-items: center; gap: 0.8rem; padding: 0.7rem clamp(0.8rem, 2vw, 1.4rem);
   border-bottom: 1px solid var(--holo-line-soft); }
 .profile-bar .hud-tag { color: var(--speaker); }

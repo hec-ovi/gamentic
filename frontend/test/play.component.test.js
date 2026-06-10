@@ -314,6 +314,39 @@ test("clicking a character card opens the FULL-SCREEN profile fed by GET /profil
   expect(document.querySelector(".profile-screen")).toBeNull();
 });
 
+test("tab switches are IN-PLACE: the screen and its art are not rebuilt (no flick), and the new pane is live", async () => {
+  const u = user();
+  let body;
+  server.use(
+    http.post(`${API}/games/:id/action`, async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ beats: [makeBeat({ text: "ok", private_with: "c1" })], state: makeState() });
+    }),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getByRole("tab", { name: /traits/i })).toBeTruthy());
+
+  // switching tabs must NOT recreate the screen or the art (that was the flick)
+  const screenNode = profileEl();
+  const artNode = screenNode.querySelector(".profile-art");
+  await u.click(within(screenNode).getByRole("tab", { name: /traits/i }));
+  expect(profileEl()).toBe(screenNode);
+  expect(profileEl().querySelector(".profile-art")).toBe(artNode);
+  expect(within(profileEl()).getByText(/distrusts authority/)).toBeTruthy();
+  // the entrance fade never replays on a tab switch
+  expect(screenNode.classList.contains("arrive")).toBe(false);
+
+  // the patched-in pane is fully WIRED: the whisper composer works right away
+  await u.click(within(screenNode).getByRole("tab", { name: /whisper/i }));
+  expect(profileEl()).toBe(screenNode);
+  await u.type(pmBox(/what you say/i), "still alive?");
+  await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
+  await waitFor(() => expect(body).toBeTruthy());
+  expect(body.segments).toEqual([{ type: "whisper", text: "still alive?", target: "Jacker", mode: "say" }]);
+}, 10000);
+
 test("the profile tab SURVIVES the post-turn refetch (no bounce back to tab 1)", async () => {
   const u = user();
   server.use(
