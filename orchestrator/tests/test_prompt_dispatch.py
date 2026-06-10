@@ -1,7 +1,9 @@
 """Resolver-style prompt dispatch: the narrator's core system prompt stays lean; the
 detailed protocol blocks (furnish a NEW place, handle a RETURN after absence) and the
 reject_attempt tool are injected ONLY on the turns where the state triggers them."""
-from app import llm
+import os
+
+from app import llm, prompts
 
 
 WORLD = {
@@ -90,3 +92,11 @@ def test_reject_attempt_offered_only_while_adjudicating(client, fake_llm):
     call = _last(fake_llm)
     assert "reject_attempt" in call["names"]
     assert "PLAYER ATTEMPTS" in call["messages"][1]["content"]
+
+
+def test_no_prompt_template_carries_authoring_artifacts():
+    """A literal </content> line shipped to the model from three templates (an authoring
+    artifact); templates are model-facing prose, never markup."""
+    for name in os.listdir(prompts.PROMPT_DIR):
+        with open(os.path.join(prompts.PROMPT_DIR, name), encoding="utf-8") as f:
+            assert "</content" not in f.read(), name

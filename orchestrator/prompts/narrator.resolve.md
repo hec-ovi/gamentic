@@ -12,4 +12,3 @@ Rules:
 
 CURRENT STATE:
 {{state}}
-</content>
