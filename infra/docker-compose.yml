@@ -227,7 +227,13 @@ services:
       - IMAGE_VIEW_W=${IMAGE_VIEW_W:-1152}
       - IMAGE_VIEW_H=${IMAGE_VIEW_H:-768}
       - IMAGE_AGENTIC_PROMPTS=${IMAGE_AGENTIC_PROMPTS:-false}
+      # item unlock cards + narrator-initiated image pacing
+      - IMAGE_ITEMS=${IMAGE_ITEMS:-true}
+      - IMAGE_ITEM_SIZE=${IMAGE_ITEM_SIZE:-320}
+      - IMAGE_MAX_ITEMS_PER_TURN=${IMAGE_MAX_ITEMS_PER_TURN:-2}
+      - IMAGE_NARRATOR_COOLDOWN_TURNS=${IMAGE_NARRATOR_COOLDOWN_TURNS:-4}
       - INTERPRET_FREE_TEXT=${INTERPRET_FREE_TEXT:-true}
+      - CHARACTER_MAX_TOKENS=${CHARACTER_MAX_TOKENS:-420}
     volumes:
       - ../orchestrator/data:/data
     ports:

@@ -2,6 +2,28 @@
 
 Notable changes to gamentic, newest first. No version numbers yet: this moves fast, so entries are dated and the README always describes the current state.
 
+## 2026-06-10
+
+The first full-playtest feedback batch.
+
+### Engine and state machine (the brain)
+- Continue: `POST /games/{id}/continue` runs a full narrator turn with no player input, so the story can advance on its own (the world shifts, characters act, the clock ticks). An optional wish rides along.
+- Look is now a real story action, on the same level as say and do: a look segment (button or typed, the interpreter classifies it) runs a narrator turn under a LOOKING protocol that can trigger reactions, reveal hidden items, and open exits the look plausibly earns. Searching the scene routes through the same path.
+- The narrator can render moments: a `show_image` tool with a detailed visual description. A player look always earns the render; spontaneous narrator images are paced by a cooldown so they stay dramatic, not wallpaper. Renders run in the background, condition on the identity references of named present characters, and land as captioned image beats.
+- Item unlock cards: when an item first becomes visible (obtained, revealed, placed in view), a small square image renders in the background, attaches to the item wherever it lives (it travels when taken or given), and lands as a system image beat. Render-once, capped per turn.
+- Character depth: a `note_trait` tool unlocks a personality trait when a moment reveals it, with a visible "Trait unlocked" receipt and a story-clock stamp. Unlocked traits feed back into that character's own agent, so they keep playing the person the story revealed. `GET /games/{id}/characters/{cid}/profile` powers a full-screen view: card data, traits, the moments shared with the player (private exchanges included), and story images as memories. Spoiler-safe by construction.
+- Live game settings (`PATCH /games/{id}/settings`): difficulty easy/normal/hard switches an instruction-hardened narrator mode (easy: the player leads, attempts default to yes, danger warns first; hard: the world leads, overreach is vetoed, consequences bite; normal stays lean), and narrator voice gender (female/male) redesigns the narrator's voice effective on the next line.
+- The wish channel: "what I'd like to happen next" rides along with any action or Continue as a hope, never an action. Easy mode leans into it; hard mode may ignore it.
+- Export and import: download any adventure as a template (the world as designed, playable fresh by anyone) or a checkpoint (the full save, to resume or share an exact moment). Import always creates a new game with every id remapped, so files import any number of times; missing media regenerates where possible.
+- The global context meter now tracks the narrator's story context only, so it no longer bounces when small character or whisper calls run; each character keeps its own meter.
+- Prose hygiene: leaked tool-call syntax, bare JSON lines and code fences are scrubbed from narration and dialogue before the player sees them. A character whose reply comes back empty is retried once. Characters may also speak at length now (the one-line clamp is gone).
+- Agentic image prompts anchor notable objects positionally, the same way characters are anchored.
+
+### Infra and docs
+- `docker compose up -d --build` now works from the repo root (a compose include; the stack still lives in infra/), and `infra/.env.example` ships so a fresh clone knows every knob.
+- `orchestrator/INDEX.md`: a resolver-style map of the brain (which file owns what, and which prompt block injects when), so the codebase is easy to navigate.
+- The README gained a visual chart of how a turn flows through the system.
+
 ## 2026-06-09
 
 First public day. The repo went public and everything below landed today.

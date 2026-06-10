@@ -1,0 +1,9 @@
+# Run the whole Gamentic stack from the repo root:
+#
+#   docker compose up -d --build
+#
+# The real stack definition lives in infra/docker-compose.yml; this file only includes
+# it. Paths and the env file resolve relative to infra/ (so infra/.env keeps working).
+# First run: cp infra/.env.example infra/.env and set your model paths.
+include:
+  - infra/docker-compose.yml

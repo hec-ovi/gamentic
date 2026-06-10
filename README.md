@@ -12,12 +12,36 @@ A self-hosted AI dungeon role-playing game you play in the browser, running enti
 - 💬 Talk to characters, each its own AI with its own voice and agenda.
 - ⚔️ Fight, give, take, trade: characters can act on each other and on you, not just talk.
 - 🤫 Pull a character aside for a private word no one else hears.
-- 👁️ Hit "See" to generate an image of the scene with everyone in it, exactly as the world stands right now.
+- 👁️ Look at anything ("where is Mara looking?", "that ship on the horizon"): looking is a real story action that can trigger reactions and discoveries, and the narrator renders the view as an image when it deserves one. It also fires images on its own at big moments, paced so they stay special.
+- 🧬 Watch characters grow: personality traits unlock as your interactions reveal them ("Trait unlocked: Mara, distrusts authority"), they feed back into how that character plays, and each character has a full profile of traits, shared moments and image memories.
+- 🎒 New items arrive with their own small generated card in the chat.
+- ▶️ Hit Continue and let the story advance on its own when you'd rather watch.
+- 🎚️ Pick how much the world bends: easy (the player leads, wishes come true), normal, or hard (the world leads, consequences bite). Changeable mid-game, and you can always whisper a wish for what you hope happens next.
 - 🎯 Chase quests and a goal the story keeps up to date as you play.
+- 📦 Export any adventure as a shareable template (others play it fresh) or a checkpoint save (resume or share an exact moment).
 
 ## 🧠 The brain
 
 FastAPI + SQLite. One local LLM plays the narrator and every character through separate contexts. It writes prose and proposes changes only by calling validated tools; the database is the source of truth, so the model never owns game state (LLMs hallucinate state, a database does not). Plain REST, sequential: one request returns one fully resolved turn.
+
+## 🔁 How a turn works
+
+```mermaid
+flowchart TD
+    P["🎮 You act<br>(type freely, tap a button, or just Continue)"]
+    P --> INT["🪄 Interpreter (one small LLM call)<br>structures your text into<br>say · do · attack · give · whisper · look"]
+    INT --> ADJ["⚖️ Rules first (plain code, no AI)<br>impossible attempts bounce back<br>with an in-world reason"]
+    ADJ --> NAR["🧠 Narrator<br>reads the REAL state, reasons the<br>transition, writes prose, adjudicates"]
+    NAR == "changes state ONLY<br>through validated tools" ==> DB[("🗄️ SQLite<br>the single source of truth")]
+    NAR -- "cues" --> CH["🎭 Characters<br>each one its own agent and context;<br>they can act back (bounded cascade)"]
+    CH ==> DB
+    DB --> OUT["📜 One resolved turn<br>narration · dialogue · receipts · fresh state"]
+    NAR -. "a look, or a big moment" .-> ART["🖼️ Images, in the background<br>FLUX.2 klein, identity-conditioned<br>on each character's reference set"]
+    DB -. "new item unlocked" .-> ART
+    OUT -. "spoken on demand" .-> VOICE["🔊 Voice<br>Maya1, one designed voice<br>per character"]
+```
+
+Every box on the left talks to the same single local model, just with different, purpose-built contexts; everything it wants to do to the world must pass through a validated tool into the database. A map of where each piece lives is in [orchestrator/INDEX.md](orchestrator/INDEX.md).
 
 ## 🧩 The state machine (the heart of it)
 
@@ -57,9 +81,8 @@ Optional: the game is fully playable text-only, and art fills in as it is genera
 Requires Docker (with GPU access for the model and the image service) and local model files on disk.
 
 ```bash
-cd infra
-# set your model paths and ports in infra/.env (the compose file lists the variables it reads)
-docker compose up -d
+cp infra/.env.example infra/.env   # then set MODELS_DIR and the model file paths
+docker compose up -d --build       # from the repo root; the stack lives in infra/
 ```
 
 | Service | URL | Tech stack |
