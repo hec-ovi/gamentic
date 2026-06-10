@@ -115,6 +115,16 @@ def _compose(segments) -> tuple[str, list[dict]]:
             directed.append({"tool": "give_item", "args": {"item": item, "target": target},
                              "display": {"item": _display(s, item),
                                          "target": _display(s, target) if target else "them"}})
+        elif t == "look":
+            # a look IS a story action (it can trigger reactions and discoveries), not
+            # just an image request; the narrator decides whether the view earns a picture
+            if text:
+                low = text.lower()
+                pre = "" if low.startswith(("at ", "for ", "around", "toward", "into ",
+                                            "behind ", "under ", "where ", "out ")) else "at "
+                parts.append(f"you look {pre}{text}")
+            else:
+                parts.append("you look around carefully")
         else:  # do
             parts.append(text or "you wait")
     return "; ".join(p for p in parts if p), directed
@@ -178,7 +188,7 @@ def _character_reply(conn, gid, ch, emit, private_with=None):
     return reactions
 
 
-_SEGMENT_TYPES = {"say", "do", "attack", "give", "whisper"}
+_SEGMENT_TYPES = {"say", "do", "attack", "give", "whisper", "look"}
 # tools where firing twice with identical args may be intentional; everything else dedupes
 _DEDUP_EXEMPT = {"apply_damage", "attack", "heal", "cue_character", "advance_time",
                  "spawn_character", "reject_attempt"}
@@ -227,12 +237,20 @@ CONTINUE_IMPULSE = ("(no player input; the player watches and waits. Continue th
                     "something new surface - then leave the player room to respond.)")
 
 
+def _image_pacing_ok(conn, gid: str, turn: int) -> bool:
+    """Spontaneous narrator images stay special: allowed only when enough turns passed
+    since the last image landed in the story flow. A player LOOK bypasses this."""
+    last = repo.last_image_turn(conn, gid)
+    return last is None or (turn - last) >= settings.IMAGE_NARRATOR_COOLDOWN_TURNS
+
+
 def run_turn(conn, gid: str, action_text: str = "", segments=None,
              continue_story: bool = False) -> dict:
     turn = repo.next_turn_index(conn, gid)
     seq = 0
     new_beats: list[dict] = []
     spawned: list[str] = []
+    image_request: str | None = None   # a show_image description the narrator fired
     # The global context meter: the NARRATOR's story context only (its biggest prompt this
     # turn). Character agents have their own per-character meters; folding them in here made
     # the global number bounce (a whisper turn would drop it to the character's small prompt).
@@ -259,6 +277,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
     whispers = [s for s in segments if (s.get("type") or "").lower() == "whisper"]
     public = [s for s in segments if (s.get("type") or "").lower() != "whisper"]
     has_public = bool(public) or bool(action_text) or continue_story
+    look_seg = next((s for s in public if (s.get("type") or "").lower() == "look"), None)
 
     # Hybrid story clock: every turn costs a few fictional minutes automatically, so time
     # never freezes; the narrator jumps it with advance_time for rests/journeys/nightfall.
@@ -314,8 +333,11 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         reply = llm.chat(
             prompts.build_narrator_messages(conn, gid, narrator_action, settings.HISTORY_BEATS,
                                             settings.LORE_BUDGET,
-                                            attempts=[p["line"] for p in pending]),
-            tools=tools.narrator_tools(adjudicating=bool(pending)), tool_choice="auto",
+                                            attempts=[p["line"] for p in pending],
+                                            looking=bool(look_seg)),
+            tools=tools.narrator_tools(adjudicating=bool(pending),
+                                       images=settings.IMAGE_ENABLED),
+            tool_choice="auto",
             temperature=settings.NARRATOR_TEMPERATURE, max_tokens=settings.NARRATOR_MAX_TOKENS,
         )
         track["ctx"] = max(track["ctx"], (reply.usage or {}).get("prompt_tokens", 0) or 0)
@@ -360,6 +382,11 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                 if victim and not victim["handled"]:
                     victim["rejected"] = True
                     state_notes.append(out["text"])
+            elif out["kind"] == "image":
+                # the narrator wants this moment rendered; a player look always earns it,
+                # a spontaneous one only when images have not landed too recently
+                if image_request is None and (look_seg or _image_pacing_ok(conn, gid, turn)):
+                    image_request = out["text"]
             elif out["kind"] in ("state", "kill") and out["text"]:
                 state_notes.append(out["text"])
             enqueue(out["reactions"])
@@ -437,4 +464,10 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         repo.clear_arrival_note(conn, gid)
     if track["ctx"]:
         repo.set_context_used(conn, gid, track["ctx"])
-    return {"beats": new_beats, "state": repo.game_state(conn, gid), "spawned": spawned}
+    result = {"beats": new_beats, "state": repo.game_state(conn, gid), "spawned": spawned}
+    if image_request:
+        # caller schedules the slow render in the background; the look's text becomes
+        # the image beat's caption (matches the See-with-focus behavior)
+        result["image_request"] = {"description": image_request,
+                                   "caption": ((look_seg or {}).get("text") or "").strip()}
+    return result

@@ -131,6 +131,10 @@ def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
         background_tasks.add_task(integrate.generate_images_for_game, gid)  # portraits (background)
     if need_scene_art:
         background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)  # new-scene art
+    shot = result.pop("image_request", None)                 # the narrator's show_image call
+    if settings.IMAGE_ENABLED and shot:
+        background_tasks.add_task(integrate.generate_directed_image, gid,
+                                  shot["description"], shot["caption"])
     return result
 
 

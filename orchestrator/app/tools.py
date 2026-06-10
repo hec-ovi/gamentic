@@ -225,10 +225,29 @@ REJECT_ATTEMPT_TOOL = {"type": "function", "function": {
         "reason": {"type": "string", "description": "In-world reason it does not happen."},
     }, "required": ["attempt", "reason"]}}}
 
+# Offered only when image generation is enabled. The narrator may render a moment: always
+# when the player LOOKS, and on its own only for a truly significant sight (the engine
+# paces spontaneous use so images stay special).
+SHOW_IMAGE_TOOL = {"type": "function", "function": {
+    "name": "show_image",
+    "description": "Render an image of this moment for the player. Call it when the player "
+                   "looks at something, and on your own ONLY for a truly significant sight "
+                   "(a reveal, an arrival, a transformation). At most one per turn. Describe "
+                   "the VIEW in concrete visual terms: each subject and WHERE it is (left, "
+                   "center, right, behind), notable objects, posture, light. Name present "
+                   "characters by their exact names so their faces stay consistent. Looks "
+                   "only; never words, signs or symbols to draw.",
+    "parameters": {"type": "object", "properties": {
+        "description": {"type": "string",
+                        "description": "Detailed visual description of the shot."},
+    }, "required": ["description"]}}}
 
-def narrator_tools(adjudicating: bool) -> list:
-    """The narrator's toolset for one call; reject_attempt only when attempts are pending."""
-    return NARRATOR_TOOLS + ([REJECT_ATTEMPT_TOOL] if adjudicating else [])
+
+def narrator_tools(adjudicating: bool, images: bool = False) -> list:
+    """The narrator's toolset for one call; reject_attempt only when attempts are pending,
+    show_image only when image generation is on."""
+    return (NARRATOR_TOOLS + ([REJECT_ATTEMPT_TOOL] if adjudicating else [])
+            + ([SHOW_IMAGE_TOOL] if images else []))
 
 # Tools a CHARACTER agent may call to act on others. Their speech is the message content;
 # these are for doing things to another character or to the player.
@@ -460,6 +479,13 @@ def apply_tool(conn, gid: str, name: str, args: dict, actor=None) -> dict:
             reason = (args.get("reason") or "").strip() or "It does not happen."
             return {"kind": "reject", "text": reason,
                     "cue": {"attempt": args.get("attempt")}, "reactions": []}
+        if name == "show_image":
+            desc = (args.get("description") or "").strip()
+            if not desc:
+                return _invalid("show_image: empty description")
+            # generation is slow: the ENGINE collects this and main schedules it in the
+            # background; the image lands later as its own image beat
+            return {"kind": "image", "text": desc, "cue": None, "reactions": []}
         return _invalid(f"unknown tool '{name}'")
     except (ValueError, TypeError) as e:
         return _invalid(f"{name}: bad args ({e})")

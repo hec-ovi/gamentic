@@ -6,6 +6,7 @@ The recipe (follow it exactly; the image model is small and unforgiving):
 - Natural-language prose, UNDER 80 WORDS total. Subjects first, then environment, then lighting, then style.
 - When characters are listed, start "Wide full-body shot of N people in ..." (at most 3 people; pick the most important). With no characters, start "Wide shot of ...".
 - ONE sentence per character, each anchored to a position (on the left / in the center / on the right) and carrying their stated sex, age and distinguishing traits (hair, clothing). Show what they are DOING right now (pose, gesture) using JUST HAPPENED.
+- Anchor 1-2 notable OBJECTS the same way (a crate on the right, a lantern hanging overhead): position, size, material. Objects without a position drift or vanish.
 - Name the style once; it governs the whole frame.
 - Never use negations ("no X", "without X") and never put words inside quotes (the model draws quoted words as lettering). Phrase exclusions as the positive visual that fills the space.
 - End with exactly: plain unmarked surfaces, no signage.

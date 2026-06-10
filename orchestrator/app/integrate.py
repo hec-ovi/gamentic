@@ -273,6 +273,37 @@ def generate_view_snapshot(gid: str, focus: str | None = None) -> dict | None:
                              turn_index=turn, image_url=url)
 
 
+def generate_directed_image(gid: str, description: str, caption: str = "") -> dict | None:
+    """Background: the narrator fired show_image (answering a player look, or its own
+    dramatic choice). The narrator's visual description IS the shot; code enforces the
+    invariants (quoted spans stripped, length clipped, style + no-text guard appended)
+    and conditions on the identity references of present characters named in it. The
+    image lands as its own image beat, picked up by the frontend's beats polling."""
+    description = (description or "").strip()
+    if not description:
+        return None
+    with db.get_conn() as conn:
+        g = repo.get_game(conn, gid)
+        if not g:
+            return None
+        loc = repo.get_player(conn, gid)["location"]
+        style = g["art_style"] or g["tone"] or ""
+        named = [c for c in repo.present_characters(conn, gid, loc)
+                 if c["name"] and c["name"].lower() in description.lower()][:3]
+        refs = [u for u in (_reference_url(c["body_front_url"]) for c in named) if u]
+        prompt = _harden_image_prompt(f"{_strip_quoted(description)} {style}".strip())
+    result = media.generate_scene_image(prompt, width=settings.IMAGE_VIEW_W,
+                                        height=settings.IMAGE_VIEW_H,
+                                        references=refs or None)
+    if not result or not result.get("image_url"):
+        return None
+    with db.get_conn() as conn:
+        turn = repo.next_turn_index(conn, gid)
+        url = _persist(gid, result["image_url"], f"shot-t{turn}")
+        return repo.add_beat(conn, gid, "narrator", None, "image", caption, loc,
+                             turn_index=turn, image_url=url)
+
+
 def _persist(gid: str, src_url, name: str):
     """Download an image from image-api into the per-game folder; return the /media URL.
     Falls back to the original image-api URL if the download fails (still works, not persisted)."""

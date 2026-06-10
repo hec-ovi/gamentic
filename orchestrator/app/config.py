@@ -74,6 +74,10 @@ class Settings:
     # Adds one LLM call per image (a few seconds, and it shares the single llama.cpp
     # server with turns). Deterministic guards + template fallback still apply. A/B this.
     IMAGE_AGENTIC_PROMPTS = os.getenv("IMAGE_AGENTIC_PROMPTS", "false").lower() == "true"
+    # Spontaneous narrator images (the show_image tool fired WITHOUT the player looking)
+    # are allowed only every N turns, so they stay a dramatic beat, not wallpaper.
+    # A player look always renders if the narrator calls the tool.
+    IMAGE_NARRATOR_COOLDOWN_TURNS = int(os.getenv("IMAGE_NARRATOR_COOLDOWN_TURNS", "4"))
     # Per-turn VISUAL budget so the screen does not get noisy. These cap how many images
     # are shown in a single turn, not how many exist. Character references are generated
     # ONCE at creation and reused; this only limits display.

@@ -141,17 +141,23 @@ def _situation_blocks(conn, gid: str) -> str:
 
 
 def build_narrator_messages(conn, gid: str, action: str, history_limit: int, lore_budget: int,
-                            attempts: list[str] | None = None) -> list[dict]:
+                            attempts: list[str] | None = None,
+                            looking: bool = False) -> list[dict]:
     g = repo.get_game(conn, gid)
     history = repo.recent_beats(conn, gid, history_limit)
     focus = action + " " + " ".join(_render_beat(b) for b in history[-4:])
 
+    situation = _situation_blocks(conn, gid)
+    if looking:
+        # the player is LOOKING this turn: inject the looking protocol (describe what a
+        # look would find, reveal/discover plausibly, render the view via show_image)
+        situation += "\n\n" + render("narrator.looking.md")
     system = render(
         "narrator.system.md",
         narrator_persona=g["narrator_persona"] or "",
         setting=g["setting"] or "unspecified",
         tone=g["tone"] or "cinematic",
-        situation=_situation_blocks(conn, gid),
+        situation=situation,
         world_rules=constants.world_rules(),
         state=_state_block(conn, gid),
         lore=_lore_block(conn, gid, focus, lore_budget),
@@ -291,7 +297,8 @@ INTERPRET_TOOL = [{
             "type": "object",
             "properties": {
                 "segments": {"type": "array", "items": {"type": "object", "properties": {
-                    "type": {"type": "string", "enum": ["say", "do", "attack", "give", "whisper"]},
+                    "type": {"type": "string",
+                             "enum": ["say", "do", "attack", "give", "whisper", "look"]},
                     "text": {"type": "string"},
                     "target": {"type": "string", "description": "Character name, when directed."},
                     "item": {"type": "string", "description": "For give: the item handed over."},

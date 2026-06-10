@@ -6,6 +6,7 @@ Segment types:
 - attack: a strike at a character. Set target. Set amount only if the player names real force.
 - give: handing an item over. Set item (must be something the player carries) and target.
 - whisper: words or a discreet act meant ONLY for one character. Set target; mode "say" for whispered words, "do" for a discreet act (slipping a note, flashing a badge).
+- look: examining, watching, searching, inspecting ("look at the ship", "search the room for an exit", "watch what Mara does"). text = what they look at or search for, in the player's words; empty text = the whole scene.
 
 Rules:
 - Split a compound message into its parts, in order. Keep each text short and faithful; never invent actions the player did not state.
@@ -15,3 +16,5 @@ Rules:
 
 Example: "I toss Mara the brass key, tell her to keep it hidden, and keep watching the door"
 submit_segments: [{type: "give", item: "brass key", target: "Mara"}, {type: "say", text: "Keep it hidden.", target: "Mara"}, {type: "do", text: "keep watching the door"}]
+Example: "I search the wreck for anything useful"
+submit_segments: [{type: "look", text: "for anything useful in the wreck"}]

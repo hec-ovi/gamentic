@@ -730,6 +730,15 @@ def all_beats(conn, gid: str, since_turn: int = 0):
     return rows
 
 
+def last_image_turn(conn, gid: str):
+    """The turn_index of the most recent image beat (None if none yet). Used to pace
+    the narrator's spontaneous show_image so images stay special."""
+    row = conn.execute(
+        "SELECT MAX(turn_index) AS t FROM beats WHERE game_id=? AND kind='image'",
+        (gid,)).fetchone()
+    return row["t"]
+
+
 # Model-facing transcript windows exclude kind='image' (a snapshot beat is a URL for the
 # UI; to the model it is an empty line that wastes a slot of the history budget).
 
