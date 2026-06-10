@@ -24,6 +24,10 @@ The first full-playtest feedback batch.
 - `orchestrator/INDEX.md`: a resolver-style map of the brain (which file owns what, and which prompt block injects when), so the codebase is easy to navigate.
 - The README gained a visual chart of how a turn flows through the system.
 
+### Storage hygiene
+- Wipe all memory: `DELETE /games?confirm=wipe` deletes every game, creator session, voice-registry entry and generated media folder, orphans included (a settings button in the UI fronts it).
+- Fixed the orphan leak: a render finishing AFTER its game was deleted used to re-create the wiped media folder; background generators now re-check the game exists before persisting anything.
+
 ### Character identity (post-playtest fix + depth)
 - Gender is now a single stored truth per character, set explicitly by the creator (or inferred ONCE from the sheet at creation) and fed to every consumer: the portrait, the narrator's pronouns, the character's own agent, and the voice design. Fixes the live mismatch where a character rendered male while the narration wrote "she" (both sides were guessing independently; a character with no cues anywhere now stays neutral everywhere instead of two coins being flipped).
 - Characters gained an origin: a private backstory written at creation, known to the narrator and to the character themselves, never shown to the player directly. A `reveal_origin` tool unlocks pieces as the player actually learns them ("You learn of Vex's past: ..."), and the profile lists only what was learned, story-clock stamped.

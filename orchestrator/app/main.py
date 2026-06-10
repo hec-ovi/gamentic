@@ -112,6 +112,25 @@ def get_state(gid: str):
         return repo.game_state(conn, gid)
 
 
+@app.delete("/games")
+def wipe_everything(confirm: str = ""):
+    """The settings 'wipe all memory' button: delete EVERY game (state, history,
+    characters), release every voice-registry entry, drop creator sessions, and remove
+    every generated media folder INCLUDING orphans left by older delete races. Requires
+    ?confirm=wipe (a destructive endpoint must never fire by accident)."""
+    if confirm != "wipe":
+        raise HTTPException(400, "pass ?confirm=wipe to wipe everything")
+    with db.get_conn() as conn:
+        gids = [r["id"] for r in repo.list_games(conn)]
+        char_ids = [c["id"] for gid in gids for c in repo.get_characters(conn, gid)]
+        for gid in gids:
+            repo.delete_game(conn, gid)
+        conn.execute("DELETE FROM creator_sessions")
+    folders = integrate.delete_all_media()           # all folders, orphans included
+    integrate.release_game_voices(char_ids)
+    return {"wiped_games": len(gids), "wiped_media_folders": folders}
+
+
 @app.delete("/games/{gid}")
 def delete_game(gid: str):
     """Wipe an entire game session (and all its characters, scenes, quests, history)."""

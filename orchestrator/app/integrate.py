@@ -281,6 +281,8 @@ def generate_view_snapshot(gid: str, focus: str | None = None) -> dict | None:
     if not result or not result.get("image_url"):
         return None
     with db.get_conn() as conn:
+        if not repo.get_game(conn, gid):
+            return None    # game wiped while rendering: never re-create its media folder
         turn = repo.next_turn_index(conn, gid)
         url = _persist(gid, result["image_url"], f"view-t{turn}")
         return repo.add_beat(conn, gid, "narrator", None, "image", focus, loc,
@@ -312,6 +314,8 @@ def generate_directed_image(gid: str, description: str, caption: str = "") -> di
     if not result or not result.get("image_url"):
         return None
     with db.get_conn() as conn:
+        if not repo.get_game(conn, gid):
+            return None    # game wiped while rendering: never re-create its media folder
         turn = repo.next_turn_index(conn, gid)
         url = _persist(gid, result["image_url"], f"shot-t{turn}")
         return repo.add_beat(conn, gid, "narrator", None, "image", caption, loc,
@@ -346,6 +350,8 @@ def generate_item_image(gid: str, name: str) -> dict | None:
     if not result or not result.get("image_url"):
         return None
     with db.get_conn() as conn:
+        if not repo.get_game(conn, gid):
+            return None    # game wiped while rendering: never re-create its media folder
         url = _persist(gid, result["image_url"], f"item-{_slug(name)}")
         if not repo.set_item_image(conn, gid, name, url):
             return None                                # the item vanished mid-render
@@ -380,10 +386,12 @@ def generate_images_for_game(gid: str) -> None:
         result = media.generate_character_images(character_descriptor(c), style)
         if not result:
             continue
-        face = _persist(gid, result.get("face_url"), f"char-{c['id']}-face")
-        front = _persist(gid, result.get("body_front_url"), f"char-{c['id']}-front")
-        side = _persist(gid, result.get("body_side_url"), f"char-{c['id']}-side")
         with db.get_conn() as conn:
+            if not repo.get_game(conn, gid):
+                return     # game wiped while rendering: never re-create its media folder
+            face = _persist(gid, result.get("face_url"), f"char-{c['id']}-face")
+            front = _persist(gid, result.get("body_front_url"), f"char-{c['id']}-front")
+            side = _persist(gid, result.get("body_side_url"), f"char-{c['id']}-side")
             repo.set_character_images(conn, c["id"], face_url=face, body_front_url=front, body_side_url=side)
 
 
@@ -406,8 +414,10 @@ def generate_scene_image(gid: str, scene_id: str) -> None:
     result = media.generate_scene_image(prompt)
     if not result:
         return
-    url = _persist(gid, result.get("image_url"), f"scene-{scene_id}")
     with db.get_conn() as conn:
+        if not repo.get_game(conn, gid):
+            return         # game wiped while rendering: never re-create its media folder
+        url = _persist(gid, result.get("image_url"), f"scene-{scene_id}")
         repo.set_scene_image(conn, scene_id, url)
 
 
@@ -415,3 +425,21 @@ def delete_game_images(gid: str) -> None:
     """Remove the per-game image folder (called on wipe)."""
     import shutil
     shutil.rmtree(os.path.join(settings.GAMES_DATA_DIR, gid), ignore_errors=True)
+
+
+def delete_all_media(known_gids: set[str] | None = None) -> int:
+    """Remove EVERY per-game media folder, including ORPHANS (folders whose game no
+    longer exists: pre-fix delete races and DB resets left these behind). Pass the
+    surviving game ids to keep; with None everything goes. Returns folders removed."""
+    import shutil
+    keep = known_gids or set()
+    removed = 0
+    root = settings.GAMES_DATA_DIR
+    if not os.path.isdir(root):
+        return 0
+    for name in os.listdir(root):
+        path = os.path.join(root, name)
+        if os.path.isdir(path) and name not in keep:
+            shutil.rmtree(path, ignore_errors=True)
+            removed += 1
+    return removed
