@@ -344,7 +344,11 @@ def maybe_update_summary(gid: str) -> None:
     if not text:
         return
     with db.get_conn() as conn:
-        if repo.get_game(conn, gid):
+        g = repo.get_game(conn, gid)
+        # the window must not have moved while the LLM ran: a concurrent fold or a
+        # history reset makes this result stale (it covers beats that no longer follow
+        # the stored recap); skip and let a later turn fold fresh
+        if g and (g["summarized_through"] or 0) == done_through:
             repo.set_story_summary(conn, gid, text, target)
 
 

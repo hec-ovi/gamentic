@@ -70,6 +70,27 @@ def test_recap_output_is_scrubbed_before_it_becomes_memory(client, fake_llm, wor
     assert "The bridge fell." in g["story_summary"] and "The player swam." in g["story_summary"]
 
 
+def test_stale_fold_window_is_skipped(client, fake_llm, world, fast_summary, monkeypatch):
+    """The fold reads its window, calls the LLM, then writes on a second connection. If a
+    concurrent fold (or a DELETE /beats reset) moved summarized_through in between, the
+    result is stale and must never overwrite the fresher recap."""
+    gid = client.post("/games", json=world).json()["game_id"]
+
+    def _racy(messages, **kw):
+        sys = messages[0]["content"] if messages else ""
+        if sys.startswith("You maintain the story recap"):
+            with db.get_conn() as conn:      # a rival fold lands while this one runs
+                repo.set_story_summary(conn, gid, "- The rival fold landed first.", 99)
+            return llm.LLMReply(content="- The stale fold result.")
+        return fake_llm(messages, **kw)
+    monkeypatch.setattr(llm, "chat", _racy)
+    _play(client, gid, 4)
+    with db.get_conn() as conn:
+        g = repo.get_game(conn, gid)
+    assert g["story_summary"] == "- The rival fold landed first."   # stale write skipped
+    assert g["summarized_through"] == 99
+
+
 def test_clearing_history_resets_the_recap(client, fake_llm, world, fast_summary):
     gid = client.post("/games", json=world).json()["game_id"]
     _play(client, gid, 4)
