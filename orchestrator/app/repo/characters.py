@@ -206,7 +206,9 @@ def add_trait(conn, cid: str, text: str, cap: int) -> str | None:
 
 
 def character_traits(c) -> list[dict]:
-    return [{"id": t["id"], "text": t["text"],
+    # norm_name at READ time too: rows recorded before the write-side cleaner existed
+    # keep their raw snake_case in the DB (live: "detached_seer_like_calm")
+    return [{"id": t["id"], "text": norm_name(t["text"]),
              "unlocked": clock.time_at(t.get("minutes") or 0)["label"]}
             for t in db.loads(c["traits"], [])]
 
@@ -230,7 +232,7 @@ def add_origin_fact(conn, cid: str, text: str, cap: int) -> str | None:
 
 
 def character_origin_revealed(c) -> list[dict]:
-    return [{"id": r["id"], "text": r["text"],
+    return [{"id": r["id"], "text": norm_name(r["text"]),
              "learned": clock.time_at(r.get("minutes") or 0)["label"]}
             for r in db.loads(c["origin_revealed"], [])]
 
@@ -254,7 +256,7 @@ def add_moment(conn, cid: str, text: str, cap: int = 20) -> str | None:
 
 def character_moments(c) -> list[dict]:
     moments = db.loads(c["moments"], []) if "moments" in c.keys() else []
-    return [{"id": m["id"], "text": m["text"],
+    return [{"id": m["id"], "text": norm_name(m["text"]),
              "when": clock.time_at(m.get("minutes") or 0)["label"]}
             for m in moments]
 

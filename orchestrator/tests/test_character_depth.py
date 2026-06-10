@@ -30,6 +30,24 @@ def test_trait_unlock_is_a_visible_receipt_and_lands_on_the_card(client, fake_ll
     assert mara["traits"][0]["unlocked"].startswith("Day ")    # story-clock stamp
 
 
+def test_legacy_snake_case_traits_read_clean(client, fake_llm, world):
+    """Rows recorded before the write-side cleaner keep raw snake_case in the DB
+    (live: Mirele had 'detached_seer_like_calm'); reads normalize them anyway."""
+    import json
+    from app import db, repo
+    gid = client.post("/games", json=world).json()["game_id"]
+    cid = _cid(client, gid)
+    with db.get_conn() as conn:
+        legacy = json.dumps([{"id": "t0", "text": "detached_seer_like_calm", "minutes": 0}])
+        conn.execute("UPDATE characters SET traits=?, moments=?, origin_revealed=? WHERE id=?",
+                     (legacy, legacy, legacy, cid))
+    prof = client.get(f"/games/{gid}/characters/{cid}/profile").json()
+    assert prof["traits"][0]["text"] == "detached seer like calm"
+    assert prof["moments"][0]["text"] == "detached seer like calm"
+    assert prof["origin"][0]["text"] == "detached seer like calm"
+    assert "detached seer like calm" in client.get(f"/games/{gid}/state").json()["characters"][0]["traits"][0]["text"]
+
+
 def test_duplicate_traits_unlock_silently_once(client, fake_llm, world):
     gid = client.post("/games", json=world).json()["game_id"]
     fake_llm.narrator = _nar(T("note_trait", name="Mara", trait="Distrusts authority."),
