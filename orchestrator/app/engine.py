@@ -351,9 +351,20 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         pending: list[dict] = []
         for d in directed:
             if d["tool"] == "_address":
+                # speech routes only to characters ACTUALLY here; addressing someone
+                # absent gets the same friendly deterministic bounce as attack/give
+                # (live: the narrator wrote an 'elsewhere' character into the scene
+                # because a missed say failed silently)
                 kind_t, row = repo.resolve_target(conn, gid, d["args"].get("target", ""))
                 if kind_t == "character" and row:
-                    enqueue([row["id"]])
+                    here = repo.get_player(conn, gid)["location"]
+                    if row["alive"] and row["present"] and row["location"] == here:
+                        enqueue([row["id"]])
+                    else:
+                        why = (f"{row['name']} is gone." if not row["alive"]
+                               else f"{row['name']} is not here.")
+                        failures.append(why)
+                        emit("system", None, "system", why)
                 continue
             why = _why_impossible(conn, gid, d)
             if why:

@@ -83,6 +83,25 @@ def test_silent_character_gives_up_after_one_retry(client, fake_llm, world):
     assert len(fake_llm.character_calls()) == 2          # retried once, then accepted silence
 
 
+# ---------- speech to the absent bounces deterministically ----------
+
+def test_directed_say_to_an_absent_character_bounces(client, fake_llm, world):
+    """Live: the narrator wrote an 'elsewhere' character into the scene because a missed
+    say failed silently. Now it bounces like attack/give, and the narrator is told."""
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(T("move_location", location="the flooded vault"),
+                             content="You wade onward; Mara stays at her post.")
+    client.post(f"/games/{gid}/action", json={"action": "I press on alone."})
+    d = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "say", "text": "Mara, do you see this?", "target": "Mara"}]}).json()
+    assert any(b["kind"] == "system" and b["text"] == "Mara is not here."
+               for b in d["beats"])
+    assert not any(b["kind"] == "dialogue" for b in d["beats"])     # she cannot answer
+    user = fake_llm.narrator_calls()[-1]["messages"][1]["content"]
+    assert "(failed: Mara is not here.)" in user                    # the narrator knows
+    assert "cannot speak, act, be addressed" in fake_llm.narrator_calls()[-1]["system"]
+
+
 # ---------- characters may actually talk ----------
 
 def test_character_reply_budget_is_roomy(client, fake_llm, world):

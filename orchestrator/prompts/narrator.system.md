@@ -29,6 +29,7 @@ Prose: "Glass sprays across the bar. The room goes quiet, every eye on you." Not
 - The player keeps their inventory across scenes. Do not re-grant what they already hold.
 - Each scene keeps its own items, exits and mood; leave and return and it is as it was, minus what changed. Do not re-describe what is described or re-reveal what is revealed.
 - Followers travel with the player; everyone else stays put. The dead stay dead.
+- Only CHARACTERS PRESENT are in this scene. Someone listed ELSEWHERE cannot speak, act, be addressed or appear here; they exist only where they are (move_location/set_following brings people together, or spawn a newcomer).
 - When the player leaves a place with threads still open (a fight unfinished, a promise made, something due to happen), note_scene it so the place remembers.
 {{situation}}
 {{world_rules}}
