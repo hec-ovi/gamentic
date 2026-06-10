@@ -809,3 +809,105 @@ test("delete confirmation modal names the game and carries a confirm-delete acti
   assert.ok(el.querySelector('[data-act="confirm-delete"][data-game-id="g9"]'), "confirm action carries the id");
   assert.ok(el.querySelector('[data-act="cancel-delete"]'), "cancel action present");
 });
+
+// ---- consulting ABSENT / dead characters (work-order item I) ----
+
+const AWAY_STATE = mapGameState({
+  game_id: "ga",
+  scene: { id: "s1", name: "The Bar", description: "", status: "calm", exits: [], items: [], available_actions: [] },
+  player: { life: 9, max_life: 20, points: 0, location: "The Bar", inventory: [] },
+  characters: [
+    { id: "c1", name: "Jacker", gender: "male", present: true, location: "the docks", alive: true, disposition: "neutral",
+      available_actions: [{ id: "b1", label: "Give...", type: "give" }] },
+  ],
+});
+
+function awayProfile(extra = {}) {
+  return {
+    view: "play",
+    active: {
+      id: "ga", state: AWAY_STATE, beats: [], generating: false, composer: { mode: "do", stack: [] },
+      profile: { charId: "c1", name: "Jacker", tab: "profile", mode: "say", stack: [], loading: false, data: mapProfile(PROFILE_DATA), error: "", ...extra },
+    },
+  };
+}
+
+test("an ELSEWHERE character: profile readable, actions replaced by a status line, card in the roster opens it", () => {
+  const el = parse(renderApp(awayProfile()));
+  // the cast roster shows them, openable, with where they are
+  const row = el.querySelector('.cast-row[data-act="open-profile"][data-char-id="c1"]');
+  assert.ok(row, "the elsewhere roster row opens the profile");
+  assert.ok(/at The Docks/i.test(row.textContent), "marked with where they are");
+  // the profile is fully readable (description, carrying) but offers NO actions
+  const pane = el.querySelector(".profile-pane");
+  assert.ok(/Bartender/.test(pane.textContent), "lore stays readable");
+  assert.equal(pane.querySelector('[data-act="char-action"]'), null, "no action buttons for the absent");
+  assert.ok(/He is elsewhere - at The Docks\./.test(pane.querySelector(".absence-line").textContent), "the status line says where");
+});
+
+test("an elsewhere character's Whisper tab: thread readable, composer replaced by the status line", () => {
+  const el = parse(renderApp(awayProfile({ tab: "whisper" })));
+  const sec = el.querySelector(".whisper-sec");
+  assert.ok(sec.querySelector("#pmThread"), "the thread stays readable");
+  assert.equal(sec.querySelector("#pmInput"), null, "no whisper composer for the absent");
+  assert.equal(sec.querySelector('[data-form="private"]'), null, "no form either");
+  assert.ok(/He is elsewhere - at The Docks\./.test(sec.querySelector(".absence-line").textContent));
+});
+
+test("a DEAD character: profile readable, the status line reads gone", () => {
+  const dead = mapGameState({
+    game_id: "gd",
+    scene: { id: "s1", name: "The Bar", description: "", status: "calm", exits: [], items: [], available_actions: [] },
+    player: { life: 9, max_life: 20, points: 0, location: "The Bar", inventory: [] },
+    characters: [{ id: "c1", name: "Jacker", gender: "male", present: true, location: "The Bar", alive: false, disposition: "neutral", available_actions: [] }],
+  });
+  const st = awayProfile({ tab: "whisper" });
+  st.active.state = dead;
+  st.active.profile.data = mapProfile({ ...PROFILE_DATA, alive: false });
+  const el = parse(renderApp(st));
+  assert.ok(/He is gone\./.test(el.querySelector(".whisper-sec .absence-line").textContent));
+  assert.equal(el.querySelector("#pmInput"), null);
+});
+
+test("item thumbnails render in SCENE and CARRYING slots too (letters only while image_url is null)", () => {
+  const st = mapGameState({
+    game_id: "gi",
+    scene: {
+      id: "s1", name: "Vault", description: "", status: "calm", exits: [], available_actions: [],
+      items: [
+        { id: "i1", name: "brass key", image_url: "/media/gi/key.png" },
+        { id: "i2", name: "old rope", image_url: null },
+      ],
+    },
+    player: { life: 9, max_life: 20, points: 0, location: "Vault", inventory: [] },
+    characters: [
+      { id: "c1", name: "Edda", present: true, location: "Vault", alive: true, disposition: "neutral",
+        inventory: [{ id: "k1", name: "lockpick", image_url: "/media/gi/pick.png" }], available_actions: [] },
+    ],
+  });
+  const el = parse(renderApp({ view: "play", active: { id: "gi", state: st, beats: [], generating: false } }));
+  assert.equal(el.querySelector('.scene-items .slot img').getAttribute("src"), "/media/gi/key.png", "scene slot thumbnail");
+  const sceneSlots = [...el.querySelectorAll(".scene-items .slot.filled")];
+  assert.ok(/OR/.test(sceneSlots[1].textContent), "letter fallback only while image_url is null");
+  assert.equal(el.querySelector('.char-col .char-items .slot img').getAttribute("src"), "/media/gi/pick.png", "carrying slot thumbnail");
+});
+
+test("whispered replies carry the per-message speak button (voiced like the story)", () => {
+  const voiced = mapBeats([
+    { id: "w1", turn_index: 1, seq: 0, speaker: "c1", speaker_name: "Jacker", kind: "dialogue", text: "Closer.", private_with: "c1" },
+  ]).map((b) => ({ ...b, voiceId: "vx-jacker" }));
+  const st = profileOpen(PROFILE_DATA, { tab: "whisper" });
+  st.active.beats = voiced;
+  const el = parse(renderApp(st));
+  const line = el.querySelector('#pmThread .pm-line.pm-them[data-beat-id="w1"]');
+  const btn = line.querySelector('[data-act="speak-beat"]');
+  assert.ok(btn, "speak button on the whispered reply");
+  assert.equal(btn.dataset.beatId, "w1");
+  // the player's own whisper echo stays silent (no voice id, no button)
+  const mineBeats = mapBeats([
+    { id: "w2", turn_index: 1, seq: 1, speaker: "player", kind: "action", text: 'you whisper to Jacker: "psst"', private_with: "c1" },
+  ]);
+  st.active.beats = mineBeats;
+  const el2 = parse(renderApp(st));
+  assert.equal(el2.querySelector('#pmThread [data-act="speak-beat"]'), null);
+});

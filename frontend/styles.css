@@ -1209,6 +1209,10 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 .pm-system { align-self: center; font-size: 0.76rem; color: var(--holo-dim); border-style: dashed; background: transparent; }
 .pm-empty { margin: auto; text-align: center; font-size: 0.85rem; }
 .pm-form { display: block; }
+/* per-message voice on whispered replies, same state machine as the story */
+.pm-line .speak-btn { position: static; display: inline-flex; margin-left: 0.45rem; vertical-align: middle; }
+.absence-line { margin: 0; padding: 0.55rem 0.75rem; border: 1px dashed var(--holo-line-soft);
+  font-size: 0.86rem; font-style: italic; color: var(--holo-dim); }
 
 /* ---- PARTIAL busy-lock: only mutating surfaces lock (they render disabled);
    reading, inspecting, the lightbox and profiles stay live, so no veil ---- */

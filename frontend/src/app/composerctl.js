@@ -110,6 +110,11 @@ export function executeComposer() {
 export function executePrivate() {
   const g = state.active;
   if (!g || !g.profile || g.generating) return;
+  // you cannot whisper to someone who is not here (the composer does not
+  // render for the absent/dead; this guard covers anything that slips through)
+  const pc = (g.state.characters || []).find((x) => x.id === g.profile.charId);
+  const here = g.state.player && g.state.player.location;
+  if (!pc || !pc.alive || !pc.present || (here && pc.location !== here)) return;
   const pf = g.profile;
   const segments = [...pf.stack];
   const seg = currentSegment("pm");

@@ -1,9 +1,28 @@
 // The full-screen character profile: tabs, panes, the whisper channel.
 
 import { icon } from "../icons.js";
-import { escapeHtml, holoFx, initials, stripWrappingQuotes } from "./common.js";
-import { playerSpeech } from "./story.js";
+import { escapeHtml, holoFx, initials, stripWrappingQuotes, titleCase } from "./common.js";
+import { playerSpeech, speakBtn } from "./story.js";
 import { charActionBtn, contextMeter, renderComposer, renderStack, slotGrid } from "./widgets.js";
+
+// A character can be CONSULTED even when absent or dead: the profile stays
+// readable everywhere; only the INTERACTIVE parts (whisper composer, action
+// buttons) make way for a status line.
+export function profilePresence(s, d) {
+  const c = (s.characters || []).find((x) => x.id === d.id) || null;
+  const here = s.player && s.player.location;
+  const alive = d.alive !== false && (!c || c.alive !== false);
+  const present = Boolean(alive && c && c.present && (!here || c.location === here));
+  return { stateChar: c, alive, present };
+}
+
+export function absenceLine(d, stateChar, alive) {
+  const pron = d.gender === "female" ? "She" : d.gender === "male" ? "He" : "They";
+  const verb = d.gender ? "is" : "are";
+  if (!alive) return `${pron} ${verb} gone.`;
+  const where = stateChar && stateChar.location ? ` - at ${titleCase(stateChar.location)}.` : ".";
+  return `${pron} ${verb} elsewhere${where}`;
+}
 
 // ---------------------------------------------------------------------------
 // The FULL-SCREEN character profile (GET /characters/{cid}/profile): the image
@@ -88,7 +107,7 @@ export function renderProfilePane(s, g) {
   const tab = pf.tab || "profile";
   if (tab === "traits") return profileTraitsPane(d);
   if (tab === "memory") return profileMemoryPane(d);
-  if (tab === "whisper") return renderWhisperChannel(g, d.name, Boolean(g.generating));
+  if (tab === "whisper") return renderWhisperChannel(s, g, d, Boolean(g.generating));
   return profileStatusPane(s, d, Boolean(g.generating));
 }
 
@@ -101,7 +120,8 @@ export function profileStatusPane(s, d, locked = false) {
       ? `<div class="char-hp" title="${d.life}/${d.maxLife}"><div class="hp-track"><div class="hp-fill" style="width:${Math.max(0, Math.min(100, (d.life / d.maxLife) * 100))}%"></div></div></div>`
       : "";
   // the character's own agent memory lives in state (not the profile endpoint)
-  const stateChar = (s.characters || []).find((x) => x.id === d.id);
+  const presence = profilePresence(s, d);
+  const stateChar = presence.stateChar;
   const sparse = !d.traits.length && d.moments.length < 3;
   const origin = d.origin.length
     ? `<section class="profile-sec">
@@ -132,15 +152,23 @@ export function profileStatusPane(s, d, locked = false) {
         <span class="inv-mini-label">Carrying</span>
         ${slotGrid(d.carrying, 3, "char-items")}
       </div>
-      ${actionsSection(stateChar, locked)}
+      ${actionsSection(d, stateChar, locked, presence)}
       ${origin}
       ${sparse ? GROW_NOTE : ""}
     </div>`;
 }
 
 // What you can do to them right now (state offers minus Talk - whisper is the
-// private channel). Mutating, so the buttons lock while a turn resolves.
-function actionsSection(stateChar, locked) {
+// private channel). Mutating, so the buttons lock while a turn resolves, and
+// an absent/dead character offers nothing - just where they stand.
+function actionsSection(d, stateChar, locked, presence) {
+  if (!presence.present) {
+    return `
+      <section class="profile-sec">
+        <h4 class="profile-sec-head">${icon("zap")}<span>Actions</span></h4>
+        <p class="absence-line">${escapeHtml(absenceLine(d, stateChar, presence.alive))}</p>
+      </section>`;
+  }
   const actions = ((stateChar && stateChar.actions) || []).filter((a) => a.type !== "talk");
   if (!actions.length) return "";
   return `
@@ -208,8 +236,12 @@ export function profileMemoryPane(d) {
 // The private channel: whisper-only, 1:1, lives in the profile. private_with
 // beats render here and never in the public story; replies speak with the
 // character's own voice through the same pipeline as public dialogue.
-export function renderWhisperChannel(g, name, locked) {
+// An ABSENT or dead character's thread stays READABLE, but the composer makes
+// way for a status line: you cannot whisper to someone who is not here.
+export function renderWhisperChannel(s, g, d, locked) {
   const pf = g.profile;
+  const name = d.name;
+  const presence = profilePresence(s, d);
   const beats = g.beats.filter((b) => b.privateWith === pf.charId);
   const veiled = g.revealQueue && g.revealQueue.length ? new Set(g.revealQueue) : null;
   const thread = beats.length
@@ -220,26 +252,32 @@ export function renderWhisperChannel(g, name, locked) {
           return veiled && veiled.has(b.id) ? `<div class="veil-wrap veiled">${html}</div>` : html;
         })
         .join("")
-    : `<p class="pm-empty muted">Say something only ${escapeHtml(name)} will hear.</p>`;
+    : `<p class="pm-empty muted">${
+        presence.present ? `Say something only ${escapeHtml(name)} will hear.` : "Nothing has passed between you in private."
+      }</p>`;
+
+  const channel = presence.present
+    ? `${renderStack(pf.stack, "pm")}
+       <form class="pm-form" data-form="private">
+         ${renderComposer({
+           id: "pm",
+           mode: pf.mode,
+           locked,
+           placeholders: {
+             say: `Whisper to ${name}...`,
+             do: `A discreet act only ${name} notices...`,
+           },
+           submitLabel: locked ? "Resolving..." : "Whisper",
+         })}
+       </form>`
+    : `<p class="absence-line">${escapeHtml(absenceLine(d, presence.stateChar, presence.alive))}</p>`;
 
   return `
     <section class="profile-sec whisper-sec">
       <h4 class="profile-sec-head">${icon("mic")}<span>Whisper</span></h4>
-      <p class="pm-hint">Only ${escapeHtml(name)} will ever know this.</p>
+      ${presence.present ? `<p class="pm-hint">Only ${escapeHtml(name)} will ever know this.</p>` : ""}
       <div class="pm-thread" id="pmThread">${thread}</div>
-      ${renderStack(pf.stack, "pm")}
-      <form class="pm-form" data-form="private">
-        ${renderComposer({
-          id: "pm",
-          mode: pf.mode,
-          locked,
-          placeholders: {
-            say: `Whisper to ${name}...`,
-            do: `A discreet act only ${name} notices...`,
-          },
-          submitLabel: locked ? "Resolving..." : "Whisper",
-        })}
-      </form>
+      ${channel}
     </section>`;
 }
 
@@ -258,7 +296,9 @@ export function renderPmBeat(beat) {
   const deed = beat.kind === "action";
   const sp = mine ? playerSpeech(beat) : null;
   const text = sp ? sp.quote : stripWrappingQuotes(beat.text);
+  // a whispered reply speaks too: same per-message speak button as the story
+  const playable = !mine && beat.voiceId ? speakBtn(beat) : "";
   return `<div class="pm-line ${mine ? "pm-you" : "pm-them"}${deed && !sp ? " pm-deed" : ""}${beat.pending ? " pending" : ""}" data-beat-id="${escapeHtml(beat.id)}">
-            ${!mine && beat.speakerName ? `<b>${escapeHtml(beat.speakerName)}</b> ` : ""}<span class="pm-text">${escapeHtml(text)}</span>
+            ${!mine && beat.speakerName ? `<b>${escapeHtml(beat.speakerName)}</b> ` : ""}<span class="pm-text">${escapeHtml(text)}</span>${playable}
           </div>`;
 }
