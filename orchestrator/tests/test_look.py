@@ -56,7 +56,9 @@ def test_interpreter_can_classify_a_typed_look(client, fake_llm, world):
                                 segments=[{"type": "look", "text": "for a way out"}]))
     d = client.post(f"/games/{gid}/action", json={"action": "I search for a way out."}).json()
     player = next(b for b in d["beats"] if b["speaker"] == "player")
-    assert player["text"] == "you look for a way out"
+    assert player["text"] == "I search for a way out."   # typed words echo VERBATIM
+    user = fake_llm.narrator_calls()[-1]["messages"][1]["content"]
+    assert "you look for a way out" in user              # the narrator gets the structure
 
 
 def test_show_image_tool_only_offered_when_images_enabled(client, fake_llm, world):

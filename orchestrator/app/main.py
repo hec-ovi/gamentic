@@ -173,15 +173,17 @@ def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
     with db.get_conn() as conn:
         if not repo.get_game(conn, gid):
             raise HTTPException(404, "game not found")
+        echo = None
         if text and not segments:
             # typed freeform: the agentic interpreter structures it (say/do/attack/give/
             # whisper with targets) so it gets routing + adjudication; raw text on failure
             segments = engine.interpret_action(conn, gid, text)
             if segments:
+                echo = text  # the player beat keeps THEIR exact words, never a paraphrase
                 text = ""    # the segments ARE the action now (else a whisper-only
                              # message would still open a public turn with the raw text)
         result = engine.run_turn(conn, gid, action_text=text, segments=segments,
-                                 continue_story=continue_story, wish=wish)
+                                 continue_story=continue_story, wish=wish, echo_text=echo)
         if result.get("spawned"):
             integrate.assign_voices_for_game(conn, gid)      # voice for the newcomer (inline)
         scene = repo.current_scene(conn, gid)

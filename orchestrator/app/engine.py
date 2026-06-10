@@ -162,7 +162,7 @@ def _compose(segments) -> tuple[str, list[dict]]:
                                             "behind ", "under ", "where ", "out ")) else "at "
                 parts.append(f"you look {pre}{text}")
             else:
-                parts.append("you look around carefully")
+                parts.append("you look around")
         else:  # do
             parts.append(text or "you wait")
     return "; ".join(p for p in parts if p), directed
@@ -321,7 +321,8 @@ def _image_pacing_ok(conn, gid: str, turn: int) -> bool:
 
 
 def run_turn(conn, gid: str, action_text: str = "", segments=None,
-             continue_story: bool = False, wish: str | None = None) -> dict:
+             continue_story: bool = False, wish: str | None = None,
+             echo_text: str | None = None) -> dict:
     turn = repo.next_turn_index(conn, gid)
     seq = 0
     new_beats: list[dict] = []
@@ -373,7 +374,9 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
     if has_public:
         action_text, directed = _compose(public) if public else (action_text, [])
         if not continue_story:
-            emit("player", None, "action", action_text or "...")
+            # the player's echo is THEIR words: typed input echoes verbatim (echo_text);
+            # the composed rendition is for the narrator, never put in the player's mouth
+            emit("player", None, "action", echo_text or action_text or "...")
 
         # Impossible attempts are rejected deterministically with a friendly in-world beat,
         # BEFORE anything is applied, and the narrator is told they failed (so its prose

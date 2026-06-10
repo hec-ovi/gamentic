@@ -80,7 +80,9 @@ def test_interpreter_drops_invalid_segments_keeps_valid(client, fake_llm):
     ])
     d = client.post(f"/games/{gid}/action", json={"action": "zap and kick"}).json()
     player = next(b for b in d["beats"] if b["speaker"] == "player")
-    assert player["text"] == "kick the bucket over"
+    assert player["text"] == "zap and kick"              # the echo is THEIR words
+    user = fake_llm.narrator_calls()[-1]["messages"][1]["content"]
+    assert "kick the bucket over" in user                # the narrator gets the kept segment
 
 
 def test_structured_segments_skip_the_interpreter(client, fake_llm):
