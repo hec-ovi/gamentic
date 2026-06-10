@@ -192,7 +192,7 @@ def add_trait(conn, cid: str, text: str, cap: int) -> str | None:
     """Unlock a personality trait on a character (earned through play). Returns the
     cleaned trait text, or None when it is a duplicate, empty, or the card is full.
     Stamped with the story clock so the profile can say WHEN it was revealed."""
-    text = " ".join((text or "").split()).strip().rstrip(".")
+    text = norm_name(text).rstrip(".")   # collapses snake_case too (live: "desperate_gambler")
     if not text:
         return None
     c = get_character(conn, cid)
@@ -215,7 +215,7 @@ def add_origin_fact(conn, cid: str, text: str, cap: int) -> str | None:
     """The player just LEARNED a piece of this character's past (reveal_origin tool).
     Returns the cleaned text, or None when duplicate/empty/full. Story-clock stamped.
     The full origin stays private; only revealed pieces ever reach the profile."""
-    text = " ".join((text or "").split()).strip().rstrip(".")
+    text = norm_name(text).rstrip(".")   # collapses snake_case too (live: "desperate_gambler")
     if not text:
         return None
     c = get_character(conn, cid)
@@ -239,7 +239,7 @@ def add_moment(conn, cid: str, text: str, cap: int = 20) -> str | None:
     """Record a PIVOTAL shared event between this character and the player (a bond, a
     wound, a gift, a betrayal, a parting). These are the character's MEMORIES of the
     player: curated events, never transcript. Deduped, story-clock stamped, capped."""
-    text = " ".join((text or "").split()).strip().rstrip(".")
+    text = norm_name(text).rstrip(".")   # collapses snake_case too (live: "desperate_gambler")
     if not text:
         return None
     c = get_character(conn, cid)
