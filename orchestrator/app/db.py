@@ -31,6 +31,9 @@ CREATE TABLE IF NOT EXISTS games (
     story_summary TEXT DEFAULT '',   -- rolling facts-only recap of chapters older than the verbatim window
     summarized_through INTEGER DEFAULT 0,  -- turn_index folded into story_summary so far
     history_beats INTEGER DEFAULT 0, -- per-game verbatim window override (0 = settings.HISTORY_BEATS)
+    summary_every INTEGER DEFAULT 0, -- per-game fold cadence in turns (0 = settings.SUMMARY_EVERY_TURNS)
+    context_tokens INTEGER DEFAULT 0,-- per-game narrator token budget (0 = off; else the verbatim
+                                     -- transcript is trimmed to fit and the recap carries the rest)
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -192,6 +195,8 @@ _MIGRATIONS = {
         "story_summary": "TEXT DEFAULT ''",
         "summarized_through": "INTEGER DEFAULT 0",
         "history_beats": "INTEGER DEFAULT 0",
+        "summary_every": "INTEGER DEFAULT 0",
+        "context_tokens": "INTEGER DEFAULT 0",
     },
     "beats": {
         "private_with": "TEXT",

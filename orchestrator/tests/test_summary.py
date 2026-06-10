@@ -99,6 +99,44 @@ def test_history_beats_is_a_live_setting(client, fake_llm, world):
     assert client.patch(f"/games/{gid}/settings", json={"history_beats": 0}).status_code == 200
 
 
+def test_summary_cadence_and_token_budget_are_live_settings(client, fake_llm, world):
+    gid = client.post("/games", json=world).json()["game_id"]
+    r = client.patch(f"/games/{gid}/settings",
+                     json={"summary_every": 4, "context_tokens": 6000}).json()
+    assert r["settings"]["summary_every"] == 4
+    assert r["settings"]["context_tokens"] == 6000
+    st = client.get(f"/games/{gid}/state").json()
+    assert st["settings"]["summary_every"] == 4 and st["settings"]["context_tokens"] == 6000
+    # validation
+    assert client.patch(f"/games/{gid}/settings", json={"summary_every": 1}).status_code == 422
+    assert client.patch(f"/games/{gid}/settings", json={"context_tokens": 100}).status_code == 422
+    assert client.patch(f"/games/{gid}/settings", json={"summary_every": 0}).status_code == 200
+
+
+def test_token_budget_trims_the_verbatim_transcript(client, fake_llm, world):
+    """The compression that actually CAPS the prompt: with a budget set, only the newest
+    beats ride verbatim; everything older lives only in the recap."""
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = llm.LLMReply(content="x" * 1200)   # fat beats, so the budget bites
+    for i in range(8):
+        client.post(f"/games/{gid}/action", json={"action": f"unique marker {i} " + "y" * 400})
+    client.patch(f"/games/{gid}/settings", json={"context_tokens": 4000})
+    client.post(f"/games/{gid}/action", json={"action": "the final probe"})
+    user = fake_llm.narrator_calls()[-1]["messages"][1]["content"]
+    assert "unique marker 7" in user                       # newest beats kept verbatim
+    assert "unique marker 0" not in user                   # oldest trimmed to fit the budget
+
+
+def test_per_game_fold_cadence_is_honored(client, fake_llm, world, monkeypatch):
+    monkeypatch.setattr(settings, "SUMMARY_KEEP_TURNS", 1)
+    gid = client.post("/games", json=world).json()["game_id"]
+    client.patch(f"/games/{gid}/settings", json={"summary_every": 2})
+    fake_llm.summary = llm.LLMReply(content="- Early events, folded fast.")
+    _play(client, gid, 4)
+    with db.get_conn() as conn:
+        assert repo.get_game(conn, gid)["story_summary"] == "- Early events, folded fast."
+
+
 # ---------- scene background ----------
 
 def test_scene_background_persists_and_reminds_the_narrator(client, fake_llm, world):

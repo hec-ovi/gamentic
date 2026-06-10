@@ -137,7 +137,29 @@ def set_history_beats(conn, gid: str, beats: int) -> None:
     conn.execute("UPDATE games SET history_beats=? WHERE id=?", (int(beats), gid))
 
 
+def set_summary_every(conn, gid: str, turns: int) -> None:
+    """Per-game fold cadence override (0 = the settings default)."""
+    conn.execute("UPDATE games SET summary_every=? WHERE id=?", (int(turns), gid))
+
+
+def set_context_tokens(conn, gid: str, tokens: int) -> None:
+    """Per-game narrator token budget (0 = off)."""
+    conn.execute("UPDATE games SET context_tokens=? WHERE id=?", (int(tokens), gid))
+
+
+def _col(g, name: str, default=0):
+    return (g[name] or default) if name in g.keys() else default
+
+
 def effective_history_beats(g) -> int:
     from ..config import settings
-    stored = (g["history_beats"] or 0) if "history_beats" in g.keys() else 0
-    return stored or settings.HISTORY_BEATS
+    return _col(g, "history_beats") or settings.HISTORY_BEATS
+
+
+def effective_summary_every(g) -> int:
+    from ..config import settings
+    return _col(g, "summary_every") or settings.SUMMARY_EVERY_TURNS
+
+
+def effective_context_tokens(g) -> int:
+    return _col(g, "context_tokens")   # 0 = no budget

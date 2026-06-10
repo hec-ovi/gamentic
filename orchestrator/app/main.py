@@ -250,10 +250,20 @@ def update_settings(gid: str, body: GameSettingsIn):
             if body.history_beats != 0 and not (8 <= body.history_beats <= 400):
                 raise HTTPException(422, "history_beats must be 0 (default) or 8..400")
             repo.set_history_beats(conn, gid, body.history_beats)
+        if body.summary_every is not None:
+            if body.summary_every != 0 and not (2 <= body.summary_every <= 50):
+                raise HTTPException(422, "summary_every must be 0 (default) or 2..50")
+            repo.set_summary_every(conn, gid, body.summary_every)
+        if body.context_tokens is not None:
+            if body.context_tokens != 0 and not (4000 <= body.context_tokens <= 120000):
+                raise HTTPException(422, "context_tokens must be 0 (off) or 4000..120000")
+            repo.set_context_tokens(conn, gid, body.context_tokens)
         g = repo.get_game(conn, gid)
         return {"settings": {"narrator_gender": g["narrator_gender"] or "",
                              "difficulty": g["difficulty"] or "normal",
-                             "history_beats": repo.effective_history_beats(g)},
+                             "history_beats": repo.effective_history_beats(g),
+                             "summary_every": repo.effective_summary_every(g),
+                             "context_tokens": repo.effective_context_tokens(g)},
                 "narrator_voice_id": g["narrator_voice_id"]}
 
 

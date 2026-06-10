@@ -112,6 +112,8 @@ class GameSettingsIn(BaseModel):
     narrator_gender: Optional[str] = None   # '' (preset default) | 'female' | 'male'
     difficulty: Optional[str] = None        # easy | normal | hard
     history_beats: Optional[int] = None     # verbatim story window (0 = default, 8..400)
+    summary_every: Optional[int] = None     # auto-summarize fold cadence in turns (0 = default, 2..50)
+    context_tokens: Optional[int] = None    # narrator token budget (0 = off, 4000..120000)
 
 
 class ViewIn(BaseModel):

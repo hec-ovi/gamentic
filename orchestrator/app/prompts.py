@@ -165,11 +165,28 @@ def _situation_blocks(conn, gid: str) -> str:
     return ("\n\n" + "\n\n".join(blocks)) if blocks else ""
 
 
+def _fit_token_budget(history, token_budget: int):
+    """Trim the verbatim transcript to roughly fit the game's narrator token budget
+    (the recap carries everything older). Newest beats win; ~4 chars per token, and
+    the transcript gets ~60% of the budget (state block, rules and lore take the rest)."""
+    if not token_budget:
+        return history
+    budget_chars = int(token_budget * 4 * 0.6)
+    total, kept = 0, []
+    for b in reversed(history):
+        total += len(b["text"] or "") + 16
+        if total > budget_chars and kept:
+            break
+        kept.append(b)
+    return list(reversed(kept))
+
+
 def build_narrator_messages(conn, gid: str, action: str, history_limit: int, lore_budget: int,
                             attempts: list[str] | None = None,
                             looking: bool = False, wish: str | None = None) -> list[dict]:
     g = repo.get_game(conn, gid)
     history = repo.recent_beats(conn, gid, history_limit)
+    history = _fit_token_budget(history, repo.effective_context_tokens(g))
     focus = action + " " + " ".join(_render_beat(b) for b in history[-4:])
 
     situation = _situation_blocks(conn, gid)

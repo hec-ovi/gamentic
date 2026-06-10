@@ -263,7 +263,7 @@ def maybe_update_summary(gid: str) -> None:
         latest = repo.next_turn_index(conn, gid) - 1
         done_through = g["summarized_through"] or 0
         target = latest - settings.SUMMARY_KEEP_TURNS
-        if target - done_through < settings.SUMMARY_EVERY_TURNS:
+        if target - done_through < repo.effective_summary_every(g):
             return
         rows = repo.beats_between(conn, gid, done_through, target)
         if not rows:
