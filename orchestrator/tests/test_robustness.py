@@ -83,6 +83,20 @@ def test_silent_character_gives_up_after_one_retry(client, fake_llm, world):
     assert len(fake_llm.character_calls()) == 2          # retried once, then accepted silence
 
 
+# ---------- token-ceiling truncation never shows mid-word ----------
+
+def test_truncated_reply_is_trimmed_to_the_last_sentence(client, fake_llm, world):
+    """Live: a long reply hit the cap and ended 'we do not linger for <'."""
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(T("cue_character", name="Mara"), content="Mara plans aloud.")
+    fake_llm.character_replies = {"Mara": llm.LLMReply(
+        content='[say]We move with caution. The path is treacherous. We do not linger for[/say]',
+        finish_reason="length")}
+    d = client.post(f"/games/{gid}/action", json={"action": "What is the plan?"}).json()
+    line = next(b for b in d["beats"] if b["kind"] == "dialogue")
+    assert line["text"] == "We move with caution. The path is treacherous."
+
+
 # ---------- speech mis-tagged as action reclassifies by shape ----------
 
 def test_quoted_speech_inside_a_do_tag_becomes_voiced_dialogue(client, fake_llm, world):

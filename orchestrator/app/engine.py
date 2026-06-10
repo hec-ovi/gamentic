@@ -35,6 +35,16 @@ _JSON_LINE = re.compile(r"^\s*[\[{].*[\]}]\s*,?\s*$")
 _FENCE = re.compile(r"```.*?(?:```|$)", re.S)
 
 
+def trim_to_sentence(text: str) -> str:
+    """A generation that hit the token ceiling ends mid-word (live: 'we do not linger
+    for <'); cut back to the last completed sentence so truncation is never visible."""
+    cut = max(text.rfind(p) for p in (". ", "! ", "? ", ".\n", "!\n", "?\n"))
+    last = max(text.rfind(p) for p in (".", "!", "?", "…"))
+    if last == len(text) - 1:
+        return text                      # already ends cleanly
+    return text[: cut + 1].rstrip() if cut > 0 else text
+
+
 def clean_prose(text: str) -> str:
     """Scrub model leakage from prose shown to the player: fenced code blocks, bare JSON
     lines, lines written in tool-call syntax, and inline pseudo tool calls."""
@@ -233,6 +243,9 @@ def _character_reply(conn, gid, ch, emit, private_with=None):
         if tok:
             repo.set_character_context(conn, ch["id"], tok)
         segs = parse_character_output(creply.content)
+        if segs and creply.finish_reason == "length":
+            k, t, e = segs[-1]
+            segs[-1] = (k, trim_to_sentence(t), e)   # never show a mid-word cut
         if segs or creply.tool_calls:
             break
     for kind, txt, emotion in segs:
@@ -537,6 +550,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                 state_notes.append(out["text"])
             enqueue(out["reactions"])
         prose = clean_prose(reply.content)
+        if prose and reply.finish_reason == "length":
+            prose = trim_to_sentence(prose)
         if prose:
             emit("narrator", "Narrator", "narration", prose)
         else:
