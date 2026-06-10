@@ -1,14 +1,15 @@
 // Component / integration tests: mount the REAL app, drive it like a player with
 // user-event, and intercept the network with MSW. Asserts the living-scene
-// rendering, the integrated deck, the composer (chips, stacking), the private
-// modal, the busy-lock, and the turn flow.
+// rendering, the integrated deck, the composer (chips, stacking, Look), the
+// character profile + whisper channel, Continue/wish, the PARTIAL busy-lock,
+// export/import, and the turn flow.
 
-import { test, expect, beforeEach } from "vitest";
+import { test, expect, beforeEach, vi } from "vitest";
 import { screen, within, waitFor } from "@testing-library/dom";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { server, mountApp } from "./setup.js";
-import { makeState, makeBeat } from "./fixtures.js";
+import { makeState, makeBeat, makeProfile } from "./fixtures.js";
 
 const API = "http://localhost:8000";
 const user = () => userEvent.setup({ delay: null });
@@ -24,10 +25,15 @@ async function gotoPlay(u) {
 
 const composerLive = () =>
   expect(document.querySelector("#cmpInput").getAttribute("contenteditable")).toBe("true");
+// the main composer line (its aria-label tracks the mode); the wish input is a textbox too
+const cmpBox = () => screen.getByRole("textbox", { name: /what you (do|say|look)/i });
+// the profile is re-rendered when its data lands: always query the LIVE node
+const profileEl = () => document.querySelector(".profile-screen");
+const pmBox = (re) => within(profileEl()).getByRole("textbox", { name: re });
 
 beforeEach(() => {
   document
-    .querySelectorAll(".notice-stack, .toast, .help-pop, .tagger-pop, .see-pop, .lightbox-overlay")
+    .querySelectorAll(".notice-stack, .toast, .help-pop, .tagger-pop, .lightbox-overlay")
     .forEach((n) => n.remove());
 });
 
@@ -67,7 +73,7 @@ test("a free-text Do turn posts a plain action and appends the new narration bea
     }),
   );
   await gotoPlay(u);
-  await u.type(screen.getByRole("textbox"), "open the door");
+  await u.type(cmpBox(), "open the door");
   await u.click(screen.getByRole("button", { name: /send/i }));
 
   await waitFor(() => expect(screen.getByText("The door creaks open.")).toBeTruthy());
@@ -85,36 +91,65 @@ test("Say mode sends a say segment instead of a plain action", async () => {
   );
   await gotoPlay(u);
   await u.click(screen.getByRole("button", { name: /^say$/i }));
-  await u.type(screen.getByRole("textbox"), "hello room");
+  await u.type(cmpBox(), "hello room");
   await u.click(screen.getByRole("button", { name: /send/i }));
   await waitFor(() => expect(body).toBeTruthy());
   expect(body.segments).toEqual([{ type: "say", text: "hello room" }]);
 });
 
-test("busy-lock: while a turn is in flight everything is blocked, then unlocks", async () => {
+test("PARTIAL lock: mutating surfaces block mid-turn, but the lightbox and inspect stay live", async () => {
   const u = user();
   let posts = 0;
+  // a character with face art + a past dialogue beat, so an avatar image exists
+  const faced = makeState();
+  faced.characters[0].face_url = "/media/g-test/jacker-face.png";
   server.use(
+    http.get(`${API}/games/:id/state`, () => HttpResponse.json(faced)),
+    http.get(`${API}/games/:id/beats`, ({ request }) =>
+      new URL(request.url).searchParams.has("since")
+        ? HttpResponse.json({ beats: [] })
+        : HttpResponse.json({
+            beats: [
+              makeBeat({ id: "open", text: "Rain hammers the window of The Last Breath." }),
+              makeBeat({ id: "dlg", kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "Evening." }),
+            ],
+          }),
+    ),
     http.post(`${API}/games/:id/action`, async () => {
       posts += 1;
-      await delay(60);
-      return HttpResponse.json({ beats: [makeBeat({ text: "Resolved." })], state: makeState() });
+      await delay(600); // a long-running turn: everything below happens MID-TURN
+      return HttpResponse.json({ beats: [makeBeat({ text: "Resolved." })], state: faced });
     }),
+    http.post(`${API}/games/:id/explain`, () => HttpResponse.json({ text: "Forty-two creds." })),
   );
   await gotoPlay(u);
-  await u.type(screen.getByRole("textbox"), "wait");
+  await u.type(cmpBox(), "wait");
   await u.click(screen.getByRole("button", { name: /send/i }));
-  // mid-turn: composer locked, veil up, thinking shown
-  expect(screen.getByRole("textbox").getAttribute("contenteditable")).toBe("false");
-  expect(document.querySelector(".busy-veil")).toBeTruthy();
+
+  // mid-turn: composer + mutating buttons locked, thinking shown, NO full veil
+  expect(cmpBox().getAttribute("contenteditable")).toBe("false");
   expect(screen.getByText(/the narrator is thinking/i)).toBeTruthy();
-  // every other affordance is disabled; clicking one fires nothing
+  expect(document.querySelector(".busy-veil")).toBeNull();
   const search = screen.getByRole("button", { name: /^search$/i });
   expect(search.disabled).toBe(true);
   await u.click(search).catch(() => {});
+
+  // ...but READ-ONLY interactions still work: the dialogue avatar opens the lightbox
+  await u.click(document.querySelector('.dialogue .bubble-avatar'));
+  const box = document.querySelector(".lightbox-overlay");
+  expect(box).toBeTruthy();
+  expect(box.querySelector("img").getAttribute("src")).toBe("/media/g-test/jacker-face.png");
+  await u.keyboard("{Escape}");
+
+  // ...and tap-to-inspect + "ask what this is" answer mid-turn too
+  await u.click(screen.getByRole("button", { name: /inspect credstick/i }));
+  const modal = await screen.findByRole("dialog", { name: /credstick/i });
+  await u.click(within(modal).getByRole("button", { name: /ask what this is/i }));
+  expect(await screen.findByText(/forty-two creds/i)).toBeTruthy();
+  await u.click(within(modal).getByRole("button", { name: /^close$/i }));
+
   // after: unlocked, and only the one POST went out
   await waitFor(composerLive);
-  expect(document.querySelector(".busy-veil")).toBeNull();
   expect(posts).toBe(1);
 });
 
@@ -141,7 +176,7 @@ test("tagging an entity chips it into the line and sends segments with refs", as
   expect(chip.getAttribute("contenteditable")).toBe("false");
   expect(chip.classList.contains("chip-character")).toBe(true);
 
-  await u.type(screen.getByRole("textbox"), " follow me");
+  await u.type(cmpBox(), " follow me");
   await u.click(screen.getByRole("button", { name: /send/i }));
   await waitFor(() => expect(body).toBeTruthy());
   expect(body.segments).toEqual([
@@ -162,13 +197,13 @@ test("stacking composes several segments that execute together as ONE turn", asy
   );
   await gotoPlay(u);
   await u.click(screen.getByRole("button", { name: /^say$/i }));
-  await u.type(screen.getByRole("textbox"), "we should run");
+  await u.type(cmpBox(), "we should run");
   await u.click(screen.getByRole("button", { name: /stack this line/i }));
   // the stacked row renders and is removable
   expect(document.querySelector(".seg-stack .seg-row")).toBeTruthy();
   // second line in Do mode
   await u.click(screen.getByRole("button", { name: /^do$/i }));
-  await u.type(screen.getByRole("textbox"), "bolt for the door");
+  await u.type(cmpBox(), "bolt for the door");
   await u.click(screen.getByRole("button", { name: /send/i }));
 
   await waitFor(() => expect(body).toBeTruthy());
@@ -256,23 +291,42 @@ test("tap-to-inspect: 404 from /explain reads as 'nothing more can be seen'", as
   expect(await screen.findByText(/nothing more can be seen/i)).toBeTruthy();
 });
 
-test("tap-to-inspect: a character card expands with disposition and asks about them", async () => {
+test("clicking a character card opens the FULL-SCREEN profile fed by GET /profile", async () => {
   const u = user();
-  let explainBody;
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  expect(await screen.findByRole("dialog", { name: /jacker's profile/i })).toBeTruthy();
+  // traits with their unlock stamp (the personality card collection); the data
+  // lands async, and the screen re-renders, so query the live node each time
+  await waitFor(() => expect(within(profileEl()).getByText(/distrusts authority/)).toBeTruthy());
+  expect(within(profileEl()).getByText(/unlocked: Day 2, evening/)).toBeTruthy();
+  // moments, the private one marked
+  expect(within(profileEl()).getByText("Keep it quiet.")).toBeTruthy();
+  expect(document.querySelector(".moment.private")).toBeTruthy();
+  // memories image strip
+  expect(document.querySelector('.memory img[src="/media/g-test/bar.png"]')).toBeTruthy();
+  // identity facts
+  expect(within(profileEl()).getByText("neutral")).toBeTruthy();
+  expect(within(profileEl()).getByText(/watchful bartender/i)).toBeTruthy();
+  // closing returns to the scene
+  await u.click(within(profileEl()).getByRole("button", { name: /back to the scene/i }));
+  expect(document.querySelector(".profile-screen")).toBeNull();
+});
+
+test("a fresh character's profile shows the grow-from-interactions copy", async () => {
+  const u = user();
   server.use(
-    http.post(`${API}/games/:id/explain`, async ({ request }) => {
-      explainBody = await request.json();
-      return HttpResponse.json({ text: "The bartender who has seen everything and says nothing." });
-    }),
+    http.get(`${API}/games/:id/characters/:cid/profile`, () =>
+      HttpResponse.json(makeProfile({ traits: [], moments: [], memories: [] })),
+    ),
   );
   await gotoPlay(u);
-  await u.click(screen.getByRole("button", { name: /inspect jacker/i }));
-  const modal = await screen.findByRole("dialog", { name: /jacker/i });
-  expect(within(modal).getByText("neutral")).toBeTruthy();
-  expect(within(modal).getByText(/watchful bartender/i)).toBeTruthy();
-  await u.click(within(modal).getByRole("button", { name: /ask what this is/i }));
-  expect(await screen.findByText(/says nothing/i)).toBeTruthy();
-  expect(explainBody).toEqual({ kind: "character", key: "c1" });
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  expect(
+    await screen.findByText(
+      /The more you interact with your characters, the more their traits and personality will grow from your interactions\./,
+    ),
+  ).toBeTruthy();
 });
 
 test("the goal chip opens the quest log; a quest expands to its objectives and can be asked about", async () => {
@@ -311,7 +365,7 @@ test("a system receipt beat is tappable and asks with its beat_id", async () => 
     }),
   );
   await gotoPlay(u);
-  await u.type(screen.getByRole("textbox"), "grab it");
+  await u.type(cmpBox(), "grab it");
   await u.click(screen.getByRole("button", { name: /send/i }));
   await u.click(await screen.findByText("Obtained: brass key."));
   const modal = await screen.findByRole("dialog", { name: /what just happened/i });
@@ -321,35 +375,7 @@ test("a system receipt beat is tappable and asks with its beat_id", async () => 
   expect(explainBody).toEqual({ kind: "beat", beat_id: "sys9" });
 });
 
-test("Talk opens the modal over the scene and routes a directed 'say'; the reply shows in the thread", async () => {
-  const u = user();
-  let body;
-  server.use(
-    http.post(`${API}/games/:id/action`, async ({ request }) => {
-      body = await request.json();
-      return HttpResponse.json({
-        beats: [makeBeat({ kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "Aye." })],
-        state: makeState(),
-      });
-    }),
-  );
-  await gotoPlay(u);
-  const col = document.querySelector('.char-col[data-char-id="c1"]');
-  await u.click(within(col).getByRole("button", { name: /^talk$/i }));
-
-  // the modal is OVER the scene and the main composer is gone
-  const modal = await screen.findByRole("dialog", { name: /talk to jacker/i });
-  expect(document.querySelector('[data-form="action"]')).toBeNull();
-
-  await u.type(within(modal).getByRole("textbox"), "you there?");
-  await u.click(within(modal).getByRole("button", { name: /execute/i }));
-  await waitFor(() => expect(body).toBeTruthy());
-  expect(body.segments).toEqual([{ type: "say", text: "you there?", target: "Jacker" }]);
-  // the modal stays open and the character's answer lands in its thread
-  await waitFor(() => expect(within(document.querySelector("#pmThread")).getByText("Aye.")).toBeTruthy());
-});
-
-test("Whisper sends private segments; the secret renders in the modal, never in the public story", async () => {
+test("the whisper channel lives in the profile: the secret renders in its thread, never in the public story", async () => {
   const u = user();
   let body;
   server.use(
@@ -362,26 +388,82 @@ test("Whisper sends private segments; the secret renders in the modal, never in 
     }),
   );
   await gotoPlay(u);
-  const col = document.querySelector('.char-col[data-char-id="c1"]');
-  await u.click(within(col).getByRole("button", { name: /^whisper$/i }));
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getAllByText(/only jacker/i).length).toBeGreaterThan(0));
 
-  const modal = await screen.findByRole("dialog", { name: /whisper to jacker/i });
-  expect(modal.classList.contains("is-whisper")).toBe(true);
-
-  await u.type(within(modal).getByRole("textbox"), "tell me the secret");
-  await u.click(within(modal).getByRole("button", { name: /execute/i }));
+  await u.type(pmBox(/what you say/i), "tell me the secret");
+  await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
   await waitFor(() => expect(body).toBeTruthy());
   expect(body.segments).toEqual([{ type: "whisper", text: "tell me the secret", target: "Jacker", mode: "say" }]);
 
-  // the private reply lives in the modal thread...
-  await waitFor(() => expect(within(document.querySelector("#pmThread")).getByText("Under the stool.")).toBeTruthy());
+  // the private reply lands in the profile's thread...
+  await waitFor(() => expect(within(document.querySelector("#pmThread")).getByText("Under the stool.")).toBeTruthy(), { timeout: 4000 });
   // ...and after closing, the public story still never shows it
-  await u.click(within(modal).getByRole("button", { name: /^close$/i }));
+  await u.click(within(profileEl()).getByRole("button", { name: /back to the scene/i }));
   expect(document.querySelector("#pmThread")).toBeNull();
   expect(within(document.querySelector("#storyStream")).queryByText("Under the stool.")).toBeNull();
-});
+}, 10000);
 
-test("the modal's Do mode whispers a discreet private action (mode: do)", async () => {
+test("the whisper thread pins itself to the newest line when a reply lands", async () => {
+  const u = user();
+  // jsdom has no layout: give every element a virtual scrollable height
+  const spy = vi.spyOn(window.Element.prototype, "scrollHeight", "get").mockReturnValue(500);
+  try {
+    server.use(
+      http.post(`${API}/games/:id/action`, () =>
+        HttpResponse.json({
+          beats: [makeBeat({ kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "Closer.", private_with: "c1" })],
+          state: makeState(),
+        }),
+      ),
+    );
+    await gotoPlay(u);
+    await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+    await screen.findByRole("dialog", { name: /jacker's profile/i });
+    await waitFor(() => expect(pmBox(/what you say/i)).toBeTruthy());
+    await u.type(pmBox(/what you say/i), "come closer");
+    await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
+    await waitFor(() => expect(within(document.querySelector("#pmThread")).getByText("Closer.")).toBeTruthy(), { timeout: 4000 });
+    // pinned to the newest line (scrollTop driven to the virtual scrollHeight)
+    await waitFor(() => expect(document.querySelector("#pmThread").scrollTop).toBe(500));
+  } finally {
+    spy.mockRestore();
+  }
+}, 10000);
+
+test("whisper replies SPEAK with the character's voice through the speak pipeline", async () => {
+  const u = user();
+  const voiced = makeState();
+  voiced.characters[0].voice_id = "vx-jacker";
+  server.use(
+    http.get(`${API}/games/:id/state`, () => HttpResponse.json(voiced)),
+    http.post(`${API}/games/:id/action`, () =>
+      HttpResponse.json({
+        beats: [makeBeat({ kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "Hush now.", private_with: "c1" })],
+        state: voiced,
+      }),
+    ),
+  );
+  const app = await mountApp();
+  app.state.settings.autoplayCharacters = true; // character voices ON, narrator OFF
+  const prepared = vi.spyOn(app.voice, "prepare").mockResolvedValue(null);
+  await u.click(await screen.findByRole("button", { name: /enter your saved worlds/i }));
+  await u.click(await screen.findByRole("button", { name: /^enter$/i }));
+  await screen.findAllByText("The Last Breath");
+
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(pmBox(/what you say/i)).toBeTruthy());
+  await u.type(pmBox(/what you say/i), "shh");
+  await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
+
+  await waitFor(() =>
+    expect(prepared).toHaveBeenCalledWith(expect.objectContaining({ text: "Hush now.", voiceId: "vx-jacker" })),
+  );
+}, 10000);
+
+test("the profile composer's Do mode whispers a discreet private action (mode: do)", async () => {
   const u = user();
   let body;
   server.use(
@@ -391,12 +473,12 @@ test("the modal's Do mode whispers a discreet private action (mode: do)", async 
     }),
   );
   await gotoPlay(u);
-  const col = document.querySelector('.char-col[data-char-id="c1"]');
-  await u.click(within(col).getByRole("button", { name: /^whisper$/i }));
-  const modal = await screen.findByRole("dialog", { name: /whisper to jacker/i });
-  await u.click(within(modal).getByRole("button", { name: /^do$/i }));
-  await u.type(within(modal).getByRole("textbox"), "slip him the key");
-  await u.click(within(modal).getByRole("button", { name: /execute/i }));
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getByRole("button", { name: /^do$/i })).toBeTruthy());
+  await u.click(within(profileEl()).getByRole("button", { name: /^do$/i }));
+  await u.type(pmBox(/what you do/i), "slip him the key");
+  await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
   await waitFor(() => expect(body).toBeTruthy());
   expect(body.segments).toEqual([{ type: "whisper", text: "slip him the key", target: "Jacker", mode: "do" }]);
 });
@@ -474,84 +556,253 @@ const IMAGED = () =>
     scene: { id: "sc1", name: "The Last Breath", description: "d", status: "tense", image_url: "/media/g/scene.png", exits: [], items: [], available_actions: [] },
   });
 
-test("See asks for an optional focus, locks the button, and the image beat lands with its caption", async () => {
+test("Look is a first-class action: the typed focus sends a look segment", async () => {
   const u = user();
-  let viewBody = "unset";
+  let body;
   server.use(
-    http.get(`${API}/games/:id/state`, () => HttpResponse.json(IMAGED())),
-    http.post(`${API}/games/:id/view`, async ({ request }) => {
-      viewBody = await request.text();
-      await delay(50);
-      return HttpResponse.json({
-        beat: makeBeat({ id: "img1", kind: "image", text: "", image_url: "/media/g-test/view1.png" }),
-        image_url: "/media/g-test/view1.png",
-      });
+    http.post(`${API}/games/:id/action`, async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ beats: [makeBeat({ text: "You study the hatch." })], state: makeState() });
     }),
   );
   await gotoPlay(u);
-  await u.click(screen.getByRole("button", { name: /see the scene/i }));
-  // the focus popover: empty = the whole scene
-  const focusInput = await screen.findByLabelText(/look at what/i);
-  await u.click(within(focusInput.closest("form")).getByRole("button", { name: /^see$/i }));
-  // in flight: loader + lock (one at a time)
-  await waitFor(() => expect(document.querySelector(".see-btn.seeing")).toBeTruthy());
-  expect(document.querySelector(".see-btn").disabled).toBe(true);
-  // the image beat lands inline in the story and the button unlocks
-  await waitFor(() => expect(document.querySelector('.beat-image img[src="/media/g-test/view1.png"]')).toBeTruthy());
-  expect(viewBody).toBe(""); // empty focus -> no body
-  expect(document.querySelector(".beat-image figcaption")).toBeNull(); // empty text -> no caption
-  expect(document.querySelector(".see-btn.seeing")).toBeNull();
-  expect(document.querySelector(".see-btn").disabled).toBe(false);
+  await u.click(screen.getByRole("button", { name: /^look$/i }));
+  await u.type(cmpBox(), "the rusted hatch");
+  await u.click(screen.getByRole("button", { name: /send/i }));
+  await waitFor(() => expect(body).toBeTruthy());
+  expect(body.segments).toEqual([{ type: "look", text: "the rusted hatch" }]);
+  await screen.findByText("You study the hatch.");
 });
 
-test("a typed focus rides the request body and renders as the image caption", async () => {
+test("an EMPTY Look line still sends (study the whole scene)", async () => {
   const u = user();
-  let viewBody;
+  let body;
   server.use(
-    http.get(`${API}/games/:id/state`, () => HttpResponse.json(IMAGED())),
-    http.post(`${API}/games/:id/view`, async ({ request }) => {
-      viewBody = await request.json();
-      return HttpResponse.json({
-        beat: makeBeat({ id: "img2", kind: "image", text: "what Jacker is doing", image_url: "/media/g-test/view2.png" }),
-        image_url: "/media/g-test/view2.png",
-      });
+    http.post(`${API}/games/:id/action`, async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ beats: [makeBeat({ text: "The room sharpens." })], state: makeState() });
     }),
   );
   await gotoPlay(u);
-  await u.click(screen.getByRole("button", { name: /see the scene/i }));
-  const focusInput = await screen.findByLabelText(/look at what/i);
-  await u.type(focusInput, "what Jacker is doing");
-  await u.click(within(focusInput.closest("form")).getByRole("button", { name: /^see$/i }));
+  await u.click(screen.getByRole("button", { name: /^look$/i }));
+  await u.click(screen.getByRole("button", { name: /send/i }));
+  await waitFor(() => expect(body).toBeTruthy());
+  expect(body.segments).toEqual([{ type: "look", text: "" }]);
+});
 
-  await waitFor(() => expect(viewBody).toEqual({ focus: "what Jacker is doing" }));
-  await waitFor(() => {
-    const cap = document.querySelector(".beat-image figcaption");
-    expect(cap).toBeTruthy();
-    expect(cap.textContent).toMatch(/what Jacker is doing/);
+test("the scene base actions rewire: 'Look around' and 'Search' send look segments", async () => {
+  const u = user();
+  const bodies = [];
+  server.use(
+    http.post(`${API}/games/:id/action`, async ({ request }) => {
+      bodies.push(await request.json());
+      return HttpResponse.json({ beats: [makeBeat({ text: "ok" })], state: makeState() });
+    }),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /look around/i }));
+  await waitFor(() => expect(bodies.length).toBe(1));
+  expect(bodies[0].segments).toEqual([{ type: "look", text: "" }]);
+  await waitFor(composerLive);
+  await u.click(screen.getByRole("button", { name: /^search$/i }));
+  await waitFor(() => expect(bodies.length).toBe(2));
+  expect(bodies[1].segments).toEqual([{ type: "look", text: "for anything hidden or useful here" }]);
+});
+
+test("after a look turn, late image beats are polled in and the rendering hint resolves", async () => {
+  const u = user();
+  let polled = 0;
+  server.use(
+    http.get(`${API}/games/:id/state`, () => HttpResponse.json(IMAGED())),
+    http.post(`${API}/games/:id/action`, () =>
+      HttpResponse.json({ beats: [makeBeat({ id: "lk1", turn_index: 2, text: "You take it all in." })], state: IMAGED() }),
+    ),
+    http.get(`${API}/games/:id/beats`, ({ request }) => {
+      const since = new URL(request.url).searchParams.get("since");
+      if (since === null)
+        return HttpResponse.json({ beats: [makeBeat({ id: "open", turn_index: 1, text: "Rain hammers the window of The Last Breath." })] });
+      polled += 1;
+      // the narrator-granted image + an item unlock card land on the SECOND poll
+      if (Number(since) >= 2 && polled > 1) {
+        return HttpResponse.json({
+          beats: [
+            makeBeat({ id: "li1", turn_index: 3, seq: 0, speaker: "narrator", kind: "image", text: "the whole scene", image_url: "/media/g-test/look1.png" }),
+            makeBeat({ id: "li2", turn_index: 3, seq: 1, speaker: "system", kind: "image", text: "brass key", image_url: "/media/g-test/item1.png" }),
+          ],
+        });
+      }
+      return HttpResponse.json({ beats: [] });
+    }),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /^look$/i }));
+  await u.click(screen.getByRole("button", { name: /send/i }));
+  await screen.findByText("You take it all in.");
+
+  // the subtle hint shows while the look image renders in the background
+  await waitFor(() => expect(document.querySelector(".render-hint")).toBeTruthy());
+
+  // the late beats land via GET /beats?since= (3s cadence), through the staged reveal
+  await waitFor(() => expect(document.querySelector('.beat-image img[src="/media/g-test/look1.png"]')).toBeTruthy(), {
+    timeout: 12000,
   });
-});
+  // the narrator shot is the hero; the item card is SMALL with its name label
+  const hero = document.querySelector('[data-beat-id="li1"]');
+  expect(hero.classList.contains("item-card")).toBe(false);
+  expect(hero.querySelector("figcaption").textContent).toMatch(/the whole scene/);
+  await waitFor(() => {
+    const card = document.querySelector('[data-beat-id="li2"]');
+    expect(card).toBeTruthy();
+    expect(card.classList.contains("item-card")).toBe(true);
+    expect(card.querySelector("figcaption").textContent).toMatch(/brass key/);
+  });
+  // and the hint resolves once the image arrives
+  await waitFor(() => expect(document.querySelector(".render-hint")).toBeNull());
+}, 20000);
 
-test("See on a downed image service toasts 'the vision fades' and re-enables", async () => {
+test("Continue advances the story with NO player input and renders no player beat", async () => {
   const u = user();
+  let contBody = "unset";
   server.use(
-    http.get(`${API}/games/:id/state`, () => HttpResponse.json(IMAGED())),
-    http.post(`${API}/games/:id/view`, () => new HttpResponse(null, { status: 502 })),
+    http.post(`${API}/games/:id/continue`, async ({ request }) => {
+      contBody = await request.json();
+      return HttpResponse.json({
+        beats: [makeBeat({ id: "c-n1", kind: "narration", text: "The rain stops, suddenly." })],
+        state: makeState(),
+      });
+    }),
   );
   await gotoPlay(u);
-  await u.click(screen.getByRole("button", { name: /see the scene/i }));
-  const focusInput = await screen.findByLabelText(/look at what/i);
-  await u.click(within(focusInput.closest("form")).getByRole("button", { name: /^see$/i }));
-  await waitFor(() => expect(document.querySelector(".toast")).toBeTruthy());
-  expect(document.querySelector(".toast").textContent).toMatch(/the vision fades/i);
-  expect(document.querySelector(".see-btn").disabled).toBe(false);
-  expect(document.querySelector(".beat-image")).toBeNull();
+  await u.click(screen.getByRole("button", { name: /^continue$/i }));
+  await screen.findByText("The rain stops, suddenly.");
+  expect(contBody).toEqual({}); // no wish typed -> empty body
+  expect(document.querySelector(".player-action")).toBeNull(); // no player beat, no echo
 });
 
-test("there is NO See button when images are disabled (fixture default)", async () => {
+test("the wish rides /continue and /action, then clears; it is never echoed as a player beat", async () => {
   const u = user();
-  await gotoPlay(u); // makeState() has images_enabled: false
-  expect(document.querySelector(".see-btn")).toBeNull();
+  let contBody;
+  let actionBody;
+  server.use(
+    http.post(`${API}/games/:id/continue`, async ({ request }) => {
+      contBody = await request.json();
+      return HttpResponse.json({ beats: [makeBeat({ text: "A stranger walks in." })], state: makeState() });
+    }),
+    http.post(`${API}/games/:id/action`, async ({ request }) => {
+      actionBody = await request.json();
+      return HttpResponse.json({ beats: [makeBeat({ text: "Done." })], state: makeState() });
+    }),
+  );
+  await gotoPlay(u);
+
+  // wish + Continue
+  await u.type(screen.getByLabelText(/wish to happen next/i), "let someone new arrive");
+  await u.click(screen.getByRole("button", { name: /^continue$/i }));
+  await screen.findByText("A stranger walks in.");
+  expect(contBody).toEqual({ wish: "let someone new arrive" });
+  expect(screen.getByLabelText(/wish to happen next/i).value).toBe(""); // cleared after the send
+  expect(within(document.querySelector("#storyStream")).queryByText(/let someone new arrive/)).toBeNull();
+  await waitFor(composerLive);
+
+  // wish + a normal action send
+  await u.type(screen.getByLabelText(/wish to happen next/i), "rain harder");
+  await u.type(screen.getByRole("textbox", { name: /what you do/i }), "open the door");
+  await u.click(screen.getByRole("button", { name: /send/i }));
+  await waitFor(() => expect(actionBody).toBeTruthy());
+  expect(actionBody).toEqual({ action: "open the door", wish: "rain harder" });
+  expect(screen.getByLabelText(/wish to happen next/i).value).toBe("");
+}, 10000);
+
+test("game settings PATCH round-trip: picking a difficulty updates the live game", async () => {
+  const u = user();
+  let patchBody;
+  server.use(
+    http.patch(`${API}/games/:id/settings`, async ({ request }) => {
+      patchBody = await request.json();
+      return HttpResponse.json({ settings: { narrator_gender: "", difficulty: "hard" }, narrator_voice_id: "af_alloy" });
+    }),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /^menu$/i }));
+  const hard = await screen.findByRole("radio", { name: /hard/i });
+  await u.click(hard);
+  await waitFor(() => expect(patchBody).toEqual({ difficulty: "hard" }));
+  // the response is the new truth: the radio stays checked after the re-render
+  await waitFor(() => expect(screen.getByRole("radio", { name: /hard/i }).checked).toBe(true));
 });
+
+test("the autoplay split persists narrator and character voices independently", async () => {
+  const u = user();
+  const app = await mountApp();
+  await u.click(await screen.findByRole("button", { name: /settings/i }));
+  const narr = (await screen.findByText(/narrator voice/i)).closest(".set-row").querySelector("input");
+  await u.click(narr);
+  expect(app.state.settings.autoplayNarrator).toBe(true);
+  expect(app.state.settings.autoplayCharacters).toBe(false);
+  const saved = JSON.parse(localStorage.getItem("gamentic.v2"));
+  expect(saved.autoplayNarrator).toBe(true);
+  expect(saved.autoplayCharacters).toBe(false);
+});
+
+test("Export fetches the adventure JSON and hands it over as a named download", async () => {
+  const u = user();
+  server.use(
+    http.get(`${API}/games/:id/export`, ({ request }) =>
+      new URL(request.url).searchParams.get("kind") === "template"
+        ? HttpResponse.json({ kind: "template", title: "Test Adventure" })
+        : new HttpResponse(null, { status: 422 }),
+    ),
+  );
+  const createUrl = vi.fn(() => "blob:gamentic-export");
+  const revokeUrl = vi.fn();
+  window.URL.createObjectURL = createUrl;
+  window.URL.revokeObjectURL = revokeUrl;
+  const clicked = vi.spyOn(window.HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  try {
+    await gotoPlay(u);
+    await u.click(screen.getByRole("button", { name: /^menu$/i }));
+    await u.click(await screen.findByRole("button", { name: /share as adventure/i }));
+    await waitFor(() => expect(clicked).toHaveBeenCalled());
+    expect(createUrl).toHaveBeenCalled();
+    const blob = createUrl.mock.calls[0][0];
+    expect(blob.type).toBe("application/json");
+    const anchor = clicked.mock.instances[0];
+    expect(anchor.download).toBe("test-adventure-template.json");
+    expect(document.querySelector(".toast")?.textContent || "").toMatch(/exported/i);
+  } finally {
+    clicked.mockRestore();
+    delete window.URL.createObjectURL;
+    delete window.URL.revokeObjectURL;
+  }
+});
+
+test("Import reads the file, posts it, and enters the new game; a bad file surfaces the 400", async () => {
+  const u = user();
+  let importBody;
+  server.use(
+    http.post(`${API}/games/import`, async ({ request }) => {
+      importBody = await request.json();
+      return HttpResponse.json({ game_id: "g-test" });
+    }),
+  );
+  await mountApp();
+  await u.click(await screen.findByRole("button", { name: /enter your saved worlds/i }));
+  const file = new File([JSON.stringify({ gamentic: true, kind: "template", title: "Shared World" })], "shared.json", {
+    type: "application/json",
+  });
+  await u.upload(document.querySelector("#importFile"), file);
+  // posts the parsed JSON and navigates into the returned game
+  await waitFor(() => expect(importBody).toEqual({ gamentic: true, kind: "template", title: "Shared World" }));
+  await screen.findAllByText("The Last Breath");
+
+  // a non-export file: the 400 message reaches the player
+  server.use(http.post(`${API}/games/import`, () => HttpResponse.json({ detail: "not a gamentic export" }, { status: 400 })));
+  await u.click(screen.getByRole("button", { name: /library/i }));
+  const bad = new File([JSON.stringify({ nope: 1 })], "bad.json", { type: "application/json" });
+  await u.upload(document.querySelector("#importFile"), bad);
+  await waitFor(() => expect(document.querySelector(".toast")).toBeTruthy());
+  expect(document.querySelector(".toast").textContent).toMatch(/not a gamentic export/i);
+}, 10000);
 
 test("a game image that fails to load is retried with a cache-buster (file still persisting)", async () => {
   const u = user();
@@ -582,7 +833,7 @@ test("staged reveal: system beats land instantly, prose types, later beats wait 
     ),
   );
   await gotoPlay(u);
-  await u.type(screen.getByRole("textbox"), "open the lock");
+  await u.type(cmpBox(), "open the lock");
   await u.click(screen.getByRole("button", { name: /send/i }));
 
   // the system beat shows as soon as the turn lands...
@@ -612,7 +863,7 @@ test("a story click instant-finishes the staged reveal", async () => {
     ),
   );
   await gotoPlay(u);
-  await u.type(screen.getByRole("textbox"), "read the wall");
+  await u.type(cmpBox(), "read the wall");
   await u.click(screen.getByRole("button", { name: /send/i }));
   await waitFor(() => expect(document.querySelector('[data-beat-id="n9"]')).toBeTruthy());
   // click the story: everything finishes instantly
@@ -634,7 +885,7 @@ test("anchoring: the scene image does NOT move when new narration arrives", asyn
   );
   await gotoPlay(u);
   const holderBefore = document.querySelector(".prose-art").closest("[data-beat-id]").dataset.beatId;
-  await u.type(screen.getByRole("textbox"), "look");
+  await u.type(cmpBox(), "look");
   await u.click(screen.getByRole("button", { name: /send/i }));
   await waitFor(() => expect(screen.getByText("More prose lands.")).toBeTruthy(), { timeout: 5000 });
   const holderAfter = document.querySelector(".prose-art").closest("[data-beat-id]").dataset.beatId;

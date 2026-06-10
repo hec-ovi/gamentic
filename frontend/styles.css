@@ -299,7 +299,7 @@ button { font: inherit; cursor: pointer; }
 }
 
 /* ---- scrollbars: every inner scroll surface wears the holo skin ----
-   (story, character column, creator thread, private-modal thread, library,
+   (story, character column, creator thread, whisper thread, library,
    settings, tagger). Firefox via scrollbar-*, the rest via ::-webkit-. */
 * {
   scrollbar-width: thin;
@@ -1061,8 +1061,13 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 .char-desc { margin: 0.6rem 0 0.5rem; font-size: 0.8rem; color: var(--holo-dim); line-height: 1.4; }
 .inv-mini-label { font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--holo-dim); }
 .char-items .slot { width: 30px; height: 30px; }
-.char-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
-.char-actions .chip-btn { font-size: 0.72rem; padding: 0.3rem 0.55rem; }
+/* character offers read light, not "brute": quiet text-buttons that glow on hover */
+.char-actions { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
+.char-actions .chip-btn {
+  font-size: 0.68rem; padding: 0.22rem 0.45rem;
+  background: transparent; border-color: transparent; color: var(--holo-dim);
+}
+.char-actions .chip-btn:hover:not(:disabled) { color: var(--holo-cyan); border-color: var(--holo-line-soft); background: rgba(47, 230, 255, 0.06); }
 
 /* action bar */
 .play-actionbar { position: relative; z-index: 3; border-top: 1px solid var(--holo-line-soft); background: linear-gradient(0deg, rgba(10, 20, 36, 0.7), transparent); padding: 0.7rem clamp(0.8rem, 2vw, 1.4rem); display: flex; flex-direction: column; gap: 0.6rem; }
@@ -1150,61 +1155,40 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 .prose-art.art-loading { aspect-ratio: 1 / 1; float: left; }
 .narration::after { content: ""; display: block; clear: both; }
 
-/* ---- the private modal (Talk / Whisper over the scene) ---- */
-.private-modal { width: min(580px, 94vw); display: flex; flex-direction: column; gap: 0.6rem; }
-.private-modal .card-corner { border-color: var(--speaker); }
-.pm-head { display: flex; align-items: center; gap: 0.7rem; }
-.pm-face { width: 52px; height: 52px; flex: 0 0 auto; border: 2px solid var(--speaker); object-fit: cover; display: grid; place-items: center; overflow: hidden; position: relative;
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
-.pm-face.fallback { color: #05080f; font-weight: 700; font-family: var(--holo-display); }
-.pm-id { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
-.pm-name { font-weight: 700; font-size: 1.02rem; color: var(--holo-ink); }
-.pm-close { margin-left: auto; }
-.pm-channel { display: flex; gap: 0; }
-.pm-tab {
-  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
-  padding: 0.5rem 0.6rem; border: 1px solid var(--holo-line-soft); background: rgba(7, 14, 26, 0.55);
-  color: var(--holo-dim); font-family: var(--holo-display); font-size: 0.74rem; letter-spacing: 0.12em; text-transform: uppercase;
-}
-.pm-tab svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; }
-.pm-tab:first-child { clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px); }
-.pm-tab:last-child { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%); margin-left: -1px; }
-.pm-tab.active { color: var(--holo-cyan); border-color: var(--holo-cyan); background: rgba(47, 230, 255, 0.1); }
-.private-modal.is-whisper .pm-tab.active { color: var(--gold); border-color: var(--gold); background: rgba(242, 184, 75, 0.1); }
-.pm-hint { margin: 0; font-size: 0.76rem; color: var(--holo-dim); }
-.private-modal.is-whisper .pm-hint { color: var(--gold); }
+/* ---- the private whisper thread (lives in the character profile) ---- */
+.pm-hint { margin: 0; font-size: 0.76rem; color: var(--gold); }
 .pm-thread { min-height: 110px; max-height: 38vh; overflow-y: auto; display: flex; flex-direction: column; gap: 0.45rem; padding: 0.6rem;
   border: 1px solid var(--holo-line-soft); background: rgba(5, 10, 18, 0.55); }
 .pm-line { max-width: 86%; padding: 0.45rem 0.7rem; font-size: 0.88rem; line-height: 1.45; color: var(--holo-ink);
   border: 1px solid var(--holo-line-soft); background: rgba(16, 32, 52, 0.5);
   clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
-.pm-you { align-self: flex-end; border-color: rgba(47, 230, 255, 0.35); background: rgba(27, 159, 255, 0.14); }
+/* the player's whispers mirror RIGHT, like their speech bubbles in the story */
+.pm-you { align-self: flex-end; text-align: right; border-color: rgba(47, 230, 255, 0.35); background: rgba(27, 159, 255, 0.14); }
 .pm-them { align-self: flex-start; border-left: 2px solid var(--speaker); }
 .pm-them b { color: var(--speaker); }
 .pm-deed { font-style: italic; color: var(--holo-dim); }
+.pm-narration { align-self: stretch; max-width: 100%; font-style: italic; color: var(--holo-dim); background: transparent; border-style: dashed; }
 .pm-system { align-self: center; font-size: 0.76rem; color: var(--holo-dim); border-style: dashed; background: transparent; }
 .pm-empty { margin: auto; text-align: center; font-size: 0.85rem; }
 .pm-form { display: block; }
 
-/* ---- busy-lock: one POST = one fully resolved turn; block EVERYTHING ---- */
-.busy-veil { position: fixed; inset: 0; z-index: 120; background: transparent; cursor: progress; }
-.busy-bar { position: absolute; top: 0; left: 0; right: 0; height: 2px; overflow: hidden; display: block; }
-.busy-bar::after { content: ""; position: absolute; inset: 0; width: 38%;
-  background: linear-gradient(90deg, transparent, var(--holo-cyan), transparent);
-  filter: drop-shadow(0 0 6px var(--holo-cyan)); animation: craft-sweep 1.6s ease-in-out infinite; }
-.play-stage.generating .play-deck, .play-stage.generating .play-actionbar, .play-stage.generating .char-column { opacity: 0.75; }
+/* ---- PARTIAL busy-lock: only mutating surfaces lock (they render disabled);
+   reading, inspecting, the lightbox and profiles stay live, so no veil ---- */
+.play-stage.generating .play-actionbar .composer, .play-stage.generating .turn-aux { opacity: 0.75; }
 
 /* adjudication: rejected attempt / narrator veto */
 .system-badge.veto { color: var(--rose); border-color: #5a2e3a; border-style: dashed; background: rgba(90, 46, 58, 0.18); }
 
-/* ---- "See" the scene: sync image generation, loader + lock on the button ---- */
-.see-btn { width: 32px; height: 32px; margin-left: 0.15rem; color: var(--holo-cyan); }
-.see-btn.seeing { position: relative; color: var(--holo-dim); cursor: progress; }
-.see-btn.seeing svg { animation: blink 1.1s infinite; }
-.see-btn.seeing::after {
-  content: ""; position: absolute; inset: 3px; border-radius: 50%;
-  border: 1px solid transparent; border-top-color: var(--holo-cyan); border-right-color: var(--holo-cyan);
-  animation: spin 0.9s linear infinite;
+/* a trait receipt: a touch of card-unlock celebration */
+.system-badge.trait {
+  color: var(--gold); border-color: var(--gold); background: rgba(242, 184, 75, 0.1);
+  box-shadow: 0 0 16px rgba(242, 184, 75, 0.25);
+  animation: trait-unlock 0.7s cubic-bezier(0.2, 1.4, 0.5, 1) both;
+}
+@keyframes trait-unlock {
+  0% { opacity: 0; transform: scale(0.85) rotate(-1.5deg); }
+  60% { transform: scale(1.06) rotate(0.6deg); }
+  100% { opacity: 1; transform: none; }
 }
 
 /* an image beat: just an inline picture in the story flow, no bubble */
@@ -1215,7 +1199,7 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 }
 .beat-image img { width: 100%; display: block; }
 .beat-image .card-corner { z-index: 2; }
-/* the See focus as a small caption under the image */
+/* the look text as a small caption under the image */
 .beat-image figcaption {
   padding: 0.45rem 0.7rem; font-family: var(--holo-display); font-size: 0.64rem;
   letter-spacing: 0.16em; text-transform: uppercase; color: var(--holo-dim);
@@ -1245,16 +1229,6 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
   animation: pop 0.4s cubic-bezier(0.2, 1.4, 0.5, 1) both; z-index: 5;
 }
 .new-image-chip svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; }
-
-/* ---- the See focus popover ---- */
-.see-pop {
-  position: absolute; z-index: 96; display: flex; gap: 0.5rem; width: min(330px, 92vw); padding: 0.55rem;
-  background: linear-gradient(180deg, rgba(20, 38, 60, 0.97), rgba(9, 16, 28, 0.97));
-  border: 1px solid var(--holo-line); box-shadow: var(--shadow);
-  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-}
-.see-pop .holo-input { flex: 1; min-width: 0; font-size: 0.85rem; }
-.see-pop .holo-btn { padding: 0.45rem 0.7rem; }
 
 /* ---- image lightbox: stored files are larger than their slots ---- */
 .lightbox-overlay {
@@ -1341,6 +1315,120 @@ button.cast-row:hover { border-color: var(--holo-cyan); }
 .forge-restart { margin-left: auto; font-size: 0.68rem; padding: 0.4rem 0.7rem; }
 .forge-restart svg { width: 0.95em; height: 0.95em; }
 .holo-bar .forge-restart + .hud-stat { margin-left: 0.6rem; }
+
+/* ================= round 3 ================= */
+
+/* ---- item unlock card: a SMALL square card, not the hero treatment ---- */
+.beat-image.item-card {
+  max-width: 180px; margin: 0.5rem auto 1.2rem;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  border-color: #1e5a4a; box-shadow: 0 0 18px rgba(69, 210, 177, 0.15);
+}
+.beat-image.item-card figcaption {
+  display: flex; align-items: center; justify-content: center; gap: 0.35rem;
+  color: var(--teal); border-top-color: #1e5a4a;
+}
+.beat-image.item-card figcaption svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; }
+
+/* ---- "rendering the view..." hint while a look image renders in background ---- */
+.render-hint {
+  position: relative; display: flex; align-items: center; gap: 0.6rem; overflow: hidden;
+  max-width: min(64ch, 92%); margin: 0.2rem auto 1rem; padding: 0.45rem 0.8rem;
+  border: 1px dashed var(--holo-line-soft); color: var(--holo-dim);
+  font-size: 0.8rem; font-style: italic;
+}
+.render-hint .art-scan { position: absolute; inset: 0; }
+
+/* ---- the turn aux row: the wish line + Continue ---- */
+.turn-aux { display: flex; align-items: center; gap: 0.6rem; }
+.wish-input { flex: 1; min-width: 0; font-size: 0.82rem; font-style: italic; color: var(--gold);
+  border-color: rgba(242, 184, 75, 0.25); }
+.wish-input::placeholder { color: rgba(242, 184, 75, 0.45); font-style: italic; }
+.continue-btn { white-space: nowrap; }
+
+/* ---- the full-screen character profile ---- */
+.profile-screen {
+  position: fixed; inset: 0; z-index: 110; display: flex; flex-direction: column;
+  background: radial-gradient(120% 120% at 50% 0%, rgba(16, 32, 52, 0.97), rgba(4, 7, 14, 0.99));
+  animation: fade-in 0.18s ease both;
+}
+.profile-bar { display: flex; align-items: center; gap: 0.8rem; padding: 0.7rem clamp(0.8rem, 2vw, 1.4rem);
+  border-bottom: 1px solid var(--holo-line-soft); }
+.profile-bar .hud-tag { color: var(--speaker); }
+.profile-main { flex: 1; overflow-y: auto; padding: clamp(0.8rem, 2.5vw, 1.6rem); }
+.profile-loading { margin: 3rem auto; }
+.profile-cols { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: clamp(1rem, 3vw, 2.2rem);
+  max-width: 1100px; margin: 0 auto; align-items: start; }
+.profile-left { position: sticky; top: 0; display: flex; flex-direction: column; gap: 0.7rem; }
+.profile-art { width: 100%; display: block; border: 1px solid var(--speaker); object-fit: cover;
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 30px rgba(47, 230, 255, 0.08); cursor: zoom-in; }
+.profile-art.fallback { aspect-ratio: 9 / 16; display: grid; place-items: center; background: rgba(10, 20, 36, 0.8); }
+.profile-art.fallback .col-initial { font-size: 3rem; color: var(--speaker); font-family: var(--holo-display); }
+.profile-id { display: flex; flex-direction: column; gap: 0.45rem; }
+.profile-name { margin: 0; font-family: var(--holo-display); font-size: 1.4rem; letter-spacing: 0.08em; color: var(--holo-ink); }
+.profile-right { display: flex; flex-direction: column; gap: 1.1rem; min-width: 0; }
+.profile-empty { margin: 0; padding: 0.7rem 0.9rem; border: 1px dashed var(--holo-line-soft); font-size: 0.85rem; font-style: italic; }
+.profile-sec { display: flex; flex-direction: column; gap: 0.55rem; }
+.profile-sec-head { display: flex; align-items: center; gap: 0.45rem; margin: 0;
+  font-family: var(--holo-display); font-size: 0.74rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--holo-cyan); }
+.profile-sec-head svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; }
+
+/* traits: the personality card collection */
+.trait-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.4rem; }
+.trait { display: flex; align-items: baseline; justify-content: space-between; gap: 0.8rem;
+  padding: 0.5rem 0.75rem; border: 1px solid rgba(242, 184, 75, 0.25); background: rgba(242, 184, 75, 0.05);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+.trait-text { font-size: 0.92rem; color: var(--holo-ink); }
+.trait-stamp { flex: 0 0 auto; font-family: var(--holo-display); font-size: 0.58rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--gold); }
+
+/* moments: the things shared with them */
+.moment-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.45rem; }
+.moment { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.45rem 0.7rem;
+  border-left: 2px solid var(--holo-line-soft); font-size: 0.86rem; }
+.moment.from-them { border-left-color: var(--speaker); }
+.moment.from-you { border-left-color: var(--holo-cyan); }
+.moment.private { background: rgba(242, 184, 75, 0.05); }
+.moment-who { font-family: var(--holo-display); font-size: 0.6rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--holo-dim); }
+.moment-private { display: inline-flex; align-items: center; gap: 0.2rem; color: var(--gold); font-style: normal; }
+.moment-private svg { width: 0.9em; height: 0.9em; fill: none; stroke: currentColor; stroke-width: 2; }
+.moment-text { color: var(--holo-ink); line-height: 1.45; }
+
+/* memories: the image strip (clicks open the lightbox) */
+.memory-strip { display: flex; gap: 0.6rem; overflow-x: auto; padding-bottom: 0.4rem; }
+.memory { position: relative; flex: 0 0 auto; width: 150px; margin: 0; border: 1px solid var(--holo-line);
+  overflow: hidden; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
+.memory img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; display: block; cursor: zoom-in; }
+.memory figcaption { padding: 0.3rem 0.45rem; font-size: 0.62rem; color: var(--holo-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.whisper-sec { border-top: 1px dashed rgba(242, 184, 75, 0.3); padding-top: 0.9rem; }
+.whisper-sec .profile-sec-head { color: var(--gold); }
+.profile-screen .char-inv { display: flex; flex-direction: column; gap: 0.3rem; }
+
+/* ---- game settings (difficulty / narrator voice / export) ---- */
+.set-legend { font-family: var(--holo-display); font-size: 0.7rem; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--holo-cyan); padding: 0; }
+.set-group { border: none; margin: 0; padding: 0.8rem 0 0.3rem; display: flex; flex-direction: column; gap: 0.35rem;
+  border-bottom: 1px solid var(--holo-line-soft); }
+.set-group:last-child { border-bottom: none; }
+.set-radio { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.45rem 0.6rem; cursor: pointer;
+  border: 1px solid transparent; }
+.set-radio.active { border-color: var(--holo-line-soft); background: rgba(47, 230, 255, 0.05); }
+.set-radio input { accent-color: var(--holo-cyan); margin-top: 0.2rem; }
+.set-export { display: flex; flex-wrap: wrap; gap: 0.6rem; padding: 0.3rem 0 0.5rem; }
+
+/* library import */
+.lib-import { font-size: 0.68rem; padding: 0.4rem 0.7rem; }
+.lib-import svg { width: 0.95em; height: 0.95em; }
+
+@media (max-width: 760px) {
+  .profile-cols { grid-template-columns: 1fr; }
+  .profile-left { position: static; flex-direction: row; align-items: flex-start; }
+  .profile-left .profile-art { width: 40%; }
+  .turn-aux { flex-wrap: wrap; }
+}
 
 @media (max-width: 900px) {
   .play-deck { display: flex; flex-wrap: wrap; align-items: center; padding-bottom: 0.5rem; }

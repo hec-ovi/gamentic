@@ -99,4 +99,31 @@ export function makeBeat(over = {}) {
   };
 }
 
+// The full-screen character profile (GET /games/{id}/characters/{cid}/profile).
+export function makeProfile(over = {}) {
+  return {
+    id: "c1",
+    name: "Jacker",
+    description: "The watchful bartender.",
+    disposition: "neutral",
+    following: false,
+    alive: true,
+    life: 10,
+    max_life: 10,
+    face_url: null,
+    body_url: null,
+    voice_id: null,
+    color: "#8ab",
+    carrying: [],
+    traits: [{ id: "t1", text: "distrusts authority", unlocked: "Day 2, evening" }],
+    moments: [
+      { turn_index: 2, kind: "dialogue", text: "What are you drinking?", speaker: "character", private: false },
+      { turn_index: 3, kind: "dialogue", text: "Keep it quiet.", speaker: "character", private: true },
+      { turn_index: 3, kind: "action", text: "you lean closer", speaker: "player", private: false },
+    ],
+    memories: [{ image_url: "/media/g-test/bar.png", caption: "the bar at night", turn_index: 2 }],
+    ...over,
+  };
+}
+
 export const GAMES = [{ id: "g-test", title: "Test Adventure", status: "active", created_at: "2026-06-09" }];

@@ -52,17 +52,31 @@ export function createApi(backendUrl) {
       request(`/games/${encodeURIComponent(id)}/beats${Number.isInteger(since) ? `?since=${since}` : ""}`),
     // Take a turn. Accepts either a plain string (freeform) or an array of
     // tagged segments (what the action buttons compose). See frontend-api.md s2.
-    takeAction: (id, input) => {
+    // An optional `wish` rides along: a hope whispered to the storyteller, never
+    // echoed as a player beat.
+    takeAction: (id, input, wish) => {
       const body = Array.isArray(input) ? { segments: input } : { action: input };
+      if (wish) body.wish = wish;
       return request(`/games/${encodeURIComponent(id)}/action`, { method: "POST", body });
     },
+    // "Continue": the narrator advances the story with NO player input. Same
+    // response shape as /action; no player beat comes back.
+    continueStory: (id, wish) =>
+      request(`/games/${encodeURIComponent(id)}/continue`, { method: "POST", body: wish ? { wish } : {} }),
+    // Live game settings: any subset of { difficulty, narrator_gender }.
+    patchSettings: (id, payload) =>
+      request(`/games/${encodeURIComponent(id)}/settings`, { method: "PATCH", body: payload }),
+    // The full-screen character view (traits, moments, memories). Cheap; refetch
+    // when opening and after each turn while open.
+    characterProfile: (id, cid) =>
+      request(`/games/${encodeURIComponent(id)}/characters/${encodeURIComponent(cid)}/profile`),
+    // Adventure portability: template = the world as designed, checkpoint = the
+    // full save. Returns the export JSON (the caller turns it into a download).
+    exportGame: (id, kind) => request(`/games/${encodeURIComponent(id)}/export?kind=${encodeURIComponent(kind)}`),
+    // Import a previously exported JSON -> { game_id } (always a NEW game).
+    importGame: (payload) => request("/games/import", { method: "POST", body: payload }),
     deleteGame: (id) => request(`/games/${encodeURIComponent(id)}`, { method: "DELETE" }),
     clearBeats: (id) => request(`/games/${encodeURIComponent(id)}/beats`, { method: "DELETE" }),
-    // "See" the scene: synchronous image of the current scene with the present
-    // characters (5-10s). Optional focus ("what Layla is doing") frames the
-    // shot; empty = the whole scene. 409 = images disabled, 502 = service down.
-    viewScene: (id, focus) =>
-      request(`/games/${encodeURIComponent(id)}/view`, { method: "POST", ...(focus ? { body: { focus } } : {}) }),
     // Tap-to-explain: an in-world, spoiler-safe aside about a visible thing.
     // payload: { kind: item|character|scene|quest|goal|beat, key } or
     // { kind: "beat", beat_id }. 404 = nothing visible matches.

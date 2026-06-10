@@ -83,14 +83,18 @@ export function clearComposer(editor) {
 }
 
 // Build the wire segment for one composed line.
-//   mode: "say" | "do"
-//   channel: null (public scene) | { kind: "talk"|"whisper", target } (the private modal)
-// Talk = directed speech (others hear it); Whisper = the private channel, where
-// "do" becomes a discreet private action via whisper mode:"do".
+//   mode: "say" | "do" | "look"
+//   channel: null (public scene) | { kind: "whisper", target } (the private channel)
+// Whisper is the private channel, where "do" becomes a discreet private action
+// via whisper mode:"do". Look is a real story action: study the scene (empty
+// text) or something specific; the narrator decides whether it earns an image.
 export function buildSegment({ mode, text, refs, channel }) {
   const base = refs && refs.length ? { refs } : {};
   if (channel && channel.kind === "whisper") {
     return { type: "whisper", text, target: channel.target, mode: mode === "do" ? "do" : "say", ...base };
+  }
+  if (mode === "look") {
+    return { type: "look", text }; // chip names are already inline in the text
   }
   if (mode === "say") {
     const target = channel ? channel.target : undefined;
@@ -102,7 +106,15 @@ export function buildSegment({ mode, text, refs, channel }) {
 // Human line for a stacked segment row ("Say -> Mara: hello").
 export function describeSegment(seg) {
   const verb =
-    seg.type === "whisper" ? (seg.mode === "do" ? "Discreetly" : "Whisper") : seg.type === "say" ? "Say" : "Do";
+    seg.type === "whisper"
+      ? seg.mode === "do"
+        ? "Discreetly"
+        : "Whisper"
+      : seg.type === "look"
+        ? "Look"
+        : seg.type === "say"
+          ? "Say"
+          : "Do";
   const target = seg.target ? ` -> ${seg.target}` : "";
-  return `${verb}${target}: ${seg.text}`;
+  return `${verb}${target}: ${seg.type === "look" && !seg.text ? "the whole scene" : seg.text}`;
 }

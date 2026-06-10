@@ -43,14 +43,14 @@ test("the composer offers Do/Say modes, a chip line, the @ tagger and the + stac
   assert.ok(form.querySelector('button[type="submit"]'), "send button");
 });
 
-test("while generating, the whole composer is locked (invalid state handled)", () => {
+test("while generating, the whole composer is locked, but no full-screen veil blocks reading", () => {
   const { root } = mountPlay({ generating: true });
   const form = root.querySelector('[data-form="action"]');
   assert.equal(form.querySelector("#cmpInput").getAttribute("contenteditable"), "false");
   for (const sel of ['[data-act="cmp-mode"]', '[data-act="open-tagger"]', '[data-act="cmp-stack"]', 'button[type="submit"]']) {
     assert.ok(form.querySelector(sel).hasAttribute("disabled"), `${sel} disabled while generating`);
   }
-  assert.ok(root.querySelector(".busy-veil"), "busy veil blocks the stage");
+  assert.equal(root.querySelector(".busy-veil"), null, "the lock is partial: no stage veil");
 });
 
 test("stacked segments render as removable rows", () => {

@@ -5,7 +5,7 @@
 // real backend is sequential (one POST /action -> { beats, state }).
 
 import { createApi } from "./api.js";
-import { mapGameState, mapBeats, voiceForBeat, presentCharacters } from "./adapters.js";
+import { mapGameState, mapBeats, mapProfile, voiceForBeat, presentCharacters } from "./adapters.js";
 import { diffState, buildNotices } from "./transitions.js";
 import { Voice } from "./voice.js";
 import { renderApp, HELP, escapeHtml } from "./render.js";
@@ -20,7 +20,7 @@ const state = {
   games: [], // raw library entries from GET /games
   backendOnline: false,
   backendError: "",
-  active: null, // { id, state(mapped), beats(mapped), generating, composer, privateChat, give, revealedArt }
+  active: null, // { id, state(mapped), beats(mapped), generating, composer, profile, give, revealedArt }
   creator: { sessionId: "creator-" + rand(), messages: [], busy: false, error: "" },
   confirm: null, // { gameId, title } when a delete confirmation is open
   settings: loadSettings(),
@@ -29,10 +29,10 @@ const state = {
 const voice = new Voice();
 voice.applySettings(state.settings);
 let api = createApi(state.settings.backendUrl);
-let pollTimer = null;
-// document-level dismiss listeners for the transient popovers (tracked so a
-// stale one can never close the next popover)
-let seeDismiss = null;
+let pollTimer = null; // late-art /state polling
+let lateTimer = null; // post-turn late-image-beat polling (look images, item cards)
+// document-level dismiss listener for the tagger popover (tracked so a stale
+// one can never close the next popover)
 let taggerDismiss = null;
 
 // ---------------------------------------------------------------------------
@@ -126,14 +126,23 @@ function loadSettings() {
       new URLSearchParams(location.search).get("api") ||
       `${location.protocol}//${location.hostname || "localhost"}:8000`,
     voiceEnabled: true,
-    autoplayVoice: false,
+    // autoplay is SPLIT: the owner wants character voices without narration
+    // sometimes. Both are FE-local settings.
+    autoplayNarrator: false,
+    autoplayCharacters: false,
     masterVolume: 0.7,
     speakerVolumes: {},
   };
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") || {};
+    // migrate the old single `autoplayVoice` toggle into the split pair
+    if ("autoplayVoice" in saved) {
+      if (!("autoplayNarrator" in saved)) saved.autoplayNarrator = Boolean(saved.autoplayVoice);
+      if (!("autoplayCharacters" in saved)) saved.autoplayCharacters = Boolean(saved.autoplayVoice);
+      delete saved.autoplayVoice;
+    }
     // backendUrl is always the automatic value, never a stale persisted one.
-    return { ...defaults, ...(saved || {}), backendUrl: defaults.backendUrl };
+    return { ...defaults, ...saved, backendUrl: defaults.backendUrl };
   } catch {
     return defaults;
   }
@@ -153,7 +162,6 @@ function saveSettings() {
 
 function render() {
   closeTagger();
-  closeSeePopover();
   // chat scroll rule: keep the reader's place across rebuilds; pin to the
   // bottom only when they were already reading at the bottom.
   const story = root.querySelector("#storyStream");
@@ -168,7 +176,8 @@ function render() {
       if (stick) scrollStory();
       else fresh.scrollTop = prevTop;
     }
-    if (state.active && state.active.privateChat) scrollToBottom("#pmThread");
+    // the whisper thread pins itself to the newest line
+    if (state.active && state.active.profile) scrollToBottom("#pmThread");
     markArtReveals(state.active);
   }
   if (state.view === "creator") scrollCreator();
@@ -231,6 +240,23 @@ function bind() {
     el.addEventListener(evt, () => updateSetting(el));
   });
 
+  // per-adventure settings (difficulty / narrator voice) -> PATCH /settings
+  root.querySelectorAll("[data-game-setting]").forEach((el) => {
+    el.addEventListener("change", () => patchGameSettings(el.dataset.gameSetting, el.value));
+  });
+
+  // the wish line survives re-renders via state (it is not a form of its own)
+  root.querySelector("#wishInput")?.addEventListener("input", (e) => {
+    if (state.active) state.active.wish = e.target.value;
+  });
+
+  // library import: file picker -> POST /games/import
+  root.querySelector("#importFile")?.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    importGameFile(file);
+  });
+
   root.querySelectorAll("[data-help]").forEach((el) => {
     el.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -239,24 +265,44 @@ function bind() {
   });
 }
 
+// PARTIAL busy-lock: while a turn is in flight, only state-MUTATING acts are
+// blocked (their buttons also render disabled - this guard covers anything left
+// clickable). Read-only interactions (inspect, /explain, lightbox, profiles,
+// settings, scrolling) stay live.
+const MUTATING_ACTS = new Set([
+  "scene-action",
+  "exit",
+  "take-item",
+  "examine-item",
+  "char-action",
+  "pick-give",
+  "continue-story",
+  "cmp-stack",
+  "pm-stack",
+  "cmp-unstack",
+  "pm-unstack",
+  "open-tagger",
+  "go-library",
+  "go-menu",
+]);
+
 function onAction(act, el) {
   const gameId = el.dataset.gameId;
-  // busy-lock: one POST = one fully resolved turn; while it is in flight, block
-  // EVERY interaction (buttons are also rendered disabled - this guard covers
-  // anything left clickable, e.g. modal backdrops).
-  if (state.active && state.active.generating && state.view === "play" && act !== "noop") return;
+  if (state.active && state.active.generating && MUTATING_ACTS.has(act)) return;
   switch (act) {
     case "new-game":
       enterCreator();
       break;
     case "go-menu":
       stopPolling();
+      stopLateWatch();
       state.view = "menu";
       render();
       refreshLibrary();
       break;
     case "go-library":
       stopPolling();
+      stopLateWatch();
       state.view = "library";
       render();
       refreshLibrary();
@@ -296,9 +342,6 @@ function onAction(act, el) {
     case "speak-beat":
       speakBeat(el.dataset.beatId);
       break;
-    case "see-scene":
-      openSeePopover(el);
-      break;
     case "creator-restart":
       clearCreatorSession();
       resetCreator();
@@ -306,7 +349,10 @@ function onAction(act, el) {
       break;
     // --- play: scene / character action buttons -> tagged segments ---
     case "scene-action":
-      takeTurn([{ type: "do", text: el.dataset.label }]);
+      takeSceneAction(el.dataset.type, el.dataset.label);
+      break;
+    case "continue-story":
+      continueStory();
       break;
     case "exit":
       takeTurn([{ type: "do", text: "go to " + (el.dataset.label || "") }]);
@@ -322,9 +368,6 @@ function onAction(act, el) {
     // --- tap-to-inspect: the detail modal + "ask what this is" ---
     case "inspect-item":
       openInspect({ kind: "item", key: el.dataset.itemId || el.dataset.itemName });
-      break;
-    case "inspect-char":
-      openInspect({ kind: "character", key: el.dataset.charId });
       break;
     case "inspect-goal":
       openInspect({ kind: "goal", key: (state.active && state.active.state.currentGoal) || "goal" });
@@ -345,21 +388,24 @@ function onAction(act, el) {
     case "char-action":
       onCharAction(el);
       break;
-    case "open-private":
-      openPrivate(el.dataset.charId, el.dataset.charName, el.dataset.channel || "whisper");
+    case "open-profile":
+      openProfile(el.dataset.charId, el.dataset.charName);
       break;
-    case "close-private":
-      if (state.active) state.active.privateChat = null;
+    case "close-profile":
+      if (state.active) state.active.profile = null;
       render();
       break;
-    case "pm-channel":
-      switchPmChannel(el.dataset.channel);
+    case "export-game":
+      exportGame(el.dataset.kind);
+      break;
+    case "import-game":
+      root.querySelector("#importFile")?.click();
       break;
     case "cmp-mode":
       setComposerMode(state.active && state.active.composer, "cmp", el.dataset.mode);
       break;
     case "pm-mode":
-      setComposerMode(state.active && state.active.privateChat, "pm", el.dataset.mode);
+      setComposerMode(state.active && state.active.profile, "pm", el.dataset.mode);
       break;
     case "cmp-stack":
       stackSegment("cmp");
@@ -371,7 +417,7 @@ function onAction(act, el) {
       unstackSegment(state.active && state.active.composer, el.dataset.index);
       break;
     case "pm-unstack":
-      unstackSegment(state.active && state.active.privateChat, el.dataset.index);
+      unstackSegment(state.active && state.active.profile, el.dataset.index);
       break;
     case "open-tagger":
       openTagger(el);
@@ -388,16 +434,23 @@ function onAction(act, el) {
   }
 }
 
+// The scene's base actions are real story actions. Look around / Search map to
+// the `look` segment (they can reveal the scene's hidden items and exits);
+// anything else stays a freeform do with the button's label.
+function takeSceneAction(type, label) {
+  if (type === "look") return takeTurn([{ type: "look", text: "" }]);
+  if (type === "search") return takeTurn([{ type: "look", text: "for anything hidden or useful here" }]);
+  takeTurn([{ type: "do", text: label }]);
+}
+
 // Map a character action button (its `type`) to the right segment / panel.
+// (Talk is GONE as an affordance: whisper is the private channel and it lives
+// in the character profile screen.)
 function onCharAction(el) {
   const g = state.active;
   if (!g) return;
   const { type, charId, charName, label } = el.dataset;
   switch (type) {
-    case "talk":
-    case "trade": // trade view is not built yet; treat as the talk modal for now
-      openPrivate(charId, charName, "talk");
-      break;
     case "attack":
       takeTurn([{ type: "attack", target: charId || charName }]);
       break;
@@ -406,43 +459,59 @@ function onCharAction(el) {
       render();
       break;
     default:
-      // offer / follow / observe / back-away / provoke: a freeform action aimed
-      // at the character, so the narrator knows the target.
+      // talk/trade/offer/follow/observe/back-away/provoke: a freeform action
+      // aimed at the character, so the narrator knows the target.
       takeTurn([{ type: "do", text: `${label} ${charName}`.trim() }]);
       break;
   }
 }
 
 // ---------------------------------------------------------------------------
-// the private modal (Talk / Whisper) + the composers
+// the full-screen character profile (+ the private whisper channel inside it)
 // ---------------------------------------------------------------------------
 
-function openPrivate(charId, name, channel) {
+// Open the profile screen. Read-only, so it works mid-turn too. The whisper
+// composer state (mode/stack) lives on it; the data refetches on open and
+// after each turn while it stays open.
+function openProfile(charId, name) {
   const g = state.active;
-  if (!g) return;
-  g.privateChat = { charId, name, channel, mode: "say", stack: [] };
+  if (!g || !g.state) return;
+  g.profile = { charId, name, mode: "say", stack: [], loading: true, data: null, error: "" };
   g.give = null;
   render();
-  focusComposer("#pmInput");
+  refreshProfile(g);
 }
 
-// Switching Talk <-> Whisper re-renders the thread; preserve whatever the
-// player already typed (chips included) across the rebuild.
-function switchPmChannel(channel) {
-  const g = state.active;
-  if (!g || !g.privateChat || g.privateChat.channel === channel) return;
-  const draft = root.querySelector("#pmInput");
-  const html = draft ? draft.innerHTML : "";
-  g.privateChat.channel = channel;
-  render();
-  const restored = root.querySelector("#pmInput");
-  if (restored && html) restored.innerHTML = html;
-  focusComposer("#pmInput");
+async function refreshProfile(g) {
+  const pf = g.profile;
+  if (!pf) return;
+  try {
+    const raw = await api.characterProfile(g.id, pf.charId);
+    if (g.profile !== pf) return; // closed / switched while fetching
+    pf.data = mapProfile(raw);
+    pf.error = "";
+  } catch (err) {
+    if (g.profile !== pf) return;
+    if (!pf.data) pf.error = err.status === 404 ? "No trace of them remains." : "Their story is out of reach right now.";
+  } finally {
+    if (g.profile === pf) {
+      pf.loading = false;
+      if (state.active === g) render();
+    }
+  }
 }
 
-// Toggle Do/Say in place (no re-render: a render would wipe the typed line).
+// Toggle Do/Say/Look in place (no re-render: a render would wipe the typed line).
+const MODE_PLACEHOLDERS = {
+  cmp: {
+    do: "Do or say anything... (Enter sends)",
+    say: "What do you say?",
+    look: "Look at what? (empty = study the whole scene)",
+  },
+};
 function setComposerMode(holder, scope, mode) {
-  if (!holder || (mode !== "say" && mode !== "do")) return;
+  if (!holder || (mode !== "say" && mode !== "do" && mode !== "look")) return;
+  if (scope === "pm" && mode === "look") return; // the private channel has no look
   holder.mode = mode;
   root.querySelectorAll(`[data-act="${scope}-mode"]`).forEach((b) => {
     const on = b.dataset.mode === mode;
@@ -451,33 +520,33 @@ function setComposerMode(holder, scope, mode) {
   });
   const input = root.querySelector(`#${scope}Input`);
   if (input) {
-    const pm = state.active && state.active.privateChat;
-    const whisper = scope === "pm" && pm && pm.channel === "whisper";
-    const name = pm ? pm.name : "";
+    const pf = state.active && state.active.profile;
+    const name = pf ? pf.name : "";
     input.dataset.placeholder =
-      mode === "say"
-        ? scope === "pm"
-          ? `${whisper ? "Whisper" : "Say"} to ${name}...`
-          : "What do you say?"
-        : scope === "pm"
-          ? whisper
-            ? `A discreet act only ${name} notices...`
-            : "Do something..."
-          : "Do or say anything... (Enter sends)";
-    input.setAttribute("aria-label", mode === "say" ? "What you say" : "What you do");
+      scope === "pm"
+        ? mode === "say"
+          ? `Whisper to ${name}...`
+          : `A discreet act only ${name} notices...`
+        : MODE_PLACEHOLDERS.cmp[mode];
+    input.setAttribute(
+      "aria-label",
+      mode === "say" ? "What you say" : mode === "look" ? "What you look at" : "What you do",
+    );
     input.focus();
   }
 }
 
 // Pull the current line out of a composer as a wire segment, or null if empty.
+// (A look line may be empty on SEND - "study the whole scene" - but an empty
+// line is never worth stacking, so empty stays null here.)
 function currentSegment(scope) {
   const g = state.active;
   if (!g) return null;
   const input = root.querySelector(`#${scope}Input`);
   const { text, refs } = serializeComposer(input);
   if (!text) return null;
-  const pm = scope === "pm" ? g.privateChat : null;
-  const channel = pm ? { kind: pm.channel, target: pm.name } : null;
+  const pm = scope === "pm" ? g.profile : null;
+  const channel = pm ? { kind: "whisper", target: pm.name } : null;
   const mode = (pm || g.composer || {}).mode || "do";
   clearComposer(input);
   return buildSegment({ mode, text, refs, channel });
@@ -487,7 +556,7 @@ function currentSegment(scope) {
 function stackSegment(scope) {
   const g = state.active;
   if (!g) return;
-  const holder = scope === "pm" ? g.privateChat : g.composer;
+  const holder = scope === "pm" ? g.profile : g.composer;
   const seg = currentSegment(scope);
   if (!holder || !seg) return;
   holder.stack.push(seg);
@@ -504,6 +573,7 @@ function unstackSegment(holder, index) {
 // Send from the main composer: stacked segments + the current line, one POST.
 // A single plain "do" line with no tags stays a freeform { action } (the
 // narrator likes raw words); anything tagged/stacked/spoken goes as segments.
+// An empty LOOK line is a real turn: "study the whole scene".
 function executeComposer() {
   const g = state.active;
   if (!g || g.generating) return;
@@ -520,23 +590,26 @@ function executeComposer() {
       return;
     }
     segments.push(buildSegment({ mode: cmp.mode, text, refs, channel: null }));
+  } else if (cmp.mode === "look" && !segments.length) {
+    segments.push({ type: "look", text: "" });
   }
   if (!segments.length) return;
   cmp.stack = [];
   takeTurn(segments);
 }
 
-// Execute the private modal's turn: all stacked lines land at the SAME target,
-// then the character replies once. The modal stays open to show the reply.
+// Execute the whisper channel's turn (from the profile screen): all stacked
+// lines land at the SAME character, then they reply once. The profile stays
+// open to show the reply.
 function executePrivate() {
   const g = state.active;
-  if (!g || !g.privateChat || g.generating) return;
-  const pm = g.privateChat;
-  const segments = [...pm.stack];
+  if (!g || !g.profile || g.generating) return;
+  const pf = g.profile;
+  const segments = [...pf.stack];
   const seg = currentSegment("pm");
   if (seg) segments.push(seg);
   if (!segments.length) return;
-  pm.stack = [];
+  pf.stack = [];
   takeTurn(segments);
 }
 
@@ -696,15 +769,19 @@ async function removeGame(id) {
 
 async function openGame(gameId) {
   stopPolling();
+  stopLateWatch();
   state.active = {
     id: gameId,
     state: null,
     beats: [],
     generating: true,
-    privateChat: null, // { charId, name, channel: talk|whisper, mode: say|do, stack }
+    profile: null, // { charId, name, mode, stack, loading, data, error } - the full-screen character view
     give: null,
     inspect: null, // { kind, key|beatId, asking, answer } - the tap-to-inspect modal
     composer: { mode: "do", stack: [] },
+    wish: "", // the optional "what do you wish to happen next?" line
+    lastTurnIndex: 0, // high-water mark for GET /beats?since= polling
+    pendingView: false, // a look turn's image may still be rendering
     revealedArt: new Set(), // art urls already card-revealed (the effect plays once)
   };
   state.view = "play";
@@ -713,6 +790,7 @@ async function openGame(gameId) {
     const [rawState, rawBeats] = await Promise.all([api.getState(gameId), api.getBeats(gameId)]);
     state.active.state = mapGameState(rawState);
     state.active.beats = mapBeats((rawBeats && rawBeats.beats) || []).map((b) => withVoice(b));
+    state.active.lastTurnIndex = lastTurnIndexOf(state.active.beats);
     state.backendOnline = true;
   } catch (err) {
     state.backendOnline = false;
@@ -721,6 +799,7 @@ async function openGame(gameId) {
     if (state.active) state.active.generating = false;
     render();
     maybePollForArt();
+    watchLateBeats(state.active); // a just-left turn's image may still land
   }
 }
 
@@ -729,27 +808,61 @@ async function openGame(gameId) {
 // ---------------------------------------------------------------------------
 
 // Take a turn. `input` is either a plain string (freeform) or an array of tagged
-// segments (what the composers build). One POST -> { beats, state }; everything
-// is blocked until the response lands (the busy-lock).
+// segments (what the composers build). One POST -> { beats, state }; only the
+// state-mutating surfaces lock until the response lands (the partial busy-lock).
 async function takeTurn(input) {
   const g = state.active;
   if (!g || g.generating) return;
   const empty = Array.isArray(input) ? !input.length : !String(input || "").trim();
   if (empty) return;
+  const wish = captureWish(g);
+  const look = Array.isArray(input) && input.some((s) => s.type === "look");
+  await resolveTurn(g, () => api.takeAction(g.id, input, wish), { look });
+}
 
+// "Continue": the narrator advances the story with no player input. Same
+// locking and reveal as /action; no player beat comes back.
+async function continueStory() {
+  const g = state.active;
+  if (!g || g.generating) return;
+  const wish = captureWish(g);
+  await resolveTurn(g, () => api.continueStory(g.id, wish));
+}
+
+// The wish is a hope whispered to the storyteller, never an action: it rides
+// along on the next send (action or continue) and clears after each send.
+function captureWish(g) {
+  const el = root.querySelector("#wishInput");
+  const wish = String((el && el.value) || g.wish || "").trim();
+  g.wish = "";
+  if (el) el.value = "";
+  return wish || null;
+}
+
+// Shared turn resolver (action / continue): one POST -> { beats, state },
+// then the diff cues, the staged reveal, and the post-turn image watch.
+async function resolveTurn(g, send, { look = false } = {}) {
   g.generating = true;
   g.skipReveal = true; // fast-forward any reveal still running from last turn
+  stopLateWatch(); // the new turn supersedes the previous watch window
   render();
 
   try {
-    const turn = await api.takeAction(g.id, input);
+    const turn = await send();
     const prevState = g.state;
     g.state = mapGameState(turn.state);
     g.changes = diffState(prevState, g.state); // what transitioned this turn
-    const newBeats = mapBeats(turn.beats || []).map((b) => withVoice(b));
+    const seen = new Set(g.beats.map((b) => b.id));
+    const newBeats = mapBeats(turn.beats || [])
+      .filter((b) => !seen.has(b.id))
+      .map((b) => withVoice(b));
     g.beats = [...g.beats, ...newBeats];
+    g.lastTurnIndex = lastTurnIndexOf(g.beats, g.lastTurnIndex);
     g.revealQueue = newBeats.map((b) => b.id); // staged reveal, in seq order
     g.skipReveal = false;
+    // a look turn may earn an image; it renders in the background and lands as
+    // a late image beat (the watcher below catches it)
+    g.pendingView = Boolean(look && g.state.imagesEnabled);
     state.backendOnline = true;
   } catch (err) {
     state.backendError = err.message || "Turn failed";
@@ -761,7 +874,65 @@ async function takeTurn(input) {
     applyTransitions(g); // notices + one-shot flashes from the diff
     startReveal(g);
     maybePollForArt();
+    watchLateBeats(g); // narrator images + item unlock cards land seconds later
+    if (g.profile) refreshProfile(g); // the open profile reflects the new turn
   }
+}
+
+function lastTurnIndexOf(beats, fallback = 0) {
+  let max = Number.isInteger(fallback) ? fallback : 0;
+  for (const b of beats) if (Number.isInteger(b.turnIndex) && b.turnIndex > max) max = b.turnIndex;
+  return max;
+}
+
+// ---------------------------------------------------------------------------
+// Post-turn image watch: narrator-granted images (look turns, dramatic moments)
+// and item unlock cards render in the BACKGROUND and land as new image beats a
+// few seconds after the turn. Poll GET /beats?since=<last turn_index> every ~3s
+// for ~45s and append what arrives through the usual staged reveal.
+// ---------------------------------------------------------------------------
+
+const LATE_BEAT_INTERVAL = 3000;
+const LATE_BEAT_TICKS = 15; // ~45s window
+
+function watchLateBeats(g) {
+  stopLateWatch();
+  if (!g || !Number.isInteger(g.lastTurnIndex)) return;
+  let ticks = 0;
+  lateTimer = setInterval(async () => {
+    ticks += 1;
+    if (state.active !== g || state.view !== "play" || ticks > LATE_BEAT_TICKS) {
+      stopLateWatch();
+      // the window expired without an image: that is normal (the narrator may
+      // decide no image); just drop the hint
+      if (g.pendingView) {
+        g.pendingView = false;
+        if (state.active === g && state.view === "play") render();
+      }
+      return;
+    }
+    try {
+      const res = await api.getBeats(g.id, g.lastTurnIndex);
+      const seen = new Set(g.beats.map((b) => b.id));
+      const fresh = mapBeats((res && res.beats) || [])
+        .filter((b) => !seen.has(b.id))
+        .map((b) => withVoice(b));
+      if (!fresh.length) return;
+      g.beats = [...g.beats, ...fresh];
+      g.lastTurnIndex = lastTurnIndexOf(g.beats, g.lastTurnIndex);
+      if (fresh.some((b) => b.kind === "image" && b.speaker !== "system")) g.pendingView = false;
+      g.revealQueue = [...(g.revealQueue || []), ...fresh.map((b) => b.id)];
+      render();
+      startReveal(g);
+    } catch {
+      /* keep watching */
+    }
+  }, LATE_BEAT_INTERVAL);
+}
+
+function stopLateWatch() {
+  if (lateTimer) clearInterval(lateTimer);
+  lateTimer = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -835,8 +1006,10 @@ async function revealBeat(g, beat) {
 
   // voice pairing: render this beat's audio first (reveal when ready), then
   // queue the NEXT voiced beat behind it so it renders while this one plays.
+  // Autoplay is split: narration follows `autoplayNarrator`, character lines
+  // (public dialogue AND private whispers) follow `autoplayCharacters`.
   let prepared = null;
-  if (state.settings.autoplayVoice && beat.voiceId && voice.enabled) {
+  if (autoplayFor(beat) && beat.voiceId && voice.enabled) {
     const current = voice.prepare({ text: beat.text, voiceId: beat.voiceId });
     const next = nextVoicedBeat(g, beat.id);
     if (next) voice.prepare({ text: next.text, voiceId: next.voiceId });
@@ -853,12 +1026,16 @@ async function revealBeat(g, beat) {
   await typewrite(g, beat, cps);
 }
 
+function autoplayFor(beat) {
+  return beat.kind === "narration" ? Boolean(state.settings.autoplayNarrator) : Boolean(state.settings.autoplayCharacters);
+}
+
 function nextVoicedBeat(g, afterId) {
   const queue = g.revealQueue || [];
   const from = queue.indexOf(afterId);
   for (let i = from + 1; i < queue.length; i++) {
     const b = g.beats.find((x) => x.id === queue[i]);
-    if (b && b.voiceId && (b.kind === "narration" || b.kind === "dialogue")) return b;
+    if (b && b.voiceId && (b.kind === "narration" || b.kind === "dialogue") && autoplayFor(b)) return b;
   }
   return null;
 }
@@ -922,10 +1099,14 @@ function finishTyping(beat, paras) {
 }
 
 // Keep following the story while it grows, but only if the reader is at the
-// bottom (scrolling up to read pauses the follow).
+// bottom (scrolling up to read pauses the follow). The whisper thread in the
+// profile follows the same rule, so private replies keep it pinned to the
+// newest line as they type.
 function followStory() {
   const story = root.querySelector("#storyStream");
   if (story && storyNearBottom(story)) story.scrollTop = story.scrollHeight;
+  const thread = root.querySelector("#pmThread");
+  if (thread && storyNearBottom(thread)) thread.scrollTop = thread.scrollHeight;
 }
 
 // A new image landed in the flow: bring it into view when the reader is at the
@@ -957,78 +1138,101 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// (the old synchronous "See" eye-flow is gone: LOOK is a first-class action
+// segment now, and its image arrives async as a late image beat)
+
 // ---------------------------------------------------------------------------
-// "See" the scene: a synchronous image of the current scene WITH the present
-// characters (5-10s). Loader + lock on the button only; the result arrives as
-// a persisted `kind: "image"` beat rendered inline in the story.
+// game settings (PATCH /games/{id}/settings) + export / import
 // ---------------------------------------------------------------------------
 
-// The eye opens a small "look at what?" popover first: empty = the whole
-// scene, a focus ("what Layla is doing") frames the shot on it.
-function openSeePopover(btn) {
+async function patchGameSettings(key, value) {
   const g = state.active;
-  if (!g || !g.state || !g.state.imagesEnabled || g.seeing || g.generating) return;
-  closeSeePopover();
-  const pop = document.createElement("form");
-  pop.className = "see-pop";
-  pop.innerHTML = `
-    <input name="seeFocus" class="holo-input" autocomplete="off"
-           placeholder="Look at what? (empty = whole scene)" aria-label="Look at what?" />
-    <button class="holo-btn" type="submit">${icon("eye")}<span>See</span></button>`;
-  pop.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const focus = String(new FormData(pop).get("seeFocus") || "").trim();
-    closeSeePopover();
-    seeScene(focus);
-  });
-  document.body.appendChild(pop);
-  const r = btn.getBoundingClientRect();
-  pop.style.top = `${r.bottom + window.scrollY + 8}px`;
-  pop.style.left = `${Math.max(8, Math.min(window.innerWidth - 330, r.left + window.scrollX - 40))}px`;
-  pop.querySelector("input").focus();
-  seeDismiss = (ev) => {
-    if (!pop.contains(ev.target) && ev.target !== btn) closeSeePopover();
-  };
-  setTimeout(() => {
-    if (seeDismiss) document.addEventListener("click", seeDismiss);
-  }, 0);
-}
-
-function closeSeePopover() {
-  document.querySelectorAll(".see-pop").forEach((p) => p.remove());
-  if (seeDismiss) {
-    document.removeEventListener("click", seeDismiss);
-    seeDismiss = null;
-  }
-}
-
-async function seeScene(focus) {
-  const g = state.active;
-  if (!g || !g.state || !g.state.imagesEnabled || g.seeing || g.generating) return;
-  g.seeing = true;
+  if (!g || !g.state || g.settingsSaving) return;
+  g.settingsSaving = true;
   render();
   try {
-    const res = await api.viewScene(g.id, focus);
-    if (res && res.beat) {
-      const beats = mapBeats([res.beat]);
-      g.beats = [...g.beats, ...beats];
-      g.revealQueue = [...(g.revealQueue || []), ...beats.map((b) => b.id)];
+    const res = await api.patchSettings(g.id, { [key]: value });
+    if (res && res.settings) {
+      g.state.settings = {
+        difficulty: res.settings.difficulty || "normal",
+        narratorGender: res.settings.narrator_gender || "",
+      };
     }
+    // a narrator_gender change redesigns the narrator voice from the next line
+    if (res && "narrator_voice_id" in res) g.state.narratorVoiceId = res.narrator_voice_id || null;
+    state.backendOnline = true;
   } catch (err) {
-    if (err.status === 409) {
-      // images are disabled server-side: hide the button by trusting the flag
-      g.state.imagesEnabled = false;
-      showToast("Images are disabled for this world.");
-    } else {
-      showToast("The vision fades... (image service unavailable)");
-    }
+    showToast(err.message || "Could not change that setting.");
   } finally {
-    if (state.active === g) {
-      g.seeing = false;
-      render();
-      startReveal(g);
-    }
+    g.settingsSaving = false;
+    render();
   }
+}
+
+// Export: fetch the JSON, hand it to the browser as a download.
+async function exportGame(kind) {
+  const g = state.active;
+  if (!g) return;
+  try {
+    const data = await api.exportGame(g.id, kind);
+    const title = (g.state && g.state.title) || "adventure";
+    const slug =
+      title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "adventure";
+    downloadJson(data, `${slug}-${kind}.json`);
+    showToast(kind === "template" ? "Adventure exported - share the file." : "This moment is saved.");
+  } catch (err) {
+    showToast(err.message || "Could not export this adventure.");
+  }
+}
+
+function downloadJson(data, filename) {
+  if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return;
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// Import a previously exported adventure (template or checkpoint): always a
+// NEW game; navigate straight into it.
+async function importGameFile(file) {
+  if (!file || state.importing) return;
+  let payload;
+  try {
+    payload = JSON.parse(await readFileText(file));
+  } catch {
+    showToast("That file is not a gamentic export.");
+    return;
+  }
+  state.importing = true;
+  render();
+  try {
+    const res = await api.importGame(payload);
+    state.importing = false;
+    openGame(res.game_id);
+  } catch (err) {
+    state.importing = false;
+    showToast(err.message || "That file is not a gamentic export.");
+    render();
+  }
+}
+
+// Blob.text() with a FileReader fallback (older engines / jsdom variants).
+function readFileText(file) {
+  if (typeof file.text === "function") return file.text();
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error);
+    r.readAsText(file);
+  });
 }
 
 // ---------------------------------------------------------------------------

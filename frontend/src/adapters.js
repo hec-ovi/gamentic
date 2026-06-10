@@ -39,8 +39,11 @@ export function mapGameState(state = {}) {
     disposition: c.disposition || "unknown",
     following: Boolean(c.following),
     // each character is its own agent context on the shared model; 0 until
-    // they first speak. Rendered as a small meter on the card / private modal.
+    // they first speak. Rendered as a small meter on the card / profile.
     context: mapContext(c.context),
+    // personality traits unlocked through play (the full set + moments +
+    // memories live on the profile endpoint)
+    traits: (c.traits || []).map((t) => ({ id: t.id || null, text: t.text || "", unlocked: t.unlocked || "" })),
     faceUrl: c.face_url || null,
     bodyUrl: c.body_url || c.body_front_url || null,
     bodyFrontUrl: c.body_front_url || null,
@@ -57,6 +60,11 @@ export function mapGameState(state = {}) {
     sceneStatus: state.scene_status || (state.scene && state.scene.status) || null,
     currentGoal: state.current_goal || "",
     narratorVoiceId: state.narrator_voice_id || null,
+    // live game settings (PATCH /games/{id}/settings)
+    settings: {
+      difficulty: (state.settings && state.settings.difficulty) || "normal",
+      narratorGender: (state.settings && state.settings.narrator_gender) || "",
+    },
     // prompt-token usage -> the header context meter (green -> amber -> red)
     context: mapContext(state.context),
     // true + null image_url = art still generating (loader); false = images off (static placeholder)
@@ -195,6 +203,41 @@ export function presentCharacters(mappedState) {
   return (mappedState.characters || [])
     .filter((c) => c.present && c.alive && (!here || c.location === here))
     .slice(0, 3);
+}
+
+// The full-screen character profile (GET /games/{id}/characters/{cid}/profile):
+// public card data + traits unlocked through play + the moments shared with the
+// player (private exchanges marked) + story images as memories. Spoiler-safe by
+// construction; media URLs stay relative.
+export function mapProfile(p = {}) {
+  return {
+    id: p.id,
+    name: p.name || "Unknown",
+    description: p.description || "",
+    disposition: p.disposition || "unknown",
+    following: Boolean(p.following),
+    alive: p.alive !== false,
+    life: numOrNull(p.life),
+    maxLife: numOrNull(p.max_life) ?? numOrNull(p.life),
+    faceUrl: p.face_url || null,
+    bodyUrl: p.body_url || null,
+    voiceId: p.voice_id || null,
+    color: p.color || PALETTE[0],
+    carrying: (p.carrying || []).map(mapItem),
+    traits: (p.traits || []).map((t) => ({ id: t.id || null, text: t.text || "", unlocked: t.unlocked || "" })),
+    moments: (p.moments || []).map((m) => ({
+      turnIndex: num(m.turn_index),
+      kind: m.kind || "dialogue",
+      text: m.text || "",
+      speaker: m.speaker === "player" ? "player" : "character",
+      private: Boolean(m.private),
+    })),
+    memories: (p.memories || []).map((m) => ({
+      imageUrl: m.image_url || null,
+      caption: m.caption || "",
+      turnIndex: num(m.turn_index),
+    })),
+  };
 }
 
 function num(value, fallback = 0) {

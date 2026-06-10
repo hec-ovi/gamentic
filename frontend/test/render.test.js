@@ -2,7 +2,7 @@ import { test, beforeAll as before } from "vitest";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import { renderApp } from "../src/render.js";
-import { mapGameState, mapBeats } from "../src/adapters.js";
+import { mapGameState, mapBeats, mapProfile } from "../src/adapters.js";
 
 let document;
 
@@ -105,14 +105,20 @@ test("the composer is live with a Send button when idle", () => {
   assert.equal(btn.hasAttribute("disabled"), false);
 });
 
-test("while generating, the composer is locked and the stage is veiled (busy-lock)", () => {
+test("while generating, the lock is PARTIAL: composer locked, read-only surfaces stay live", () => {
   const el = parse(renderApp(playState({ generating: true })));
   const input = el.querySelector('[data-form="action"] #cmpInput');
   const btn = el.querySelector('[data-form="action"] button[type="submit"]');
   assert.equal(input.getAttribute("contenteditable"), "false");
   assert.equal(btn.hasAttribute("disabled"), true);
+  assert.equal(el.querySelector(".continue-btn").hasAttribute("disabled"), true, "Continue locks too");
   assert.ok(el.querySelector(".narrating"), "thinking indicator shown");
-  assert.ok(el.querySelector(".busy-veil"), "interaction veil over the stage");
+  // the full-screen veil is GONE: reading stays interactive
+  assert.equal(el.querySelector(".busy-veil"), null, "no interaction veil over the stage");
+  // read-only surfaces render ENABLED mid-turn
+  const profileBtn = el.querySelector('[data-act="open-profile"]');
+  assert.equal(profileBtn.hasAttribute("disabled"), false, "character profile opens mid-turn");
+  assert.equal(el.querySelector('[data-act="open-settings"]').hasAttribute("disabled"), false, "settings stay reachable");
 });
 
 test("play view with state not yet loaded renders a loading screen (no crash)", () => {
@@ -163,16 +169,17 @@ function scenePlay(overrides = {}) {
   };
 }
 
-test("character column exposes talk/give actions + a whisper entry to the private modal", () => {
+test("character column: tapping the card opens the PROFILE; Talk is gone as an affordance", () => {
   const el = parse(renderApp(scenePlay()));
   const col = el.querySelector('.char-col[data-char-id="c1"]');
   assert.ok(col, "character column present");
-  assert.ok(col.querySelector(".col-art"), "tall art slot present");
-  assert.ok(col.querySelector('[data-act="char-action"][data-type="talk"]'), "talk action");
-  assert.ok(col.querySelector('[data-act="char-action"][data-type="give"]'), "give action");
-  const whisper = col.querySelector('[data-act="open-private"][data-channel="whisper"][data-char-id="c1"]');
-  assert.ok(whisper, "whisper button opens the private modal");
-  assert.equal(whisper.dataset.charName, "Jacker");
+  const art = col.querySelector('.col-art[data-act="open-profile"][data-char-id="c1"]');
+  assert.ok(art, "the tall art card opens the full-screen profile");
+  assert.equal(art.dataset.charName, "Jacker");
+  assert.equal(col.querySelector('[data-act="char-action"][data-type="talk"]'), null, "no Talk button");
+  assert.equal(col.querySelector('[data-act="open-private"]'), null, "no whisper button on the card either");
+  assert.ok(col.querySelector('[data-act="char-action"][data-type="give"]'), "give action stays");
+  assert.ok(col.querySelector('[data-act="char-action"][data-type="offer"]'), "offers stay");
 });
 
 test("the integrated deck renders exits, scene actions and the current goal in ONE header", () => {
@@ -199,29 +206,79 @@ test("fixed-slot grids: player inventory shows 6 slots, one filled (caps as maxi
   assert.equal(grid.querySelectorAll(".slot.filled").length, 1);
 });
 
-test("Talk opens the private modal over the scene; the main composer is hidden", () => {
-  const el = parse(
-    renderApp(scenePlay({ privateChat: { charId: "c1", name: "Jacker", channel: "talk", mode: "say", stack: [] } })),
-  );
-  const modal = el.querySelector(".private-modal");
-  assert.ok(modal, "modal present");
-  assert.equal(modal.getAttribute("role"), "dialog");
-  assert.ok(/Jacker/.test(modal.querySelector(".pm-name").textContent));
-  assert.ok(/anyone in the scene can hear/i.test(modal.querySelector(".pm-hint").textContent), "talk explains it is aloud");
-  assert.ok(modal.querySelector("#pmInput"), "modal has its own composer");
-  assert.ok(modal.querySelector('[data-act="pm-mode"][data-mode="do"]'), "modal composer separates say and do");
-  assert.equal(el.querySelector('[data-form="action"]'), null, "main composer hidden while the modal is open");
+// a loaded profile (the raw wire shape from GET /characters/{cid}/profile)
+const PROFILE_DATA = {
+  id: "c1",
+  name: "Jacker",
+  description: "Bartender.",
+  disposition: "neutral",
+  following: false,
+  alive: true,
+  life: 10,
+  max_life: 10,
+  face_url: null,
+  body_url: "/media/g2/jacker-body.png",
+  voice_id: "v1",
+  color: "#8ab",
+  carrying: [{ id: "k1", name: "brass key", description: "" }],
+  traits: [{ id: "t1", text: "distrusts authority", unlocked: "Day 2, evening" }],
+  moments: [
+    { turn_index: 3, kind: "dialogue", text: "Stay sharp.", speaker: "character", private: false },
+    { turn_index: 4, kind: "dialogue", text: "Keep this between us.", speaker: "character", private: true },
+    { turn_index: 4, kind: "action", text: "you nod", speaker: "player", private: false },
+  ],
+  memories: [{ image_url: "/media/g2/bar.png", caption: "the bar at night", turn_index: 2 }],
+};
+
+function profileOpen(data, extra = {}) {
+  return scenePlay({
+    profile: { charId: "c1", name: "Jacker", mode: "say", stack: [], loading: false, data: data ? mapProfile(data) : null, error: "", ...extra },
+  });
+}
+
+test("the full-screen profile shows traits with unlock stamps, moments (private marked) and memories", () => {
+  const el = parse(renderApp(profileOpen(PROFILE_DATA)));
+  const screen = el.querySelector(".profile-screen");
+  assert.ok(screen, "full-screen profile present");
+  assert.equal(screen.getAttribute("role"), "dialog");
+  // traits as bullets with their unlock stamp
+  const trait = screen.querySelector(".trait");
+  assert.ok(/distrusts authority/.test(trait.textContent));
+  assert.ok(/unlocked: Day 2, evening/.test(trait.querySelector(".trait-stamp").textContent));
+  // moments: shared lines, private ones marked
+  const moments = [...screen.querySelectorAll(".moment")];
+  assert.equal(moments.length, 3);
+  assert.ok(moments[1].classList.contains("private"), "the private exchange is marked");
+  assert.ok(/private/.test(moments[1].querySelector(".moment-private").textContent));
+  // memories: the image strip
+  const memory = screen.querySelector(".memory img");
+  assert.equal(memory.getAttribute("src"), "/media/g2/bar.png");
+  // the big art
+  assert.equal(screen.querySelector(".profile-art").getAttribute("src"), "/media/g2/jacker-body.png");
+  // carrying block: label row above the items row
+  const inv = screen.querySelector(".char-inv");
+  assert.ok(inv.children[0].classList.contains("inv-mini-label"));
 });
 
-test("the whisper channel is visually distinct and explains the difference", () => {
-  const el = parse(
-    renderApp(scenePlay({ privateChat: { charId: "c1", name: "Jacker", channel: "whisper", mode: "say", stack: [] } })),
+test("the profile hosts THE whisper composer (say/do, no look); the main composer keeps rendering behind", () => {
+  const el = parse(renderApp(profileOpen(PROFILE_DATA)));
+  const screen = el.querySelector(".profile-screen");
+  const whisper = screen.querySelector(".whisper-sec");
+  assert.ok(whisper, "whisper channel lives in the profile");
+  assert.ok(/only jacker/i.test(whisper.querySelector(".pm-hint").textContent), "explains privacy");
+  assert.ok(whisper.querySelector("#pmInput"), "own composer");
+  assert.ok(whisper.querySelector('[data-act="pm-mode"][data-mode="do"]'), "say/do modes");
+  assert.equal(whisper.querySelector('[data-act="pm-mode"][data-mode="look"]'), null, "no look in the private channel");
+});
+
+test("a fresh character's profile shows the grow-from-interactions empty-state copy", () => {
+  const fresh = { ...PROFILE_DATA, traits: [], moments: [], memories: [] };
+  const el = parse(renderApp(profileOpen(fresh)));
+  assert.ok(
+    /The more you interact with your characters, the more their traits and personality will grow from your interactions\./.test(
+      el.querySelector(".profile-screen").textContent,
+    ),
   );
-  const modal = el.querySelector(".private-modal");
-  assert.ok(modal.classList.contains("is-whisper"), "whisper styling");
-  assert.ok(/only jacker/i.test(modal.querySelector(".pm-hint").textContent), "whisper explains privacy");
-  const tab = modal.querySelector('[data-act="pm-channel"][data-channel="whisper"]');
-  assert.equal(tab.getAttribute("aria-selected"), "true");
 });
 
 const PRIV_BEATS = mapBeats([
@@ -235,16 +292,19 @@ test("private (whisper) beats never appear in the public story stream", () => {
   assert.equal(/Secret aside/.test(story.textContent), false, "private beat hidden from public story");
 });
 
-test("the whisper modal thread shows the private 1:1 beats (and only them)", () => {
-  const el = parse(
-    renderApp(
-      scenePlay({ beats: PRIV_BEATS, privateChat: { charId: "c1", name: "Jacker", channel: "whisper", mode: "say", stack: [] } }),
-    ),
-  );
+test("the profile's whisper thread shows the private 1:1 beats (and only them); player lines mirror", () => {
+  const withEcho = [
+    ...PRIV_BEATS,
+    ...mapBeats([{ id: "p3", turn_index: 2, seq: 0, speaker: "player", kind: "action", text: 'you whisper to Jacker: "psst"', private_with: "c1" }]),
+  ];
+  const st = profileOpen(PROFILE_DATA);
+  st.active.beats = withEcho;
+  const el = parse(renderApp(st));
   const thread = el.querySelector("#pmThread");
-  assert.ok(/Secret aside/.test(thread.textContent), "private beat shown in the modal thread");
+  assert.ok(/Secret aside/.test(thread.textContent), "private beat shown in the profile thread");
   assert.equal(/Public line/.test(thread.textContent), false, "public beats stay out of the whisper thread");
-  // and the public story behind the modal still hides the secret
+  assert.ok(thread.querySelector('.pm-line.pm-you[data-beat-id="p3"]'), "the player's whisper echo mirrors as pm-you");
+  // and the public story behind the profile still hides the secret
   assert.equal(/Secret aside/.test(el.querySelector("#storyStream").textContent), false);
 });
 
@@ -267,8 +327,21 @@ test("context meter renders with the right tone color and the Xk/Yk reading; tim
   assert.ok(meter, "context meter present");
   assert.ok(meter.classList.contains("tone-red"), "89% usage renders red");
   assert.equal(meter.getAttribute("aria-valuenow"), "89");
-  assert.ok(/114k\/128k/.test(meter.textContent), "permanent Xk/Yk reading");
+  assert.ok(/114k \/ 128k/.test(meter.textContent), "integers above 10k, spaced separator");
   assert.ok(/Day 2, night/.test(el.querySelector(".time-chip").textContent), "story clock label in the deck");
+});
+
+test("context meter formats one decimal below 10k: 4300 tokens reads 4.2k / 128k", () => {
+  const st = mapGameState({
+    game_id: "gk",
+    context: { used: 4300, max: 131072 },
+    scene: { id: "s1", name: "Vault", description: "", status: "calm", exits: [], items: [], available_actions: [] },
+    player: { life: 9, max_life: 20, points: 0, location: "Vault", inventory: [] },
+    characters: [],
+  });
+  const meter = parse(renderApp({ view: "play", active: { id: "gk", state: st, beats: [], generating: false } }))
+    .querySelector(".deck-vitals .ctx-meter");
+  assert.ok(/4\.2k \/ 128k/.test(meter.textContent), "one decimal below 10k");
 });
 
 test("context meter is ALWAYS visible: used=0 before the first turn still renders (green)", () => {
@@ -283,7 +356,7 @@ test("context meter is ALWAYS visible: used=0 before the first turn still render
     .querySelector(".deck-vitals .ctx-meter");
   assert.ok(meter, "meter present at used=0");
   assert.ok(meter.classList.contains("tone-green"));
-  assert.ok(/0\/128k/.test(meter.textContent));
+  assert.ok(/0 \/ 128k/.test(meter.textContent));
 });
 
 test("no context data -> no meter; no time -> no clock (older backend tolerated)", () => {
@@ -306,7 +379,7 @@ test("each character carries their OWN small context meter (their agent's memory
   const el = parse(renderApp({ view: "play", active: { id: "g7", state: withCtx, beats: [], generating: false } }));
   const mini = el.querySelector('.char-col[data-char-id="c1"] .ctx-meter.mini');
   assert.ok(mini, "mini meter on the character column");
-  assert.ok(/4k\/128k/.test(mini.textContent));
+  assert.ok(/4\.1k \/ 128k/.test(mini.textContent));
   assert.ok(/Edda/.test(mini.getAttribute("aria-label")), "labeled by character name");
 });
 
@@ -322,19 +395,89 @@ test("an image beat renders as an inline picture in the story flow (no bubble)",
   assert.equal(fig.querySelector(".bubble"), null, "no bubble around an image beat");
 });
 
-test("the See button shows only when images are enabled, and locks while seeing", () => {
-  // images off (playState STATE): no button at all
-  assert.equal(parse(renderApp(playState())).querySelector(".see-btn"), null);
-  // images on: present and live
-  const on = parse(renderApp({ view: "play", active: { id: "g3", state: METER_STATE, beats: [], generating: false } }));
-  const btn = on.querySelector(".see-btn");
-  assert.ok(btn, "See button in the scene wing");
-  assert.equal(btn.hasAttribute("disabled"), false);
-  // in flight: disabled with a loader
-  const busy = parse(renderApp({ view: "play", active: { id: "g3", state: METER_STATE, beats: [], generating: false, seeing: true } }));
-  const seeing = busy.querySelector(".see-btn");
-  assert.ok(seeing.classList.contains("seeing"));
-  assert.equal(seeing.hasAttribute("disabled"), true);
+test("the composer offers Look at the same level as Do and Say; the old See eye is gone", () => {
+  const el = parse(renderApp(playState()));
+  const look = el.querySelector('[data-act="cmp-mode"][data-mode="look"]');
+  assert.ok(look, "Look mode button next to Do/Say");
+  assert.equal(el.querySelector(".see-btn"), null, "the synchronous See eye-flow is removed");
+  // look mode shows its own placeholder on the line
+  const looking = parse(renderApp(playState({ composer: { mode: "look", stack: [] } })));
+  assert.ok(/look at what\?/i.test(looking.querySelector("#cmpInput").dataset.placeholder));
+});
+
+test("Continue and the wish line sit at the composer level", () => {
+  const el = parse(renderApp(playState({ wish: "let it rain" })));
+  const cont = el.querySelector('.continue-btn[data-act="continue-story"]');
+  assert.ok(cont, "Continue affordance present");
+  const wish = el.querySelector("#wishInput");
+  assert.ok(wish, "wish input present");
+  assert.equal(wish.getAttribute("value"), "let it rain", "the typed wish survives re-renders");
+  assert.ok(/wish to happen next/i.test(wish.getAttribute("placeholder")));
+});
+
+test("a system image beat renders as a SMALL item card labeled with the item name", () => {
+  const beats = mapBeats([
+    { id: "n1", turn_index: 1, seq: 0, speaker: "narrator", kind: "narration", text: "The bar hums." },
+    { id: "ic1", turn_index: 2, seq: 0, speaker: "system", kind: "image", text: "brass key", image_url: "/media/g/item-key.png" },
+  ]);
+  const story = parse(renderApp(playState({ beats }))).querySelector("#storyStream");
+  const card = story.querySelector('.beat-image.item-card[data-beat-id="ic1"]');
+  assert.ok(card, "small item card, not the hero treatment");
+  assert.ok(/brass key/.test(card.querySelector("figcaption").textContent), "item name as the label");
+  // narrator image beats keep the hero treatment (no item-card class)
+  const heroBeats = mapBeats([{ id: "v1", turn_index: 3, seq: 0, speaker: "narrator", kind: "image", text: "the hatch", image_url: "/media/g/v.png" }]);
+  const hero = parse(renderApp(playState({ beats: heroBeats }))).querySelector(".beat-image");
+  assert.equal(hero.classList.contains("item-card"), false);
+});
+
+test("a trait receipt renders with the celebration tone and stays tappable", () => {
+  const beats = mapBeats([
+    { id: "t1", turn_index: 1, seq: 0, speaker: "system", kind: "system", text: "Trait unlocked: Mara - distrusts authority." },
+  ]);
+  const badge = parse(renderApp(playState({ beats }))).querySelector(".system-badge");
+  assert.ok(badge.classList.contains("trait"), "trait celebration tone");
+  assert.equal(badge.dataset.act, "inspect-beat", "tappable via the inspect modal");
+});
+
+test("item thumbnails: an inventory item with image_url shows the image in its slot", () => {
+  const st = mapGameState({
+    game_id: "gt",
+    scene: { id: "s1", name: "Vault", description: "", status: "calm", exits: [], items: [], available_actions: [] },
+    player: { life: 9, max_life: 20, points: 0, location: "Vault", inventory: [{ id: "i1", name: "brass key", image_url: "/media/gt/key.png" }] },
+    characters: [],
+  });
+  const slot = parse(renderApp({ view: "play", active: { id: "gt", state: st, beats: [], generating: false } }))
+    .querySelector(".player-items .slot.filled");
+  assert.equal(slot.querySelector("img").getAttribute("src"), "/media/gt/key.png");
+});
+
+test("settings: autoplay is split and a live game adds difficulty/voice/export", () => {
+  const noGame = parse(renderApp({ view: "settings", settings: { voiceEnabled: true, autoplayNarrator: true, autoplayCharacters: false, masterVolume: 0.7 }, active: null }));
+  assert.ok(noGame.querySelector('[data-setting="autoplayNarrator"]'), "narrator autoplay toggle");
+  assert.ok(noGame.querySelector('[data-setting="autoplayCharacters"]'), "character autoplay toggle");
+  assert.equal(noGame.querySelector('[data-setting="autoplayVoice"]'), null, "the old single toggle is gone");
+  assert.equal(noGame.querySelector(".game-settings"), null, "no game section outside a game");
+
+  const inGame = parse(renderApp({
+    view: "settings",
+    settings: { voiceEnabled: true, autoplayNarrator: false, autoplayCharacters: false, masterVolume: 0.7 },
+    active: { id: "g2", state: SCENE_STATE, beats: [], generating: false },
+  }));
+  const game = inGame.querySelector(".game-settings");
+  assert.ok(game, "per-adventure section when opened from play");
+  const normal = game.querySelector('[data-game-setting="difficulty"][value="normal"]');
+  assert.ok(normal.hasAttribute("checked"), "current difficulty checked");
+  assert.ok(/attempts succeed/.test(game.textContent), "easy copy explains the mode");
+  assert.ok(/attempts can be refused/.test(game.textContent), "hard copy explains the mode");
+  assert.ok(game.querySelector('[data-game-setting="narrator_gender"][value="female"]'), "narrator voice radios");
+  assert.ok(game.querySelector('[data-act="export-game"][data-kind="template"]'), "share as adventure");
+  assert.ok(game.querySelector('[data-act="export-game"][data-kind="checkpoint"]'), "save this moment");
+});
+
+test("the library offers Import next to the archive", () => {
+  const el = parse(renderApp({ view: "library", games: [], backendOnline: true, backendError: "" }));
+  assert.ok(el.querySelector('[data-act="import-game"]'), "Import button");
+  assert.ok(el.querySelector("#importFile"), "hidden file input");
 });
 
 // ---- art loaders / placeholders / the in-prose scene card ----

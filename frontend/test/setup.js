@@ -5,7 +5,7 @@
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { setupServer } from "msw/node";
 import { http, HttpResponse } from "msw";
-import { GAMES, makeState, makeBeat } from "./fixtures.js";
+import { GAMES, makeState, makeBeat, makeProfile } from "./fixtures.js";
 
 const API = "http://localhost:8000";
 
@@ -13,18 +13,22 @@ export const defaultHandlers = [
   http.get(`${API}/health`, () => HttpResponse.json({ status: "ok" })),
   http.get(`${API}/games`, () => HttpResponse.json({ games: GAMES })),
   http.get(`${API}/games/:id/state`, () => HttpResponse.json(makeState())),
-  http.get(`${API}/games/:id/beats`, () =>
-    HttpResponse.json({ beats: [makeBeat({ id: "open", text: "Rain hammers the window of The Last Breath." })] }),
+  // ?since=<turn_index> is the post-turn late-image poll: nothing new by default
+  http.get(`${API}/games/:id/beats`, ({ request }) =>
+    new URL(request.url).searchParams.has("since")
+      ? HttpResponse.json({ beats: [] })
+      : HttpResponse.json({ beats: [makeBeat({ id: "open", text: "Rain hammers the window of The Last Breath." })] }),
   ),
   http.post(`${API}/games/:id/action`, () =>
     HttpResponse.json({ beats: [makeBeat({ text: "Nothing happens." })], state: makeState() }),
   ),
-  http.post(`${API}/games/:id/view`, () =>
-    HttpResponse.json({
-      beat: makeBeat({ id: "img1", kind: "image", text: "", image_url: "/media/g-test/view1.png" }),
-      image_url: "/media/g-test/view1.png",
-    }),
+  http.post(`${API}/games/:id/continue`, () =>
+    HttpResponse.json({ beats: [makeBeat({ text: "The story drifts forward." })], state: makeState() }),
   ),
+  http.patch(`${API}/games/:id/settings`, () =>
+    HttpResponse.json({ settings: { narrator_gender: "", difficulty: "normal" }, narrator_voice_id: "af_alloy" }),
+  ),
+  http.get(`${API}/games/:id/characters/:cid/profile`, () => HttpResponse.json(makeProfile())),
   http.post(`${API}/voice/speak`, () => HttpResponse.json({ audio_url: "/audio/x.wav" })),
   // swallow anything else (media etc.) so a stray request never hard-fails a test
   http.all("*", () => new HttpResponse(null, { status: 404 })),
