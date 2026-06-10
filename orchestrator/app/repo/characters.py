@@ -23,6 +23,12 @@ def gender_hint(*texts) -> str:
     return ""
 
 
+def _tidy(text: str) -> str:
+    """Trait/origin/moment texts as clean prose: snake_case collapsed, markdown/quote
+    debris stripped from the edges (live: 'detached_seer_like_calm`')."""
+    return norm_name(text).strip("`*_~\"' ").rstrip(".")
+
+
 def character_gender(c) -> str:
     """The character's gender: the stored field, else inferred from their sheet
     (legacy rows created before the column existed)."""
@@ -192,7 +198,7 @@ def add_trait(conn, cid: str, text: str, cap: int) -> str | None:
     """Unlock a personality trait on a character (earned through play). Returns the
     cleaned trait text, or None when it is a duplicate, empty, or the card is full.
     Stamped with the story clock so the profile can say WHEN it was revealed."""
-    text = norm_name(text).rstrip(".")   # collapses snake_case too (live: "desperate_gambler")
+    text = _tidy(text)
     if not text:
         return None
     c = get_character(conn, cid)
@@ -208,7 +214,7 @@ def add_trait(conn, cid: str, text: str, cap: int) -> str | None:
 def character_traits(c) -> list[dict]:
     # norm_name at READ time too: rows recorded before the write-side cleaner existed
     # keep their raw snake_case in the DB (live: "detached_seer_like_calm")
-    return [{"id": t["id"], "text": norm_name(t["text"]),
+    return [{"id": t["id"], "text": _tidy(t["text"]),
              "unlocked": clock.time_at(t.get("minutes") or 0)["label"]}
             for t in db.loads(c["traits"], [])]
 
@@ -217,7 +223,7 @@ def add_origin_fact(conn, cid: str, text: str, cap: int) -> str | None:
     """The player just LEARNED a piece of this character's past (reveal_origin tool).
     Returns the cleaned text, or None when duplicate/empty/full. Story-clock stamped.
     The full origin stays private; only revealed pieces ever reach the profile."""
-    text = norm_name(text).rstrip(".")   # collapses snake_case too (live: "desperate_gambler")
+    text = _tidy(text)
     if not text:
         return None
     c = get_character(conn, cid)
@@ -232,7 +238,7 @@ def add_origin_fact(conn, cid: str, text: str, cap: int) -> str | None:
 
 
 def character_origin_revealed(c) -> list[dict]:
-    return [{"id": r["id"], "text": norm_name(r["text"]),
+    return [{"id": r["id"], "text": _tidy(r["text"]),
              "learned": clock.time_at(r.get("minutes") or 0)["label"]}
             for r in db.loads(c["origin_revealed"], [])]
 
@@ -241,7 +247,7 @@ def add_moment(conn, cid: str, text: str, cap: int = 20) -> str | None:
     """Record a PIVOTAL shared event between this character and the player (a bond, a
     wound, a gift, a betrayal, a parting). These are the character's MEMORIES of the
     player: curated events, never transcript. Deduped, story-clock stamped, capped."""
-    text = norm_name(text).rstrip(".")   # collapses snake_case too (live: "desperate_gambler")
+    text = _tidy(text)
     if not text:
         return None
     c = get_character(conn, cid)
@@ -256,7 +262,7 @@ def add_moment(conn, cid: str, text: str, cap: int = 20) -> str | None:
 
 def character_moments(c) -> list[dict]:
     moments = db.loads(c["moments"], []) if "moments" in c.keys() else []
-    return [{"id": m["id"], "text": norm_name(m["text"]),
+    return [{"id": m["id"], "text": _tidy(m["text"]),
              "when": clock.time_at(m.get("minutes") or 0)["label"]}
             for m in moments]
 
