@@ -167,10 +167,11 @@ def test_context_usage_defaults_zero_before_any_turn(client, fake_llm):
     assert _state(client, gid)["context"] == {"used": 0, "max": settings.LLM_CONTEXT_SIZE}
 
 
-def test_character_calls_feed_their_own_and_the_turn_meter(client, fake_llm):
-    """Each character agent has its OWN context. Its prompt size is reported per character
-    (state.characters[].context) and folded into the global meter when it is the biggest
-    context of the turn."""
+def test_character_meters_do_not_bounce_the_global_meter(client, fake_llm):
+    """Each character agent has its OWN context, reported per character
+    (state.characters[].context). The GLOBAL meter is the narrator's story context only;
+    character calls never move it (live: the global number bounced between ~700 and ~4k
+    because small character/whisper prompts were folded into it)."""
     gid = _new(client, chars=[{"name": "Mara", "persona": "a scout"}])
     fake_llm.narrator = llm.LLMReply(content="Mara stirs.", usage={"prompt_tokens": 9000},
                                      tool_calls=[llm.ToolCall("cue_character", {"name": "Mara"})])
@@ -178,19 +179,25 @@ def test_character_calls_feed_their_own_and_the_turn_meter(client, fake_llm):
         "Mara": llm.LLMReply(content='[say]"Here."[/say]', usage={"prompt_tokens": 12000})}
     client.post(f"/games/{gid}/action", json={"action": "I call for Mara."})
     st = _state(client, gid)
-    assert st["context"]["used"] == 12000                       # the character was the biggest
+    assert st["context"]["used"] == 9000                        # the narrator's context
     mara = next(c for c in st["characters"] if c["name"] == "Mara")
     assert mara["context"] == {"used": 12000, "max": settings.LLM_CONTEXT_SIZE}
 
 
-def test_whisper_only_turn_still_updates_the_meter(client, fake_llm):
-    """A private exchange skips the narrator, but the character call still measures."""
+def test_whisper_only_turn_keeps_the_last_narrator_meter(client, fake_llm):
+    """A private exchange skips the narrator: the global meter holds its last narrator
+    value (no bounce); the character's own meter still updates."""
     gid = _new(client, chars=[{"name": "Mara", "persona": "a scout"}])
+    fake_llm.narrator = llm.LLMReply(content="You wait.", usage={"prompt_tokens": 9000})
+    client.post(f"/games/{gid}/action", json={"action": "I wait."})
     fake_llm.character_replies = {
-        "Mara": llm.LLMReply(content='[say]"Quietly."[/say]', usage={"prompt_tokens": 7000})}
+        "Mara": llm.LLMReply(content='[say]"Quietly."[/say]', usage={"prompt_tokens": 700})}
     client.post(f"/games/{gid}/action", json={"segments": [
         {"type": "whisper", "text": "Meet me later.", "target": "Mara"}]})
-    assert _state(client, gid)["context"]["used"] == 7000
+    st = _state(client, gid)
+    assert st["context"]["used"] == 9000                        # unchanged by the whisper
+    mara = next(c for c in st["characters"] if c["name"] == "Mara")
+    assert mara["context"]["used"] == 700
 
 
 # ---------- image generation is optional ----------

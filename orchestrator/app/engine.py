@@ -144,10 +144,11 @@ def _why_impossible(conn, gid, d) -> str | None:
     return None
 
 
-def _character_reply(conn, gid, ch, emit, private_with=None, track=None):
+def _character_reply(conn, gid, ch, emit, private_with=None):
     """Run one character turn (POV + tools). Returns the reaction targets to enqueue.
-    `track` is the turn's context-meter accumulator: each character agent has its OWN
-    context, so its prompt size is recorded per character and folded into the turn max."""
+    Each character agent has its OWN context; its prompt size feeds ONLY its own meter
+    (state.characters[].context). The global meter tracks the narrator's story context,
+    so small character calls never make the global number bounce around."""
     segs: list[tuple[str, str]] = []
     creply = llm.LLMReply(content="")
     for _ in range(2):
@@ -161,8 +162,6 @@ def _character_reply(conn, gid, ch, emit, private_with=None, track=None):
         tok = (creply.usage or {}).get("prompt_tokens", 0) or 0
         if tok:
             repo.set_character_context(conn, ch["id"], tok)
-            if track is not None:
-                track["ctx"] = max(track["ctx"], tok)
         segs = parse_character_output(creply.content)
         if segs or creply.tool_calls:
             break
@@ -228,7 +227,11 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
     seq = 0
     new_beats: list[dict] = []
     spawned: list[str] = []
-    track = {"ctx": 0}  # max prompt tokens seen this turn (any agent) -> the context meter
+    # The global context meter: the NARRATOR's story context only (its biggest prompt this
+    # turn). Character agents have their own per-character meters; folding them in here made
+    # the global number bounce (a whisper turn would drop it to the character's small prompt).
+    # A turn with no narrator call leaves the global meter at its last narrator value.
+    track = {"ctx": 0}
 
     def emit(speaker, name, kind, text, private_with=None):
         nonlocal seq
@@ -395,7 +398,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
                 continue
             acted[cid] = acted.get(cid, 0) + 1
             steps += 1
-            enqueue(_character_reply(conn, gid, ch, emit, track=track))
+            enqueue(_character_reply(conn, gid, ch, emit))
 
     # ---- private channel (1:1; other characters never see it) ----
     # The private modal stacks say AND do segments at one character. Consecutive private
@@ -421,7 +424,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
             else:
                 emit("player", None, "action",
                      f'you whisper to {row["name"]}: "{text}"', private_with=row["id"])
-        _character_reply(conn, gid, row, emit, private_with=row["id"], track=track)
+        _character_reply(conn, gid, row, emit, private_with=row["id"])
 
     if arrival_at_start:
         repo.clear_arrival_note(conn, gid)
