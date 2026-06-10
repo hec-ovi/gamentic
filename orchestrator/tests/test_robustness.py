@@ -83,6 +83,28 @@ def test_silent_character_gives_up_after_one_retry(client, fake_llm, world):
     assert len(fake_llm.character_calls()) == 2          # retried once, then accepted silence
 
 
+# ---------- speech mis-tagged as action reclassifies by shape ----------
+
+def test_quoted_speech_inside_a_do_tag_becomes_voiced_dialogue(client, fake_llm, world):
+    """Live (Serah's whisper): [do][sigh] [whisper] "Do not waste your breath..."[/do]
+    rendered as an italic action with visible tags and was never voiced."""
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(T("cue_character", name="Mara"), content="Mara exhales.")
+    fake_llm.character_replies = {"Mara": llm.LLMReply(
+        content='[do][sigh] [whisper] "Do not waste your breath on my temperament."[/do]')}
+    d = client.post(f"/games/{gid}/action", json={"action": "Are you angry with me?"}).json()
+    line = next(b for b in d["beats"] if b["kind"] == "dialogue")
+    assert line["text"] == "Do not waste your breath on my temperament."
+    assert line["emotion"] == "sigh"                       # first tag wins as the tone
+    assert "[" not in line["text"]
+    # a GENUINE action with a stray tag keeps its kind, tags scrubbed, no tone
+    fake_llm.character_replies = {"Mara": llm.LLMReply(
+        content='[do][sigh] She turns away to face the wall.[/do]')}
+    d = client.post(f"/games/{gid}/action", json={"action": "I wait."}).json()
+    act = next(b for b in d["beats"] if b["kind"] == "action" and b["speaker"] != "player")
+    assert act["text"] == "She turns away to face the wall." and act["emotion"] == ""
+
+
 # ---------- parenthetical stage directions split out of speech ----------
 
 def test_parenthetical_stage_directions_become_action_beats(client, fake_llm, world):

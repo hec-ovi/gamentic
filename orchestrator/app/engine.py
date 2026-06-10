@@ -76,10 +76,21 @@ def _extract_emotion(text: str) -> tuple[str, str]:
     bracketed single-word tags anywhere are scrubbed so they never show on screen."""
     emotion = ""
     m = _EMOTION_TAG.match(text)
-    if m and m.group(1).lower() in EMOTIONS:
-        emotion = m.group(1).lower()
+    while m and m.group(1).lower() in EMOTIONS:
+        emotion = emotion or m.group(1).lower()   # first tag wins; extras are scrubbed
         text = text[m.end():]
+        m = _EMOTION_TAG.match(text)
     return emotion, _ANY_TAG.sub("", text).strip()
+
+
+def _reclassify_do(content: str) -> tuple[str, str, str]:
+    """A 'do' segment that is emotion tags + a fully quoted span IS speech the model
+    mis-tagged (live: [do][sigh] [whisper] "Do not waste your breath..."[/do] rendered
+    as an italic action, tags visible, never voiced). Judged by SHAPE, not wording."""
+    emotion, cleaned = _extract_emotion(content)
+    if len(cleaned) >= 2 and cleaned[0] in '"“' and cleaned[-1] in '"”':
+        return "say", _unquote(cleaned), emotion
+    return "do", cleaned, ""   # genuine action: tags scrubbed, no tone (actions aren't spoken)
 
 
 def parse_character_output(text: str) -> list[tuple[str, str, str]]:
@@ -98,7 +109,7 @@ def parse_character_output(text: str) -> list[tuple[str, str, str]]:
     segs: list[tuple[str, str, str]] = []
     lead = _clean_segment(text[: matches[0].start()])
     if lead:
-        segs.append(("do", lead, ""))
+        segs.append(_reclassify_do(lead))
     for i, m in enumerate(matches):
         kind = m.group(1).lower()
         start = m.end()
@@ -119,6 +130,8 @@ def parse_character_output(text: str) -> list[tuple[str, str, str]]:
                 if inner.strip():
                     segs.append(("do", inner.strip(), ""))
                 content = _unquote(rest.strip())
+        elif kind == "do":
+            kind, content, emotion = _reclassify_do(content)
         if content:
             segs.append((kind, content, emotion))
     return segs
