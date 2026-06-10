@@ -3,7 +3,7 @@ import json
 
 from .. import db
 from . import items
-from .base import _id, norm_name
+from .base import norm_name
 
 
 def get_player(conn, gid: str):
@@ -35,22 +35,20 @@ def add_points(conn, gid: str, amount: int) -> int:
     return new
 
 
+def _save_inventory(conn, gid: str, inv: list) -> None:
+    conn.execute("UPDATE player_state SET inventory=? WHERE game_id=?", (json.dumps(inv), gid))
+
+
 def add_item(conn, gid: str, name: str, description: str = "", qty: int = 1,
              image_url: str | None = None) -> None:
     name = norm_name(name)   # model-invented snake_case never reaches the player
-    p = get_player(conn, gid)
-    inv = db.loads(p["inventory"], [])
-    for it in inv:
-        if it["name"].lower() == name.lower():
-            it["qty"] = it.get("qty", 1) + qty
-            if image_url and not it.get("image_url"):
-                it["image_url"] = image_url
-            break
+    inv = db.loads(get_player(conn, gid)["inventory"], [])
+    it = items.find_by_name(inv, name)
+    if it is not None:
+        items.stack(it, qty, image_url)
     else:
-        # ids let the UI's entity chips reference player items precisely (give/transfer)
-        inv.append({"id": _id(), "name": name, "description": description, "qty": qty,
-                    "image_url": image_url})
-    conn.execute("UPDATE player_state SET inventory=? WHERE game_id=?", (json.dumps(inv), gid))
+        inv.append(items.new_record(name, description, qty=qty, image_url=image_url))
+    _save_inventory(conn, gid, inv)
 
 
 def player_has_item(conn, gid: str, key: str) -> bool:
@@ -62,16 +60,11 @@ def player_has_item(conn, gid: str, key: str) -> bool:
 def remove_item(conn, gid: str, key: str, qty: int = 1):
     """Remove by item ID or name. Returns the matched item dict (so callers know the real
     name even when called with an ID), or None if the player does not hold it."""
-    p = get_player(conn, gid)
-    inv = db.loads(p["inventory"], [])
-    for it in inv:
-        if items._item_matches(it, key):
-            it["qty"] = it.get("qty", 1) - qty
-            if it["qty"] <= 0:
-                inv.remove(it)
-            conn.execute("UPDATE player_state SET inventory=? WHERE game_id=?", (json.dumps(inv), gid))
-            return it
-    return None  # nothing removed; caller decides how to handle
+    inv = db.loads(get_player(conn, gid)["inventory"], [])
+    it = items.take_out(inv, key, qty)
+    if it is not None:
+        _save_inventory(conn, gid, inv)
+    return it  # None = nothing removed; caller decides how to handle
 
 
 def set_flag(conn, gid: str, key: str, value: str) -> None:

@@ -42,6 +42,51 @@ def _item_matches(it: dict, key: str) -> bool:
                         or norm_name(it["name"]).lower() == k)
 
 
+# ---------- blob mutations (shared by pack / character inventories / scene items) ----------
+# These mutate a LOADED list in place; the owner module loads the blob, calls one of
+# these, and saves it back to its own table. The rules live here, once.
+
+def find_by_name(items_list: list[dict], name: str):
+    """The record whose stored name matches (stored names are already normalized)."""
+    return next((it for it in items_list if it["name"].lower() == name.lower()), None)
+
+
+def stack(it: dict, qty: int = 1, image_url: str | None = None) -> None:
+    """Add quantity onto an existing record; an arriving image fills an empty slot only
+    (an item never swaps an image it already has)."""
+    it["qty"] = it.get("qty", 1) + qty
+    if image_url and not it.get("image_url"):
+        it["image_url"] = image_url
+
+
+def new_record(name: str, description: str = "", **fields) -> dict:
+    """A fresh item record. ids let the UI's entity chips reference items precisely;
+    each owner passes exactly the fields its records carry (qty / hidden / fixed / image_url)."""
+    return {"id": _id(), "name": name, "description": description, **fields}
+
+
+def take_out(items_list: list[dict], key: str, qty: int = 1):
+    """Remove by item ID or name (decrements qty, drops the record at zero). Returns the
+    matched record (so callers know the real name even when called with an ID) or None.
+    The caller saves the blob only when something matched."""
+    for it in items_list:
+        if _item_matches(it, key):
+            it["qty"] = it.get("qty", 1) - qty
+            if it["qty"] <= 0:
+                items_list.remove(it)
+            return it
+    return None
+
+
+def unhide(items_list: list[dict], name: str) -> bool:
+    """Reveal a hidden record by stored name. The caller saves the blob on True."""
+    it = find_by_name(items_list, name)
+    if it is not None and it.get("hidden"):
+        it["hidden"] = False
+        return True
+    return False
+
+
 def set_item_image(conn, gid: str, name: str, url: str) -> bool:
     """Attach a generated image to an item WHEREVER it lives now (pack, any scene, any
     character): the item may have moved while the render ran in the background. Only fills

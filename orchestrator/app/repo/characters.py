@@ -69,50 +69,42 @@ def set_character_life(conn, cid: str, delta: int):
     return new, died
 
 
+def _save_inventory(conn, cid: str, inv: list) -> None:
+    conn.execute("UPDATE characters SET inventory=? WHERE id=?", (json.dumps(inv), cid))
+
+
 def character_add_item(conn, cid: str, name: str, description: str = "",
                        hidden: bool = False, qty: int = 1, cap: int | None = None,
                        image_url: str | None = None) -> str:
     name = norm_name(name)
-    c = get_character(conn, cid)
-    inv = db.loads(c["inventory"], [])
-    for it in inv:
-        if it["name"].lower() == name.lower():
-            it["qty"] = it.get("qty", 1) + qty
-            if image_url and not it.get("image_url"):
-                it["image_url"] = image_url
-            break
+    inv = db.loads(get_character(conn, cid)["inventory"], [])
+    it = items.find_by_name(inv, name)
+    if it is not None:
+        items.stack(it, qty, image_url)
     else:
         if cap is not None and len(inv) >= cap:
             return "full"
-        inv.append({"id": _id(), "name": name, "description": description,
-                    "image_url": image_url, "hidden": bool(hidden), "qty": qty})
-    conn.execute("UPDATE characters SET inventory=? WHERE id=?", (json.dumps(inv), cid))
+        inv.append(items.new_record(name, description, image_url=image_url,
+                                    hidden=bool(hidden), qty=qty))
+    _save_inventory(conn, cid, inv)
     return "ok"
 
 
 def character_reveal_item(conn, cid: str, name: str) -> bool:
-    c = get_character(conn, cid)
-    inv = db.loads(c["inventory"], [])
-    for it in inv:
-        if it["name"].lower() == name.lower() and it.get("hidden"):
-            it["hidden"] = False
-            conn.execute("UPDATE characters SET inventory=? WHERE id=?", (json.dumps(inv), cid))
-            return True
+    inv = db.loads(get_character(conn, cid)["inventory"], [])
+    if items.unhide(inv, name):
+        _save_inventory(conn, cid, inv)
+        return True
     return False
 
 
 def character_remove_item(conn, cid: str, key: str, qty: int = 1):
     """Remove by item ID or name; returns the matched item dict or None (see players.remove_item)."""
-    c = get_character(conn, cid)
-    inv = db.loads(c["inventory"], [])
-    for it in inv:
-        if items._item_matches(it, key):
-            it["qty"] = it.get("qty", 1) - qty
-            if it["qty"] <= 0:
-                inv.remove(it)
-            conn.execute("UPDATE characters SET inventory=? WHERE id=?", (json.dumps(inv), cid))
-            return it
-    return None
+    inv = db.loads(get_character(conn, cid)["inventory"], [])
+    it = items.take_out(inv, key, qty)
+    if it is not None:
+        _save_inventory(conn, cid, inv)
+    return it
 
 
 def spawn_character(conn, gid: str, name: str, persona: str, appearance: str = "",

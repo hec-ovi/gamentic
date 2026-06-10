@@ -119,29 +119,32 @@ def add_exit(conn, gid: str, label: str, target: str, cap: int) -> str:
     return "ok"
 
 
+def _save_items(conn, scene_id: str, scene_items: list) -> None:
+    conn.execute("UPDATE scenes SET items=? WHERE id=?", (json.dumps(scene_items), scene_id))
+
+
 def add_scene_item(conn, gid: str, name: str, description: str, hidden: bool, cap: int,
                    fixed: bool = False) -> str:
+    """Scene items never stack: a second placement of the same name is 'exists' (silent)."""
     name = norm_name(name)
     sc = current_scene(conn, gid)
     scene_items = db.loads(sc["items"], [])
-    if any(i["name"].lower() == name.lower() for i in scene_items):
+    if items.find_by_name(scene_items, name) is not None:
         return "exists"
     if len(scene_items) >= cap:
         return "full"
-    scene_items.append({"id": _id(), "name": name, "description": description,
-                        "image_url": None, "hidden": bool(hidden), "fixed": bool(fixed)})
-    conn.execute("UPDATE scenes SET items=? WHERE id=?", (json.dumps(scene_items), sc["id"]))
+    scene_items.append(items.new_record(name, description, image_url=None,
+                                        hidden=bool(hidden), fixed=bool(fixed)))
+    _save_items(conn, sc["id"], scene_items)
     return "ok"
 
 
 def reveal_scene_item(conn, gid: str, name: str) -> bool:
     sc = current_scene(conn, gid)
     scene_items = db.loads(sc["items"], [])
-    for it in scene_items:
-        if it["name"].lower() == name.lower() and it.get("hidden"):
-            it["hidden"] = False
-            conn.execute("UPDATE scenes SET items=? WHERE id=?", (json.dumps(scene_items), sc["id"]))
-            return True
+    if items.unhide(scene_items, name):
+        _save_items(conn, sc["id"], scene_items)
+        return True
     return False
 
 
@@ -155,7 +158,7 @@ def take_scene_item(conn, gid: str, key: str) -> str:
             if it.get("fixed"):
                 return "fixed"
             scene_items.remove(it)
-            conn.execute("UPDATE scenes SET items=? WHERE id=?", (json.dumps(scene_items), sc["id"]))
+            _save_items(conn, sc["id"], scene_items)
             # the item's generated image travels with it into the pack
             players.add_item(conn, gid, it["name"], it.get("description", ""),
                              image_url=it.get("image_url"))
