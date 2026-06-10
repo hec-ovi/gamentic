@@ -83,6 +83,23 @@ def test_silent_character_gives_up_after_one_retry(client, fake_llm, world):
     assert len(fake_llm.character_calls()) == 2          # retried once, then accepted silence
 
 
+# ---------- parenthetical stage directions split out of speech ----------
+
+def test_parenthetical_stage_directions_become_action_beats(client, fake_llm, world):
+    """Live: '(She looks at the stone...) "A whetstone..."' rendered (and would be
+    SPOKEN) as one speech bubble; the parenthetical is an action, not words."""
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(T("cue_character", name="Mara"), content="Mara turns it over.")
+    fake_llm.character_replies = {"Mara": llm.LLMReply(
+        content='[say](She tightens her fingers around the stone.) "A whetstone. A way to keep the edge."[/say]')}
+    d = client.post(f"/games/{gid}/action", json={"action": "I hand it over."}).json()
+    act = next(b for b in d["beats"] if b["kind"] == "action" and b["speaker"] != "player")
+    assert act["text"] == "She tightens her fingers around the stone."
+    line = next(b for b in d["beats"] if b["kind"] == "dialogue")
+    assert line["text"] == "A whetstone. A way to keep the edge."
+    assert "(" not in line["text"]
+
+
 # ---------- emotion tags: extracted for the voice, never shown ----------
 
 def test_emotion_tag_becomes_the_beats_tone(client, fake_llm, world):

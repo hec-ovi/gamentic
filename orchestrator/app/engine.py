@@ -110,6 +110,15 @@ def parse_character_output(text: str) -> list[tuple[str, str, str]]:
             content = _unquote(content)
             emotion, content = _extract_emotion(content)
             content = _unquote(content)
+            # the model sometimes writes stage directions as a leading (parenthetical)
+            # inside the speech (live: '(She looks at the stone...) "A whetstone..."');
+            # those are ACTIONS: split them into their own do beat so they are never
+            # spoken aloud or shown inside a speech bubble
+            while content.startswith("(") and ")" in content:
+                inner, _, rest = content[1:].partition(")")
+                if inner.strip():
+                    segs.append(("do", inner.strip(), ""))
+                content = _unquote(rest.strip())
         if content:
             segs.append((kind, content, emotion))
     return segs

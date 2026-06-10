@@ -11,10 +11,12 @@ Segment types:
 Rules:
 - Split a compound message into its parts, in order. Keep each text short and faithful; never invent actions the player did not state.
 - Use the exact character names from CHARACTERS PRESENT and item names from YOUR INVENTORY when the player clearly means them.
-- attack and give are ONLY for real strikes and real handovers. Threats, feints and offers are say or do.
+- attack and give are ONLY for real strikes and real handovers. Threats, feints and offers are say or do. BUT a message that hands over an item from YOUR INVENTORY to a character PRESENT (give/hand/pass/offer it over) is ALWAYS type give, never do.
 - When in doubt about a part, make it a do with the player's own words. Never drop a part.
 
 Example: "I toss Mara the brass key, tell her to keep it hidden, and keep watching the door"
 submit_segments: [{type: "give", item: "brass key", target: "Mara"}, {type: "say", text: "Keep it hidden.", target: "Mara"}, {type: "do", text: "keep watching the door"}]
 Example: "I search the wreck for anything useful"
 submit_segments: [{type: "look", text: "for anything useful in the wreck"}]
+Example: "give the whetstone to Serah" (whetstone is in YOUR INVENTORY, Serah is PRESENT)
+submit_segments: [{type: "give", item: "whetstone", target: "Serah"}]
