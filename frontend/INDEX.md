@@ -46,7 +46,7 @@ Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> `adap
 | Trait receipts (celebration tone) | `render.js` (systemTone "trait") | `test/render.test.js` |
 | Transition notices + HUD flashes | `transitions.js`, `app.js` (applyTransitions) | `test/transitions.test.js` |
 | Voice playback (speak-not-stream, FIFO, autoplay split) | `voice.js`, `app.js` (autoplayFor, reveal pipeline) | `test/voice.test.js`, `test/play.component.test.js` |
-| Settings (audio split; per-game difficulty/voice) | `render.js` (renderSettings, renderGameSettings), `app.js` (updateSetting, patchGameSettings) | `test/render.test.js`, `test/play.component.test.js` |
+| Settings (audio split; per-game difficulty/voice; wipe-all danger zone) | `render.js` (renderSettings, renderGameSettings, renderWipeConfirm), `app.js` (updateSetting, patchGameSettings, wipeEverything) | `test/render.test.js`, `test/play.component.test.js` |
 | Lightbox + image retry | `app.js` (maybeOpenLightbox, retryFailedImage) | `test/play.component.test.js` |
 | Backend wire calls | `api.js` | `test/api.test.js` |
 

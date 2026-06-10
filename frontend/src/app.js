@@ -24,6 +24,7 @@ const state = {
   creator: { sessionId: "creator-" + rand(), messages: [], busy: false, error: "" },
   confirm: null, // { gameId, title } when a delete confirmation is open
   exportChoice: null, // { gameId, title } when a card's export choice (share/save) is open
+  wipe: null, // { stage: 1|2, busy } when the wipe-all double confirm is open
   settings: loadSettings(),
 };
 
@@ -418,6 +419,24 @@ function onAction(act, el) {
       state.exportChoice = null;
       exportGame(gameId, el.dataset.kind, el.dataset.gameTitle);
       break;
+    case "ask-wipe":
+      state.wipe = { stage: 1, busy: false };
+      render();
+      break;
+    case "cancel-wipe":
+      if (state.wipe && state.wipe.busy) break;
+      state.wipe = null;
+      render();
+      break;
+    case "confirm-wipe":
+      if (!state.wipe || state.wipe.busy) break;
+      if (state.wipe.stage < 2) {
+        state.wipe.stage = 2; // ARMED: one more deliberate click erases
+        render();
+      } else {
+        wipeEverything();
+      }
+      break;
     case "import-game":
       root.querySelector("#importFile")?.click();
       break;
@@ -770,6 +789,33 @@ async function refreshLibrary() {
     state.games = [];
   }
   if (state.view === "library" || state.view === "menu") render();
+}
+
+// Wipe ALL memory: every game, creator session, voice entry and media folder
+// (server-side), then drop every cached game/session trace on this end too.
+async function wipeEverything() {
+  state.wipe.busy = true;
+  render();
+  try {
+    await api.wipeAll();
+    stopPolling();
+    stopLateWatch();
+    voice.stop();
+    state.active = null;
+    state.confirm = null;
+    state.exportChoice = null;
+    clearCreatorSession();
+    resetCreator();
+    state.wipe = null;
+    state.view = "library";
+    render();
+    showToast("Everything is gone. A clean slate.");
+    refreshLibrary();
+  } catch (err) {
+    state.wipe = null;
+    render();
+    showToast(err.message || "The wipe did not go through.");
+  }
 }
 
 async function removeGame(id) {

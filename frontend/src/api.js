@@ -76,6 +76,9 @@ export function createApi(backendUrl) {
     // Import a previously exported JSON -> { game_id } (always a NEW game).
     importGame: (payload) => request("/games/import", { method: "POST", body: payload }),
     deleteGame: (id) => request(`/games/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    // The settings "wipe all memory" button: every game, creator session,
+    // voice entry and media folder. NEVER call without the confirm param.
+    wipeAll: () => request("/games?confirm=wipe", { method: "DELETE" }),
     clearBeats: (id) => request(`/games/${encodeURIComponent(id)}/beats`, { method: "DELETE" }),
     // Tap-to-explain: an in-world, spoiler-safe aside about a visible thing.
     // payload: { kind: item|character|scene|quest|goal|beat, key } or

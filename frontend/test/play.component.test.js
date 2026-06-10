@@ -1062,6 +1062,60 @@ test("clicking a story image opens the lightbox; Escape closes it", async () => 
   expect(document.querySelector(".lightbox-overlay")).toBeNull();
 });
 
+test("wipe all memory: the double confirm gates the call; success clears local traces and lands in the empty library", async () => {
+  const u = user();
+  let wipeUrl = null;
+  let wiped = false;
+  server.use(
+    http.delete(`${API}/games`, ({ request }) => {
+      wipeUrl = new URL(request.url);
+      wiped = true;
+      return HttpResponse.json({ wiped_games: 1, wiped_media_folders: 1 });
+    }),
+    http.get(`${API}/games`, () => HttpResponse.json({ games: wiped ? [] : [{ id: "g-test", title: "Test Adventure", status: "active", created_at: "x" }] })),
+  );
+  await mountApp();
+  localStorage.setItem("gamentic.creator.session", "creator-old"); // a stored chat to be cleared
+  await u.click(await screen.findByRole("button", { name: /settings/i }));
+  await u.click(await screen.findByRole("button", { name: /wipe all memory/i }));
+
+  // the dialog says exactly what it deletes; nothing has been called yet
+  const modal = await screen.findByRole("dialog", { name: /wipe all memory/i });
+  expect(within(modal).getByText(/deletes EVERY adventure.*no undo/is)).toBeTruthy();
+  expect(wipeUrl).toBeNull();
+
+  // first confirm click only ARMS it
+  await u.click(within(modal).getByRole("button", { name: /erase everything/i }));
+  expect(wipeUrl).toBeNull();
+  expect(await screen.findByText(/last chance/i)).toBeTruthy();
+
+  // the second click erases: DELETE /games?confirm=wipe
+  await u.click(screen.getByRole("button", { name: /yes, erase everything/i }));
+  await waitFor(() => expect(wipeUrl).not.toBeNull());
+  expect(wipeUrl.pathname).toBe("/games");
+  expect(wipeUrl.searchParams.get("confirm")).toBe("wipe");
+
+  // post-wipe: the (now empty) library, and the creator session is gone from localStorage
+  await waitFor(() => expect(screen.getByText(/no adventures yet/i)).toBeTruthy());
+  expect(localStorage.getItem("gamentic.creator.session")).toBeNull();
+});
+
+test("cancelling the wipe dialog never calls the backend", async () => {
+  const u = user();
+  let called = false;
+  server.use(http.delete(`${API}/games`, () => {
+    called = true;
+    return HttpResponse.json({ wiped_games: 0, wiped_media_folders: 0 });
+  }));
+  await mountApp();
+  await u.click(await screen.findByRole("button", { name: /settings/i }));
+  await u.click(await screen.findByRole("button", { name: /wipe all memory/i }));
+  const modal = await screen.findByRole("dialog", { name: /wipe all memory/i });
+  await u.click(within(modal).getByRole("button", { name: /^cancel$/i }));
+  expect(document.querySelector(".holo-modal")).toBeNull();
+  expect(called).toBe(false);
+});
+
 test("deleting a game from the library asks to confirm, then removes it", async () => {
   const u = user();
   let deleted = false;

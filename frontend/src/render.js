@@ -1422,8 +1422,38 @@ function renderSettings(state) {
 
         ${state.active && state.active.state ? renderGameSettings(state.active) : ""}
 
+        <section class="holo-panel danger-zone">
+          <span class="card-corner tr"></span><span class="card-corner bl"></span>
+          <h3 class="panel-head">${icon("flame")}<span>Danger</span></h3>
+          <div class="set-row">
+            <span class="set-label">Wipe all memory<small>Every adventure, its history, characters and images. No undo.</small></span>
+            <button type="button" class="holo-btn danger" data-act="ask-wipe">${icon("trash")}<span>Wipe all memory</span></button>
+          </div>
+        </section>
+
         <p class="set-foot">${icon("radio")}<span>Game server linked automatically // media via same-origin proxy</span></p>
       </main>
+      ${state.wipe ? renderWipeConfirm(state.wipe) : ""}
+    </div>`;
+}
+
+// The wipe-all double confirm: the first click ARMS the button, the second
+// erases. There is no undo, so the dialog says exactly what it deletes.
+function renderWipeConfirm(w) {
+  return `
+    <div class="modal-overlay" data-act="cancel-wipe">
+      <div class="holo-modal" data-act="noop" role="dialog" aria-modal="true" aria-label="Wipe all memory?">
+        <span class="card-corner tr"></span><span class="card-corner bl"></span>
+        <h3 class="modal-title">${icon("flame")}<span>Wipe all memory?</span></h3>
+        <p class="modal-body">This deletes EVERY adventure, its history, characters and images. There is no undo.</p>
+        ${w.stage > 1 ? `<p class="modal-body wipe-armed">Last chance. Click once more and it is all gone.</p>` : ""}
+        <div class="modal-actions">
+          <button class="holo-btn" data-act="cancel-wipe" ${w.busy ? "disabled" : ""}>Cancel</button>
+          <button class="holo-btn danger" data-act="confirm-wipe" ${w.busy ? "disabled" : ""}>
+            ${icon("trash")}<span>${w.busy ? "Erasing..." : w.stage > 1 ? "Yes, erase everything" : "Erase everything"}</span>
+          </button>
+        </div>
+      </div>
     </div>`;
 }
 
