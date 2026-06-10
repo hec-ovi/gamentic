@@ -93,7 +93,14 @@ def _state_block(conn, gid: str) -> str:
     new_flag = "" if repo.scene_is_established(sc) else "   <- NEW PLACE"
 
     t = repo.game_time(conn, gid)
-    lines = [
+    lines = []
+    # Only a non-active story earns a line (lean: active games carry nothing extra).
+    status = (g["status"] or "active") if "status" in g.keys() else "active"
+    if status != "active":
+        fallen = (" The player has fallen; narrate the aftermath or a path back"
+                  " (a heal restores them)." if status == "lost" else "")
+        lines.append(f"STORY: {status}.{fallen}")
+    lines += [
         f"CURRENT GOAL: {g['current_goal'] or 'none yet'}",
         f"TIME: {t['label']}",
         f"LOCATION: {pd['location']}  (scene mood: {sc['status']}){new_flag}",

@@ -28,6 +28,11 @@ def apply_damage(conn, gid, args, actor):
     if kind_t == "player":
         new = repo.set_life(conn, gid, -amount)
         src = f" from {actor['name']}" if actor else ""
+        if new == 0 and (repo.get_game(conn, gid)["status"] or "active") != "lost":
+            # at zero the story turns: status flips so the narrator stages the aftermath
+            # (turns stay allowed; a heal can bring the player back from the brink)
+            repo.set_game_status(conn, gid, "lost")
+            return _result("state", f"You take {amount} damage{src}. Life: 0. You fall.")
         return _result("state", f"You take {amount} damage{src}. Life: {new}.")
     if kind_t == "character":
         if not row["alive"]:
@@ -59,7 +64,14 @@ def heal(conn, gid, args, actor):
     tname = args.get("target") or "player"
     kind_t, row = repo.resolve_target(conn, gid, tname)
     if kind_t == "player":
-        return _result("state", f"You recover {amount}. Life: {repo.set_life(conn, gid, amount)}.")
+        was_zero = repo.get_player(conn, gid)["life"] == 0
+        new = repo.set_life(conn, gid, amount)
+        text = f"You recover {amount}. Life: {new}."
+        if was_zero and new > 0 and (repo.get_game(conn, gid)["status"] or "") == "lost":
+            # the reverse transition: a staged rescue undoes the fall, deterministically
+            repo.set_game_status(conn, gid, "active")
+            text += " You are back from the brink."
+        return _result("state", text)
     if kind_t == "character":
         new, _ = repo.set_character_life(conn, row["id"], amount)
         return _result("state", f"{row['name']} recovers {amount} ({new}).")
