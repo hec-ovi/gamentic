@@ -94,12 +94,6 @@ class Settings:
     # are allowed only every N turns, so they stay a dramatic beat, not wallpaper.
     # A player look always renders if the narrator calls the tool.
     IMAGE_NARRATOR_COOLDOWN_TURNS = int(os.getenv("IMAGE_NARRATOR_COOLDOWN_TURNS", "4"))
-    # Per-turn VISUAL budget so the screen does not get noisy. These cap how many images
-    # are shown in a single turn, not how many exist. Character references are generated
-    # ONCE at creation and reused; this only limits display.
-    IMAGE_MAX_ARTIFACTS_PER_TURN = int(os.getenv("IMAGE_MAX_ARTIFACTS_PER_TURN", "4"))
-    IMAGE_MAX_SCENE_PER_TURN = int(os.getenv("IMAGE_MAX_SCENE_PER_TURN", "1"))
-    IMAGE_MAX_CHARACTERS_PER_TURN = int(os.getenv("IMAGE_MAX_CHARACTERS_PER_TURN", "2"))
 
     # --- Voice integration (orchestrator -> voice-api, server to server) ---
     VOICE_API_URL = os.getenv("VOICE_API_URL", "http://localhost:9002")
