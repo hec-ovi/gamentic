@@ -792,7 +792,7 @@ function renderProfile(s, g) {
 const PROFILE_TABS = [
   { id: "profile", label: "Profile", icon: "mask" },
   { id: "traits", label: "Traits", icon: "sparkles" },
-  { id: "memory", label: "Memory", icon: "eye" },
+  { id: "memory", label: "Memories", icon: "eye" },
   { id: "whisper", label: "Whisper", icon: "mic" },
 ];
 
@@ -836,7 +836,8 @@ function profileBody(s, g, d, locked) {
     </div>`;
 }
 
-// Profile tab: the status sheet - who they are, how they stand, what they carry.
+// Profile tab: the status sheet - who they are, how they stand, what they
+// carry, and the pieces of their PAST the story has revealed.
 function profileStatusPane(s, d) {
   const hp =
     d.life != null && d.maxLife
@@ -845,9 +846,23 @@ function profileStatusPane(s, d) {
   // the character's own agent memory lives in state (not the profile endpoint)
   const stateChar = (s.characters || []).find((x) => x.id === d.id);
   const sparse = !d.traits.length && d.moments.length < 3;
+  const origin = d.origin.length
+    ? `<section class="profile-sec">
+         <h4 class="profile-sec-head">${icon("scroll")}<span>Their past</span></h4>
+         <ul class="trait-list origin-list">
+           ${d.origin
+             .map(
+               (o) =>
+                 `<li class="trait origin"><span class="trait-text">${escapeHtml(o.text)}</span>${o.learned ? `<span class="trait-stamp">learned: ${escapeHtml(o.learned)}</span>` : ""}</li>`,
+             )
+             .join("")}
+         </ul>
+       </section>`
+    : "";
   return `
     <div class="profile-id">
       <p class="ins-tags">
+        ${d.gender ? `<span class="ins-tag">${escapeHtml(d.gender)}</span>` : ""}
         <span class="disp-badge disp-${escapeHtml(d.disposition)}">${escapeHtml(d.disposition)}</span>
         ${d.following ? `<span class="ins-tag">following you</span>` : ""}
         ${!d.alive ? `<span class="ins-tag">fallen</span>` : ""}
@@ -859,6 +874,7 @@ function profileStatusPane(s, d) {
         <span class="inv-mini-label">Carrying</span>
         ${slotGrid(d.carrying, 3, "char-items")}
       </div>
+      ${origin}
       ${sparse ? GROW_NOTE : ""}
     </div>`;
 }
@@ -877,7 +893,7 @@ function profileTraitsPane(d) {
     </ul>`;
 }
 
-// Memory tab: the moments shared with them + story images as memories.
+// Memories tab: the image strip first, then the moments shared with them.
 function profileMemoryPane(d) {
   if (!d.moments.length && !d.memories.length) {
     return `<p class="profile-empty muted">Nothing shared yet. The moments you live together will gather here.</p>`;
@@ -911,7 +927,7 @@ function profileMemoryPane(d) {
          </div>
        </section>`
     : "";
-  return moments + memories;
+  return memories + moments;
 }
 
 // The private channel: whisper-only, 1:1, lives in the profile. private_with
@@ -1106,7 +1122,7 @@ function renderPmBeat(beat) {
   const deed = beat.kind === "action";
   const sp = mine ? playerSpeech(beat) : null;
   const text = sp ? sp.quote : stripWrappingQuotes(beat.text);
-  return `<div class="pm-line ${mine ? "pm-you" : "pm-them"}${deed && !sp ? " pm-deed" : ""}" data-beat-id="${escapeHtml(beat.id)}">
+  return `<div class="pm-line ${mine ? "pm-you" : "pm-them"}${deed && !sp ? " pm-deed" : ""}${beat.pending ? " pending" : ""}" data-beat-id="${escapeHtml(beat.id)}">
             ${!mine && beat.speakerName ? `<b>${escapeHtml(beat.speakerName)}</b> ` : ""}<span class="pm-text">${escapeHtml(text)}</span>
           </div>`;
 }
@@ -1269,11 +1285,12 @@ export function playerSpeech(beat) {
 
 // Player speech = a dialogue bubble MIRRORED: right-aligned, avatar on the
 // right, the player's color. Speech should look like speech (owner playtest).
+// An optimistic (pending) echo renders slightly dimmed until the turn lands.
 function renderPlayerSpeech(beat, sp) {
   const whisper = sp.verb === "whisper";
   const meta = sp.target ? `${whisper ? "whispered to" : "to"} ${sp.target}` : whisper ? "whispered" : "";
   return `
-    <article class="dialogue from-player${whisper ? " whispered" : ""}" data-beat-id="${escapeHtml(beat.id)}" style="--speaker:${PLAYER_COLOR}">
+    <article class="dialogue from-player${whisper ? " whispered" : ""}${beat.pending ? " pending" : ""}" data-beat-id="${escapeHtml(beat.id)}" style="--speaker:${PLAYER_COLOR}">
       <span class="bubble-avatar fallback you" style="background:${PLAYER_COLOR}">YOU</span>
       <div class="bubble">
         <span class="bubble-name">You${meta ? ` <i class="bubble-meta">${escapeHtml(meta)}</i>` : ""}</span>
@@ -1323,7 +1340,7 @@ function renderDialogue(beat, g) {
 
 // PLAYER action = quiet inline marker, right-aligned, not a big bubble.
 function renderPlayerAction(beat) {
-  return `<p class="player-action" data-beat-id="${escapeHtml(beat.id)}">
+  return `<p class="player-action${beat.pending ? " pending" : ""}" data-beat-id="${escapeHtml(beat.id)}">
             ${icon("compass")}<span>${escapeHtml(beat.text)}</span>
           </p>`;
 }
@@ -1457,9 +1474,10 @@ function renderGameSettings(g) {
 
 function systemTone(text) {
   const t = String(text).toLowerCase();
-  // a trait receipt ("Trait unlocked: Mara - distrusts authority.") gets the
-  // card-unlock celebration treatment
-  if (/^trait unlocked/.test(t)) return "trait";
+  // a trait receipt ("Trait unlocked: Mara - distrusts authority.") or an
+  // origin reveal ("You learn of Vex's past: ...") gets the card-unlock
+  // celebration treatment
+  if (/^trait unlocked/.test(t) || /^you learn of .+ past:/.test(t)) return "trait";
   // adjudication: a rejected attempt ("You don't have X.", "Mara is not here.")
   // or a narrator veto ("Mara steps back, refusing the coin.")
   if (/(don't have|do not have|not here|refus|cannot|can't)/.test(t)) return "veto";

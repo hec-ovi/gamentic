@@ -305,13 +305,57 @@ test("clicking a character card opens the FULL-SCREEN profile fed by GET /profil
   expect(within(profileEl()).getByText(/distrusts authority/)).toBeTruthy();
   expect(within(profileEl()).getByText(/unlocked: Day 2, evening/)).toBeTruthy();
   // Memory tab: moments (private marked) + the image strip
-  await u.click(within(profileEl()).getByRole("tab", { name: /memory/i }));
+  await u.click(within(profileEl()).getByRole("tab", { name: /memories/i }));
   expect(within(profileEl()).getByText("Keep it quiet.")).toBeTruthy();
   expect(document.querySelector(".moment.private")).toBeTruthy();
   expect(document.querySelector('.memory img[src="/media/g-test/bar.png"]')).toBeTruthy();
   // closing returns to the scene
   await u.click(within(profileEl()).getByRole("button", { name: /back to the scene/i }));
   expect(document.querySelector(".profile-screen")).toBeNull();
+});
+
+test("the profile tab SURVIVES the post-turn refetch (no bounce back to tab 1)", async () => {
+  const u = user();
+  server.use(
+    http.post(`${API}/games/:id/action`, () =>
+      HttpResponse.json({
+        beats: [makeBeat({ kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "Noted.", private_with: "c1" })],
+        state: makeState(),
+      }),
+    ),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getByRole("tab", { name: /whisper/i })).toBeTruthy());
+  await u.click(within(profileEl()).getByRole("tab", { name: /whisper/i }));
+  await waitFor(() => expect(pmBox(/what you say/i)).toBeTruthy());
+
+  // a turn resolves while the profile is open -> the profile refetches...
+  await u.type(pmBox(/what you say/i), "remember this");
+  await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
+  await waitFor(() => expect(within(document.querySelector("#pmThread")).getByText("Noted.")).toBeTruthy(), { timeout: 4000 });
+
+  // ...and the Whisper tab is still the active one
+  const active = within(profileEl()).getByRole("tab", { selected: true });
+  expect(active.textContent).toMatch(/whisper/i);
+}, 10000);
+
+test("an origin receipt ('You learn of ... past') celebrates like a trait unlock", async () => {
+  const u = user();
+  server.use(
+    http.post(`${API}/games/:id/action`, () =>
+      HttpResponse.json({
+        beats: [makeBeat({ id: "or9", kind: "system", speaker: "system", text: "You learn of Jacker's past: he ran corp security before the fall." })],
+        state: makeState(),
+      }),
+    ),
+  );
+  await gotoPlay(u);
+  await u.type(cmpBox(), "ask about his past");
+  await u.click(screen.getByRole("button", { name: /send/i }));
+  const badge = await screen.findByText(/You learn of Jacker's past/);
+  expect(badge.closest(".system-badge").classList.contains("trait")).toBe(true);
 });
 
 test("a fresh character's profile shows the grow-from-interactions copy", async () => {
@@ -493,6 +537,7 @@ test("optimistic echo: the player's line shows the moment it is sent, then the c
   const pending = document.querySelector('#storyStream [data-beat-id^="pending-"]');
   expect(pending).toBeTruthy();
   expect(pending.classList.contains("from-player")).toBe(true);
+  expect(pending.classList.contains("pending")).toBe(true); // dimmed until the turn lands
   expect(pending.querySelector(".bubble p").textContent).toBe("hello there");
 
   // AFTER: the canonical echo replaced it - exactly one copy of the line remains
@@ -522,9 +567,11 @@ test("optimistic echo in the whisper thread; a failed turn takes the echo back",
   expect(mine.querySelector(".pm-text").textContent).toBe("psst");
   expect(within(document.querySelector("#storyStream")).queryByText(/psst/)).toBeNull();
 
-  // the turn fails: the echo is taken back (the toast explains)
+  // the turn fails: the echo is taken back (the toast explains)...
   await waitFor(() => expect(document.querySelector(".toast")).toBeTruthy(), { timeout: 4000 });
   await waitFor(() => expect(document.querySelector('[data-beat-id^="pending-"]')).toBeNull());
+  // ...and the typed line RETURNS to the whisper composer, nothing lost
+  await waitFor(() => expect(document.querySelector("#pmInput").textContent).toBe("psst"));
 }, 10000);
 
 test("the speak button walks loading -> playing -> back to idle", async () => {

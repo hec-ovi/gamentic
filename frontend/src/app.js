@@ -837,7 +837,7 @@ async function takeTurn(input) {
   if (empty) return;
   const wish = captureWish(g);
   const look = Array.isArray(input) && input.some((s) => s.type === "look");
-  await resolveTurn(g, () => api.takeAction(g.id, input, wish), { look, echo: echoBeats(g, input) });
+  await resolveTurn(g, () => api.takeAction(g.id, input, wish), { look, echo: echoBeats(g, input), restore: input, wish });
 }
 
 // Optimistic echo: the player's own line shows the moment they send it (the
@@ -894,7 +894,7 @@ async function continueStory() {
   const g = state.active;
   if (!g || g.generating) return;
   const wish = captureWish(g);
-  await resolveTurn(g, () => api.continueStory(g.id, wish));
+  await resolveTurn(g, () => api.continueStory(g.id, wish), { wish });
 }
 
 // The wish is a hope whispered to the storyteller, never an action: it rides
@@ -910,13 +910,16 @@ function captureWish(g) {
 // Shared turn resolver (action / continue): one POST -> { beats, state },
 // then the diff cues, the staged reveal, and the post-turn image watch. The
 // optimistic `echo` beats render instantly and are swapped for the backend's
-// canonical player echoes when the response lands (or dropped on failure).
-async function resolveTurn(g, send, { look = false, echo = null } = {}) {
+// canonical player echoes when the response lands; on failure the echo is
+// taken back and the typed content (`restore`, plus the wish) returns to its
+// composer so nothing is lost.
+async function resolveTurn(g, send, { look = false, echo = null, restore = null, wish = null } = {}) {
   g.generating = true;
   g.skipReveal = true; // fast-forward any reveal still running from last turn
   stopLateWatch(); // the new turn supersedes the previous watch window
   if (echo && echo.length) g.beats = [...g.beats, ...echo];
   render();
+  let failed = false;
 
   try {
     const turn = await send();
@@ -937,18 +940,58 @@ async function resolveTurn(g, send, { look = false, echo = null } = {}) {
     g.pendingView = Boolean(look && g.state.imagesEnabled);
     state.backendOnline = true;
   } catch (err) {
+    failed = true;
     g.beats = g.beats.filter((b) => !b.pending); // the turn never happened
+    if (wish) g.wish = wish; // the wish returns to its line too
     state.backendError = err.message || "Turn failed";
     if (err.status === 0) state.backendOnline = false;
     showToast(err.message || "The backend did not accept that action.");
   } finally {
     g.generating = false;
     render();
+    if (failed) restoreInput(g, restore);
     applyTransitions(g); // notices + one-shot flashes from the diff
     startReveal(g);
     maybePollForArt();
     watchLateBeats(g); // narrator images + item unlock cards land seconds later
     if (g.profile) refreshProfile(g); // the open profile reflects the new turn
+  }
+}
+
+// Put the typed content back where it came from after a failed turn: a single
+// line returns to its composer (mode restored), several segments return to the
+// stack ready to re-send. Button-born segments (attack/give/exit) have nothing
+// typed to restore.
+function restoreInput(g, input) {
+  if (input == null || state.active !== g) return;
+  if (!Array.isArray(input)) return restoreLine(g.composer, "cmp", "do", String(input));
+  if (input.length === 1) {
+    const seg = input[0];
+    if (seg.type === "whisper" && g.profile) {
+      g.profile.tab = "whisper";
+      return restoreLine(g.profile, "pm", seg.mode === "do" ? "do" : "say", seg.text);
+    }
+    if (seg.type === "say" || seg.type === "do" || seg.type === "look") {
+      return restoreLine(g.composer, "cmp", seg.type, seg.text);
+    }
+    return;
+  }
+  const pm = input.every((s) => s.type === "whisper");
+  const holder = pm ? g.profile : g.composer;
+  if (!holder) return;
+  if (pm) holder.tab = "whisper";
+  holder.stack = [...input];
+  render();
+}
+
+function restoreLine(holder, scope, mode, text) {
+  if (!holder) return;
+  holder.mode = mode;
+  render();
+  const input = root.querySelector(`#${scope}Input`);
+  if (input) {
+    input.textContent = text || "";
+    input.focus();
   }
 }
 

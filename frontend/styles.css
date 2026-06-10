@@ -1439,6 +1439,14 @@ button.cast-row:hover { border-color: var(--holo-cyan); }
 .profile-pane { display: flex; flex-direction: column; gap: 1rem; min-height: 0; }
 .profile-screen .whisper-sec { border-top: none; padding-top: 0; }
 
+/* an optimistic player echo: visible the instant it is sent, slightly dimmed
+   until the backend's canonical beat replaces it */
+.dialogue.pending, .player-action.pending, .pm-line.pending { opacity: 0.55; }
+
+/* "Their past" (origin) entries ride the trait card styling with a cooler tint */
+.trait.origin { border-color: rgba(47, 230, 255, 0.25); background: rgba(47, 230, 255, 0.04); }
+.trait.origin .trait-stamp { color: var(--holo-cyan); }
+
 /* ---- the speak button as a state machine: idle -> loading -> playing ---- */
 .speak-btn { position: relative; }
 .speak-btn.speak-loading { color: var(--holo-dim); cursor: progress; }

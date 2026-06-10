@@ -211,6 +211,7 @@ const PROFILE_DATA = {
   id: "c1",
   name: "Jacker",
   description: "Bartender.",
+  gender: "male",
   disposition: "neutral",
   following: false,
   alive: true,
@@ -222,6 +223,7 @@ const PROFILE_DATA = {
   color: "#8ab",
   carrying: [{ id: "k1", name: "brass key", description: "" }],
   traits: [{ id: "t1", text: "distrusts authority", unlocked: "Day 2, evening" }],
+  origin: [{ id: "or1", text: "He ran corp security before the fall.", learned: "Day 2, night" }],
   moments: [
     { turn_index: 3, kind: "dialogue", text: "Stay sharp.", speaker: "character", private: false },
     { turn_index: 4, kind: "dialogue", text: "Keep this between us.", speaker: "character", private: true },
@@ -245,17 +247,24 @@ test("the profile is TABBED: Profile/Traits/Memory/Whisper, with the status shee
   const tabs = [...screen.querySelectorAll('[data-act="profile-tab"]')].map((t) => t.dataset.tab);
   assert.deepEqual(tabs, ["profile", "traits", "memory", "whisper"]);
   assert.equal(screen.querySelector(".profile-tab.active").dataset.tab, "profile");
-  // the default Profile tab is the status sheet: identity, description, carrying
+  // the default Profile tab is the status sheet: identity, gender, description, carrying
   assert.ok(screen.querySelector(".disp-badge"), "disposition on the status sheet");
+  assert.ok([...screen.querySelectorAll(".ins-tag")].some((t) => t.textContent === "male"), "gender tag shown when set");
   assert.ok(/Bartender/.test(screen.querySelector(".profile-pane").textContent), "description on the status sheet");
+  // "Their past": the origin pieces learned so far, stamped like traits
+  const origin = screen.querySelector(".origin-list .trait.origin");
+  assert.ok(origin, "origin entry on the status sheet");
+  assert.ok(/ran corp security/.test(origin.textContent));
+  assert.ok(/learned: Day 2, night/.test(origin.querySelector(".trait-stamp").textContent));
   const inv = screen.querySelector(".char-inv");
   assert.ok(inv, "carrying lives on the status sheet");
   assert.ok(inv.children[0].classList.contains("inv-mini-label"), "label row above the items row");
   // the big art + name stay outside the tabs
   assert.equal(screen.querySelector(".profile-art").getAttribute("src"), "/media/g2/jacker-body.png");
   assert.ok(/Jacker/.test(screen.querySelector(".profile-name").textContent));
-  // other panes are NOT rendered while their tab is inactive
-  assert.equal(screen.querySelector(".trait"), null);
+  // other panes are NOT rendered while their tab is inactive (origin entries
+  // live on the status sheet and share the trait card styling)
+  assert.equal(screen.querySelector(".trait:not(.origin)"), null);
   assert.equal(screen.querySelector(".whisper-sec"), null);
 });
 

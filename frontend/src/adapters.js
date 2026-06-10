@@ -36,6 +36,9 @@ export function mapGameState(state = {}) {
     life: numOrNull(c.life),
     maxLife: numOrNull(c.max_life) ?? numOrNull(c.life),
     alive: c.alive !== false,
+    // ''|'female'|'male' - the single stored truth (portrait, pronouns and
+    // voice all follow it)
+    gender: c.gender || "",
     disposition: c.disposition || "unknown",
     following: Boolean(c.following),
     // each character is its own agent context on the shared model; 0 until
@@ -214,6 +217,7 @@ export function mapProfile(p = {}) {
     id: p.id,
     name: p.name || "Unknown",
     description: p.description || "",
+    gender: p.gender || "",
     disposition: p.disposition || "unknown",
     following: Boolean(p.following),
     alive: p.alive !== false,
@@ -225,6 +229,9 @@ export function mapProfile(p = {}) {
     color: p.color || PALETTE[0],
     carrying: (p.carrying || []).map(mapItem),
     traits: (p.traits || []).map((t) => ({ id: t.id || null, text: t.text || "", unlocked: t.unlocked || "" })),
+    // the pieces of their PAST the player has LEARNED so far (the full
+    // backstory is server-private; empty = nothing learned yet)
+    origin: (p.origin || []).map((o) => ({ id: o.id || null, text: o.text || "", learned: o.learned || "" })),
     moments: (p.moments || []).map((m) => ({
       turnIndex: num(m.turn_index),
       kind: m.kind || "dialogue",

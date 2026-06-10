@@ -105,6 +105,7 @@ export function makeProfile(over = {}) {
     id: "c1",
     name: "Jacker",
     description: "The watchful bartender.",
+    gender: "male",
     disposition: "neutral",
     following: false,
     alive: true,
@@ -116,6 +117,7 @@ export function makeProfile(over = {}) {
     color: "#8ab",
     carrying: [],
     traits: [{ id: "t1", text: "distrusts authority", unlocked: "Day 2, evening" }],
+    origin: [{ id: "or1", text: "He ran corp security before the fall.", learned: "Day 2, night" }],
     moments: [
       { turn_index: 2, kind: "dialogue", text: "What are you drinking?", speaker: "character", private: false },
       { turn_index: 3, kind: "dialogue", text: "Keep it quiet.", speaker: "character", private: true },
