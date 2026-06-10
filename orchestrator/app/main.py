@@ -8,9 +8,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
-from . import db, repo, engine, creator, integrate, prompts, llm, constants
+from . import db, repo, engine, creator, integrate, prompts, llm, constants, transfer
 from .config import settings
 from .models import (WorldSheet, ActionIn, ContinueIn, CreateMessageIn, GameState,
                      GameSettingsIn, TurnOut, ViewIn, ExplainIn)
@@ -63,6 +63,45 @@ def list_games():
     with db.get_conn() as conn:
         rows = repo.list_games(conn)
     return {"games": [dict(r) for r in rows]}
+
+
+@app.get("/games/{gid}/export")
+def export_game(gid: str, kind: str = "template"):
+    """Download an adventure. kind=template: the world as designed, playable fresh by
+    anyone. kind=checkpoint: the full save (state + story log) to resume or share this
+    exact moment. Media binaries are not bundled; see the import notes."""
+    if kind not in ("template", "checkpoint"):
+        raise HTTPException(422, "kind must be 'template' or 'checkpoint'")
+    with db.get_conn() as conn:
+        data = (transfer.export_template(conn, gid) if kind == "template"
+                else transfer.export_checkpoint(conn, gid))
+        title = repo.get_game(conn, gid)["title"] if data else ""
+    if not data:
+        raise HTTPException(404, "game not found")
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", title).strip("-").lower() or "adventure"
+    return JSONResponse(data, headers={
+        "Content-Disposition": f'attachment; filename="{slug}-{kind}.json"'})
+
+
+@app.post("/games/import")
+def import_game(payload: dict, background_tasks: BackgroundTasks):
+    """Create a NEW game from an exported file (template or checkpoint). Always a fresh
+    game id; importing the same file twice gives two independent games. Missing media
+    regenerates in the background where possible."""
+    with db.get_conn() as conn:
+        try:
+            gid = transfer.import_payload(conn, payload)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        integrate.assign_voices_for_game(conn, gid)
+        scene = repo.current_scene(conn, gid)
+        need_scene_art = settings.IMAGE_ENABLED and not scene["image_url"]
+        scene_id = scene["id"]
+    if settings.IMAGE_ENABLED:
+        background_tasks.add_task(integrate.generate_images_for_game, gid)  # missing portraits
+    if need_scene_art:
+        background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)
+    return {"game_id": gid}
 
 
 @app.get("/games/{gid}/state", response_model=GameState)
