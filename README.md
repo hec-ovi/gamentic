@@ -12,8 +12,9 @@ A self-hosted AI dungeon role-playing game you play in the browser, running enti
 - 💬 Talk to characters, each its own AI with its own voice and agenda.
 - ⚔️ Fight, give, take, trade: characters can act on each other and on you, not just talk.
 - 🤫 Pull a character aside for a private word no one else hears.
-- 👁️ Look at anything ("where is Mara looking?", "that ship on the horizon"): looking is a real story action that can trigger reactions and discoveries, and the narrator renders the view as an image when it deserves one. It also fires images on its own at big moments, paced so they stay special.
-- 🧬 Watch characters grow: personality traits unlock as your interactions reveal them ("Trait unlocked: Mara, distrusts authority"), they feed back into how that character plays, and each character has a full profile of traits, shared moments and image memories.
+- 👁️ Look at anything ("where is Mara looking?", "that ship on the horizon"): looking is a real story action that can trigger reactions and discoveries, and every look earns an image (the narrator's own framing when it offers one, a state-grounded snapshot otherwise). The narrator also fires images on its own at big moments, paced so they stay special.
+- 🧬 Watch characters grow: personality traits unlock as your interactions reveal them, their pasts surface piece by piece (they hint early, open up with trust, and answer "who are you?" properly), relationships get named and renamed by the story (stranger, ally, sworn rival), and each character keeps a profile of traits, pivotal shared moments and the image memories they are actually part of.
+- 🧠 The story never falls out of memory: the narrator re-reads recent scenes word-for-word and auto-compresses everything older into a rolling recap, with the depth, the cadence and a hard context budget all live settings per game.
 - 🎒 New items arrive with their own small generated card in the chat.
 - ▶️ Hit Continue and let the story advance on its own when you'd rather watch.
 - 🎚️ Pick how much the world bends: easy (the player leads, wishes come true), normal, or hard (the world leads, consequences bite). Changeable mid-game, and you can always whisper a wish for what you hope happens next.

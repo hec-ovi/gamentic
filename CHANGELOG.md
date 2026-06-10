@@ -24,6 +24,12 @@ The first full-playtest feedback batch.
 - `orchestrator/INDEX.md`: a resolver-style map of the brain (which file owns what, and which prompt block injects when), so the codebase is easy to navigate.
 - The README gained a visual chart of how a turn flows through the system.
 
+### Late-night soak-run findings (a scripted 4-adventure, ~120-turn live playthrough)
+- Every look now earns an image: when the narrator describes a look without rendering it, the deterministic state-grounded snapshot fires with the look's focus.
+- Speech to an absent character bounces deterministically ("Garron Pike is not here.") instead of failing silently, which had let the narrator write absent people into scenes.
+- Story-memory settings: fold cadence (`summary_every`) and a hard context budget (`context_tokens`, the verbatim window auto-shrinks to fit) join `history_beats` as live per-game settings; the recap ceiling grew to 400 words.
+- Player attack force wins when the narrator accepts a strike without naming its own amount; tool-stream debris can no longer leak inside tool arguments; portraits are per-character resilient, relink from disk, and self-heal on later turns.
+
 ### Living characters (owner direction: vivid, specific, earned)
 - Moments are now PIVOTAL events, not transcript: a character's memories of the player are curated turning points (a disposition shift, joining or parting, gifts, wounds, a narrator-noted sacrifice or betrayal), each story-clock stamped. Whispers and small talk never appear.
 - Image memories belong only to characters the image actually depicts, and every image now carries its CONCEPT (1-3 sentences of what the moment is) as its caption.
