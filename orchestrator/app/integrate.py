@@ -393,14 +393,17 @@ def _persist(gid: str, src_url, name: str):
 
 def _existing_char_urls(gid: str, cid: str) -> dict | None:
     """Reference images already persisted on disk for this character (a crashed earlier
-    run may have written the files but lost the DB commit). Returns the /media urls,
-    or None when no files exist."""
+    run may have written the files but lost the DB commit). Returns the /media urls only
+    when ALL THREE files exist; a partial set re-renders the full set instead (the
+    renderer overwrites the partial files: _persist writes fixed names). Relinking a
+    partial set would re-schedule forever without ever completing it."""
     d = os.path.join(settings.GAMES_DATA_DIR, gid, "images")
     urls = {}
     for view, key in (("face", "face_url"), ("front", "body_front_url"), ("side", "body_side_url")):
-        if os.path.isfile(os.path.join(d, f"char-{cid}-{view}.png")):
-            urls[key] = f"/media/{gid}/char-{cid}-{view}.png"
-    return urls or None
+        if not os.path.isfile(os.path.join(d, f"char-{cid}-{view}.png")):
+            return None
+        urls[key] = f"/media/{gid}/char-{cid}-{view}.png"
+    return urls
 
 
 def generate_images_for_game(gid: str) -> None:

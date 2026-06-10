@@ -54,6 +54,7 @@ def test_files_on_disk_are_relinked_not_rerendered(client, fake_llm, monkeypatch
     ana = _char(client, gid, "Ana")
     assert ana["face_url"] == f"/media/{gid}/char-{ana['id']}-face.png"
     assert ana["body_front_url"] == f"/media/{gid}/char-{ana['id']}-front.png"
+    assert ana["body_side_url"] == f"/media/{gid}/char-{ana['id']}-side.png"  # full set relinked
 
 
 def test_one_characters_failure_never_blocks_the_next(client, fake_llm, monkeypatch, tmp_path):
@@ -79,3 +80,50 @@ def test_turns_self_heal_missing_portraits(client, fake_llm, monkeypatch, tmp_pa
     monkeypatch.setattr(integrate, "generate_images_for_game", lambda g: scheduled.append(g))
     client.post(f"/games/{gid}/action", json={"action": "I look around."})
     assert gid in scheduled                            # missing portraits -> re-scheduled
+
+
+_FULL_SET = {"face_url": "/image/file?f=face", "body_front_url": "/image/file?f=front",
+             "body_side_url": "/image/file?f=side"}
+
+
+def test_partial_url_set_is_rescheduled_and_completed(client, fake_llm, monkeypatch, tmp_path):
+    """A partial reference set (one url committed, the rest crashed) counts as MISSING:
+    the per-turn self-heal re-schedules the job and the render completes the full set."""
+    _setup(monkeypatch, tmp_path)
+    gid = client.post("/games", json=WORLD).json()["game_id"]
+    ana = _char(client, gid, "Ana")
+    with db.get_conn() as conn:
+        repo.set_character_images(conn, ana["id"], face_url=f"/media/{gid}/x-face.png")
+    heal = integrate.generate_images_for_game            # keep the real job callable
+    scheduled = []
+    monkeypatch.setattr(integrate, "generate_images_for_game", lambda g: scheduled.append(g))
+    client.post(f"/games/{gid}/action", json={"action": "I look around."})
+    assert gid in scheduled                              # a face alone is not a set
+    monkeypatch.setattr(media, "generate_character_images",
+                        lambda d, style="", seed=None: dict(_FULL_SET))
+    heal(gid)
+    ana = _char(client, gid, "Ana")
+    assert ana["face_url"] and ana["body_front_url"] and ana["body_side_url"]
+
+
+def test_partial_files_on_disk_rerender_the_full_set(client, fake_llm, monkeypatch, tmp_path):
+    """A partial set ON DISK re-renders the full set (the renderer overwrites the partial
+    files; _persist writes fixed names). Relinking it would re-schedule forever without
+    ever completing the set."""
+    _setup(monkeypatch, tmp_path)
+    gid = client.post("/games", json=WORLD).json()["game_id"]
+    ana = _char(client, gid, "Ana")
+    d = os.path.join(str(tmp_path), gid, "images")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, f"char-{ana['id']}-face.png"), "wb") as f:
+        f.write(b"PNG")                                  # face only: an interrupted run
+    rendered = []
+
+    def _gen(descriptor, style="", seed=None):
+        rendered.append(descriptor)
+        return dict(_FULL_SET)
+    monkeypatch.setattr(media, "generate_character_images", _gen)
+    integrate.generate_images_for_game(gid)
+    assert any("female" in r for r in rendered)          # Ana re-rendered, not relinked
+    ana = _char(client, gid, "Ana")
+    assert ana["face_url"] and ana["body_front_url"] and ana["body_side_url"]

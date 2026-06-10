@@ -82,7 +82,9 @@ def set_character_images(conn, char_id: str, face_url=None, body_front_url=None,
 
 
 def character_has_images(c) -> bool:
-    return bool(c["face_url"] or c["body_front_url"] or c["body_side_url"])
+    # ALL THREE: a partial set (one render landed, the rest crashed) must keep counting
+    # as missing so the per-turn self-heal completes it.
+    return bool(c["face_url"] and c["body_front_url"] and c["body_side_url"])
 
 
 def set_character_voice(conn, char_id: str, voice_id: str) -> None:
