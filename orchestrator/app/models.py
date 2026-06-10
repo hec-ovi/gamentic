@@ -148,6 +148,7 @@ class Beat(BaseModel):
     image_url: Optional[str] = None
     audio_url: Optional[str] = None
     private_with: Optional[str] = None   # if set, a private beat with that character (DM view)
+    emotion: str = ""                    # dialogue tone for the voice ('angry', 'whisper', ...)
 
 
 class PlayerStateOut(BaseModel):

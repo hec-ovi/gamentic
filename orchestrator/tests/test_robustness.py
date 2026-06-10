@@ -83,6 +83,48 @@ def test_silent_character_gives_up_after_one_retry(client, fake_llm, world):
     assert len(fake_llm.character_calls()) == 2          # retried once, then accepted silence
 
 
+# ---------- emotion tags: extracted for the voice, never shown ----------
+
+def test_emotion_tag_becomes_the_beats_tone(client, fake_llm, world):
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(T("cue_character", name="Mara"), content="Mara whirls.")
+    fake_llm.character_replies = {
+        "Mara": llm.LLMReply(content='[say][angry] You dare come back here?[/say]')}
+    d = client.post(f"/games/{gid}/action", json={"action": "I step out of the shadows."}).json()
+    line = next(b for b in d["beats"] if b["kind"] == "dialogue")
+    assert line["emotion"] == "angry"
+    assert line["text"] == "You dare come back here?"          # tag never shows
+    # tag inside the quotes works too
+    fake_llm.character_replies = {
+        "Mara": llm.LLMReply(content='[say]"[whisper] Not here. Follow me."[/say]')}
+    d = client.post(f"/games/{gid}/action", json={"action": "I lean in."}).json()
+    line = next(b for b in d["beats"] if b["kind"] == "dialogue")
+    assert line["emotion"] == "whisper" and line["text"] == "Not here. Follow me."
+    # persisted: the story log serves it for replays
+    beats = client.get(f"/games/{gid}/beats").json()["beats"]
+    assert any(b.get("emotion") == "angry" for b in beats)
+
+
+def test_private_replies_default_to_a_whispered_tone(client, fake_llm, world):
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.character_replies = {"Mara": llm.LLMReply(content='[say]Meet me at the altar.[/say]')}
+    d = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "whisper", "text": "Can we talk?", "target": "Mara"}]}).json()
+    line = next(b for b in d["beats"] if b["kind"] == "dialogue")
+    assert line["emotion"] == "whisper"                        # private = whispered by nature
+
+
+def test_unknown_or_stray_tags_are_scrubbed_not_voiced(client, fake_llm, world):
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(T("cue_character", name="Mara"), content="Mara mutters.")
+    fake_llm.character_replies = {
+        "Mara": llm.LLMReply(content='[say][brooding] Fine. [pause] Take it.[/say]')}
+    d = client.post(f"/games/{gid}/action", json={"action": "I hold out the coin."}).json()
+    line = next(b for b in d["beats"] if b["kind"] == "dialogue")
+    assert line["emotion"] == ""                               # 'brooding' is not a tone we know
+    assert line["text"] == "Fine. Take it."                    # all stray tags scrubbed
+
+
 # ---------- speech to the absent bounces deterministically ----------
 
 def test_directed_say_to_an_absent_character_bounces(client, fake_llm, world):

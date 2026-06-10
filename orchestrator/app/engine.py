@@ -61,30 +61,57 @@ def _unquote(text: str) -> str:
     return text
 
 
-def parse_character_output(text: str) -> list[tuple[str, str]]:
-    """Split a character's tagged reply into (kind, content) where kind is 'say' or 'do'.
-    [say]...[/say] -> speech (dialogue beat); [do]...[/do] -> action (action beat).
+# Maya1 emotion vocabulary (natives + the aliases the voice-api maps itself). A speech
+# segment may OPEN with one tag; it becomes the beat's base tone for the voice and is
+# stripped from the display text. Unknown leading tags are scrubbed as artifacts.
+EMOTIONS = {"laugh", "giggle", "chuckle", "sigh", "whisper", "angry", "gasp", "cry",
+            "scream", "excited", "sad", "shout", "yell", "sob", "happy", "scared",
+            "furious", "calm", "nervous", "tired"}
+_EMOTION_TAG = re.compile(r"^\[(\w+)\]\s*")
+_ANY_TAG = re.compile(r"\[\w+\]\s*")
+
+
+def _extract_emotion(text: str) -> tuple[str, str]:
+    """(emotion, clean_text): a leading known [tag] becomes the line's tone; remaining
+    bracketed single-word tags anywhere are scrubbed so they never show on screen."""
+    emotion = ""
+    m = _EMOTION_TAG.match(text)
+    if m and m.group(1).lower() in EMOTIONS:
+        emotion = m.group(1).lower()
+        text = text[m.end():]
+    return emotion, _ANY_TAG.sub("", text).strip()
+
+
+def parse_character_output(text: str) -> list[tuple[str, str, str]]:
+    """Split a character's tagged reply into (kind, content, emotion) where kind is
+    'say' or 'do'. [say]...[/say] -> speech (dialogue beat); [do]...[/do] -> action.
+    A speech segment may OPEN with a Maya1 emotion tag ([angry] You dare?), extracted
+    into the beat's tone for the voice and stripped from the display text.
     Tolerant: untagged text is treated as speech; text before the first tag as action."""
     text = (text or "").strip()
     if not text:
         return []
     matches = list(_CHAR_TAG.finditer(text))
     if not matches:
-        cleaned = _unquote(_clean_segment(text))
-        return [("say", cleaned)] if cleaned else []
-    segs: list[tuple[str, str]] = []
+        emotion, cleaned = _extract_emotion(_unquote(_clean_segment(text)))
+        return [("say", cleaned, emotion)] if cleaned else []
+    segs: list[tuple[str, str, str]] = []
     lead = _clean_segment(text[: matches[0].start()])
     if lead:
-        segs.append(("do", lead))
+        segs.append(("do", lead, ""))
     for i, m in enumerate(matches):
         kind = m.group(1).lower()
         start = m.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         content = _clean_segment(_CHAR_CLOSE.sub("", text[start:end]))
+        emotion = ""
         if kind == "say":
+            # the tag may sit inside or outside the quotes: unquote, extract, unquote
+            content = _unquote(content)
+            emotion, content = _extract_emotion(content)
             content = _unquote(content)
         if content:
-            segs.append((kind, content))
+            segs.append((kind, content, emotion))
     return segs
 
 
@@ -186,10 +213,13 @@ def _character_reply(conn, gid, ch, emit, private_with=None):
         segs = parse_character_output(creply.content)
         if segs or creply.tool_calls:
             break
-    for kind, txt in segs:
-        # [say] -> dialogue (speech bubble); [do] -> action (a character's physical action)
+    for kind, txt, emotion in segs:
+        # [say] -> dialogue (speech bubble); [do] -> action (a character's physical action).
+        # A private reply with no stated emotion is spoken as a whisper by nature.
+        if kind == "say" and private_with and not emotion:
+            emotion = "whisper"
         emit(ch["id"], ch["name"], "dialogue" if kind == "say" else "action", txt,
-             private_with=private_with)
+             private_with=private_with, emotion=emotion)
     reactions = []
     for tc in creply.tool_calls:
         out = tools.apply_tool(conn, gid, tc.name, tc.arguments, actor=ch)
@@ -303,11 +333,12 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
     # A turn with no narrator call leaves the global meter at its last narrator value.
     track = {"ctx": 0}
 
-    def emit(speaker, name, kind, text, private_with=None):
+    def emit(speaker, name, kind, text, private_with=None, emotion=""):
         nonlocal seq
         loc = repo.get_player(conn, gid)["location"]
         b = repo.add_beat(conn, gid, speaker, name, kind, text, loc,
-                          turn_index=turn, seq=seq, private_with=private_with)
+                          turn_index=turn, seq=seq, private_with=private_with,
+                          emotion=emotion)
         seq += 1
         new_beats.append(b)
         return b

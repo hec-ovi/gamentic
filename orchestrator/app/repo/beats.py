@@ -8,7 +8,8 @@ def next_turn_index(conn, gid: str) -> int:
 
 
 def add_beat(conn, gid, speaker, speaker_name, kind, text, location,
-             turn_index=None, seq=None, private_with=None, image_url=None) -> dict:
+             turn_index=None, seq=None, private_with=None, image_url=None,
+             emotion="") -> dict:
     if turn_index is None:
         turn_index = next_turn_index(conn, gid)
     if seq is None:
@@ -18,13 +19,14 @@ def add_beat(conn, gid, speaker, speaker_name, kind, text, location,
         seq = row["s"] + 1
     bid = _id()
     conn.execute(
-        "INSERT INTO beats (id, game_id, turn_index, seq, speaker, speaker_name, kind, text, location, private_with, image_url) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        (bid, gid, turn_index, seq, speaker, speaker_name, kind, text, location, private_with, image_url),
+        "INSERT INTO beats (id, game_id, turn_index, seq, speaker, speaker_name, kind, text, location, private_with, image_url, emotion) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        (bid, gid, turn_index, seq, speaker, speaker_name, kind, text, location, private_with, image_url, emotion or ""),
     )
     return {"id": bid, "turn_index": turn_index, "seq": seq, "speaker": speaker,
             "speaker_name": speaker_name, "kind": kind, "text": text, "location": location,
-            "image_url": image_url, "audio_url": None, "private_with": private_with}
+            "image_url": image_url, "audio_url": None, "private_with": private_with,
+            "emotion": emotion or ""}
 
 
 def all_beats(conn, gid: str, since_turn: int = 0):

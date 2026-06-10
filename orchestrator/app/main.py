@@ -158,7 +158,7 @@ def clear_history(gid: str):
 def get_beats(gid: str, since: int = 0):
     """The story log. Use since=<last turn_index> to fetch only new beats."""
     fields = ("id", "turn_index", "seq", "speaker", "speaker_name", "kind",
-              "text", "location", "image_url", "audio_url", "private_with")
+              "text", "location", "image_url", "audio_url", "private_with", "emotion")
     with db.get_conn() as conn:
         if not repo.get_game(conn, gid):
             raise HTTPException(404, "game not found")

@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS beats (
     image_url TEXT,
     audio_url TEXT,
     private_with TEXT,               -- if set, a private beat only this character (+ player + narrator) sees
+    emotion TEXT DEFAULT '',         -- a dialogue beat's base tone for the voice ('angry', 'whisper', ...)
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -200,6 +201,7 @@ _MIGRATIONS = {
     },
     "beats": {
         "private_with": "TEXT",
+        "emotion": "TEXT DEFAULT ''",
     },
     "scenes": {
         "left_at_minutes": "INTEGER",
