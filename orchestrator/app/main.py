@@ -107,12 +107,9 @@ def get_beats(gid: str, since: int = 0):
     return {"beats": [{k: r[k] for k in fields} for r in rows]}
 
 
-@app.post("/games/{gid}/action", response_model=TurnOut)
-def action(gid: str, body: ActionIn, background_tasks: BackgroundTasks):
-    segments = [s.model_dump() for s in body.segments] if body.segments else None
-    text = (body.action or "").strip()
-    if not segments and not text:
-        raise HTTPException(400, "empty action")
+def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
+                   segments=None, continue_story: bool = False) -> dict:
+    """Run one full turn and schedule its background art (shared by action/continue)."""
     with db.get_conn() as conn:
         if not repo.get_game(conn, gid):
             raise HTTPException(404, "game not found")
@@ -123,7 +120,8 @@ def action(gid: str, body: ActionIn, background_tasks: BackgroundTasks):
             if segments:
                 text = ""    # the segments ARE the action now (else a whisper-only
                              # message would still open a public turn with the raw text)
-        result = engine.run_turn(conn, gid, action_text=text, segments=segments)
+        result = engine.run_turn(conn, gid, action_text=text, segments=segments,
+                                 continue_story=continue_story)
         if result.get("spawned"):
             integrate.assign_voices_for_game(conn, gid)      # voice for the newcomer (inline)
         scene = repo.current_scene(conn, gid)
@@ -134,6 +132,23 @@ def action(gid: str, body: ActionIn, background_tasks: BackgroundTasks):
     if need_scene_art:
         background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)  # new-scene art
     return result
+
+
+@app.post("/games/{gid}/action", response_model=TurnOut)
+def action(gid: str, body: ActionIn, background_tasks: BackgroundTasks):
+    segments = [s.model_dump() for s in body.segments] if body.segments else None
+    text = (body.action or "").strip()
+    if not segments and not text:
+        raise HTTPException(400, "empty action")
+    return _resolved_turn(gid, background_tasks, text=text, segments=segments)
+
+
+@app.post("/games/{gid}/continue", response_model=TurnOut)
+def continue_story(gid: str, background_tasks: BackgroundTasks):
+    """The 'Continue' button: no player input. The narrator advances the story on its own
+    (the world shifts, a character acts, something surfaces) - a full turn, minus the
+    player beat."""
+    return _resolved_turn(gid, background_tasks, continue_story=True)
 
 
 @app.post("/games/{gid}/view")

@@ -222,7 +222,13 @@ def interpret_action(conn, gid: str, text: str) -> list[dict] | None:
     return segs or None
 
 
-def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
+CONTINUE_IMPULSE = ("(no player input; the player watches and waits. Continue the story: "
+                    "advance the scene yourself - let the world shift, a character act, or "
+                    "something new surface - then leave the player room to respond.)")
+
+
+def run_turn(conn, gid: str, action_text: str = "", segments=None,
+             continue_story: bool = False) -> dict:
     turn = repo.next_turn_index(conn, gid)
     seq = 0
     new_beats: list[dict] = []
@@ -252,7 +258,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
     segments = segments or []
     whispers = [s for s in segments if (s.get("type") or "").lower() == "whisper"]
     public = [s for s in segments if (s.get("type") or "").lower() != "whisper"]
-    has_public = bool(public) or bool(action_text)
+    has_public = bool(public) or bool(action_text) or continue_story
 
     # Hybrid story clock: every turn costs a few fictional minutes automatically, so time
     # never freezes; the narrator jumps it with advance_time for rests/journeys/nightfall.
@@ -266,7 +272,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
     # ---- public turn (narrator + cascade) ----
     if has_public:
         action_text, directed = _compose(public) if public else (action_text, [])
-        emit("player", None, "action", action_text or "...")
+        if not continue_story:
+            emit("player", None, "action", action_text or "...")
 
         # Impossible attempts are rejected deterministically with a friendly in-world beat,
         # BEFORE anything is applied, and the narrator is told they failed (so its prose
@@ -300,7 +307,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None) -> dict:
                             "tid": "player" if kind_t == "player" else (row["id"] if row else None),
                             "handled": False, "rejected": False})
 
-        narrator_action = action_text
+        narrator_action = CONTINUE_IMPULSE if continue_story else action_text
         if failures:
             narrator_action = f"{action_text} (failed: {' '.join(failures)})"
 
