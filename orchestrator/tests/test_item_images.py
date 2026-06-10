@@ -87,7 +87,10 @@ def test_item_card_renders_only_once(client, fake_llm, world, monkeypatch, tmp_p
     assert len(_item_beats(client, gid)) == 1                  # still just the one card
 
 
-def test_item_cards_are_capped_per_turn(client, fake_llm, world, monkeypatch, tmp_path):
+def test_item_cards_are_capped_per_turn_then_self_heal(client, fake_llm, world,
+                                                       monkeypatch, tmp_path):
+    """Live (Ashfall): a 3-item haul rendered only 2 cards and the third stayed
+    letter-only forever. The cap holds per turn, but later turns pick up stragglers."""
     captured = []
     _enable_images(monkeypatch, tmp_path, captured)
     gid = client.post("/games", json=world).json()["game_id"]
@@ -96,6 +99,11 @@ def test_item_cards_are_capped_per_turn(client, fake_llm, world, monkeypatch, tm
                              content="The chest holds supplies.")
     client.post(f"/games/{gid}/action", json={"action": "I open the chest."})
     assert len(_item_beats(client, gid)) == settings.IMAGE_MAX_ITEMS_PER_TURN == 2
+    fake_llm.narrator = _nar(content="You pack your haul.")
+    client.post(f"/games/{gid}/action", json={"action": "I pack everything."})
+    assert len(_item_beats(client, gid)) == 3                  # the straggler healed
+    inv = client.get(f"/games/{gid}/state").json()["player"]["inventory"]
+    assert all(i["image_url"] for i in inv)                    # no letter-only items left
 
 
 def test_taken_item_carries_its_image_into_the_pack(client, fake_llm, world,

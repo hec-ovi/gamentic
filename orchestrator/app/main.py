@@ -204,8 +204,16 @@ def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
     fallback = result.pop("view_fallback", None)             # a look the narrator didn't render
     if settings.IMAGE_ENABLED and fallback is not None:
         background_tasks.add_task(integrate.generate_view_snapshot, gid, fallback or None)
-    new_items = result.pop("new_items", None)                # items newly visible this turn
-    if settings.IMAGE_ENABLED and settings.IMAGE_ITEMS and new_items:
+    new_items = result.pop("new_items", None) or []          # items newly visible this turn
+    if settings.IMAGE_ENABLED and settings.IMAGE_ITEMS:
+        # self-heal like portraits: pick up items whose card never rendered (per-turn cap
+        # overflow, a failed render, or pre-feature acquisitions), newest first
+        if len(new_items) < settings.IMAGE_MAX_ITEMS_PER_TURN:
+            with db.get_conn() as conn:
+                missing = [v for v in repo.visible_item_index(conn, gid).values()
+                           if not v.get("image_url")
+                           and v["name"] not in [n["name"] for n in new_items]]
+            new_items = new_items + missing
         for it in new_items[: settings.IMAGE_MAX_ITEMS_PER_TURN]:
             background_tasks.add_task(integrate.generate_item_image, gid, it["name"])
     if settings.SUMMARY_ENABLED:
