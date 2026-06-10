@@ -3,7 +3,7 @@
 import { icon } from "../icons.js";
 import { escapeHtml, holoFx, initials, stripWrappingQuotes } from "./common.js";
 import { playerSpeech } from "./story.js";
-import { contextMeter, renderComposer, renderStack, slotGrid } from "./widgets.js";
+import { charActionBtn, contextMeter, renderComposer, renderStack, slotGrid } from "./widgets.js";
 
 // ---------------------------------------------------------------------------
 // The FULL-SCREEN character profile (GET /characters/{cid}/profile): the image
@@ -89,12 +89,13 @@ export function renderProfilePane(s, g) {
   if (tab === "traits") return profileTraitsPane(d);
   if (tab === "memory") return profileMemoryPane(d);
   if (tab === "whisper") return renderWhisperChannel(g, d.name, Boolean(g.generating));
-  return profileStatusPane(s, d);
+  return profileStatusPane(s, d, Boolean(g.generating));
 }
 
 // Profile tab: the status sheet - who they are, how they stand, what they
-// carry, and the pieces of their PAST the story has revealed.
-export function profileStatusPane(s, d) {
+// carry, what you can DO to them, and the pieces of their PAST the story has
+// revealed. The action buttons live HERE now (the card only hints).
+export function profileStatusPane(s, d, locked = false) {
   const hp =
     d.life != null && d.maxLife
       ? `<div class="char-hp" title="${d.life}/${d.maxLife}"><div class="hp-track"><div class="hp-fill" style="width:${Math.max(0, Math.min(100, (d.life / d.maxLife) * 100))}%"></div></div></div>`
@@ -130,9 +131,24 @@ export function profileStatusPane(s, d) {
         <span class="inv-mini-label">Carrying</span>
         ${slotGrid(d.carrying, 3, "char-items")}
       </div>
+      ${actionsSection(stateChar, locked)}
       ${origin}
       ${sparse ? GROW_NOTE : ""}
     </div>`;
+}
+
+// What you can do to them right now (state offers minus Talk - whisper is the
+// private channel). Mutating, so the buttons lock while a turn resolves.
+function actionsSection(stateChar, locked) {
+  const actions = ((stateChar && stateChar.actions) || []).filter((a) => a.type !== "talk");
+  if (!actions.length) return "";
+  return `
+    <section class="profile-sec">
+      <h4 class="profile-sec-head">${icon("zap")}<span>Actions</span></h4>
+      <div class="char-actions profile-actions">
+        ${actions.map((a) => charActionBtn(a, stateChar, locked)).join("")}
+      </div>
+    </section>`;
 }
 
 // Traits tab: the personality card collection unlocked through play.

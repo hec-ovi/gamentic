@@ -169,35 +169,31 @@ function scenePlay(overrides = {}) {
   };
 }
 
-test("character column: no description, carrying + ONE Actions button; tapping the card opens the PROFILE", () => {
+test("character column is a pure holder: art, carrying, an expand hint - no description, no buttons", () => {
   const el = parse(renderApp(scenePlay()));
   const col = el.querySelector('.char-col[data-char-id="c1"]');
   assert.ok(col, "character column present");
   const art = col.querySelector('.col-art[data-act="open-profile"][data-char-id="c1"]');
   assert.ok(art, "the tall art card opens the full-screen profile");
   assert.equal(art.dataset.charName, "Jacker");
-  // the card is LIGHT: no description (it lives in the profile), no Talk/whisper
+  // the card is LIGHT: no description, no action buttons, no Talk/whisper
   assert.equal(col.querySelector(".char-desc"), null, "description is not on the card");
   assert.equal(/Bartender/.test(col.textContent), false, "no description text anywhere on the card");
-  assert.equal(col.querySelector('[data-act="char-action"][data-type="talk"]'), null, "no Talk button");
+  assert.equal(col.querySelector('[data-act="char-action"]'), null, "no action buttons on the card");
   assert.equal(col.querySelector('[data-act="open-private"]'), null, "no whisper button on the card either");
-  // carrying stays; the offers fold behind one Actions button
+  // carrying stays, and the card hints at the panel
   assert.ok(col.querySelector(".char-inv .inv-mini-label"), "carrying row stays");
-  const toggle = col.querySelector('[data-act="toggle-char-actions"]');
-  assert.ok(toggle, "one Actions button");
-  assert.equal(toggle.getAttribute("aria-expanded"), "false");
-  assert.equal(col.querySelector('[data-act="char-action"]'), null, "offers hidden until Actions opens");
+  assert.ok(/expand to interact/i.test(col.querySelector(".char-hint").textContent), "the interaction hint label");
 });
 
-test("the Actions button expands the offer buttons (give, provoke...) for that card", () => {
-  const el = parse(renderApp(scenePlay({ actionsFor: "c1" })));
-  const col = el.querySelector('.char-col[data-char-id="c1"]');
-  const toggle = col.querySelector('[data-act="toggle-char-actions"]');
-  assert.equal(toggle.getAttribute("aria-expanded"), "true");
-  assert.ok(toggle.classList.contains("open"));
-  assert.ok(col.querySelector('[data-act="char-action"][data-type="give"]'), "give action shown");
-  assert.ok(col.querySelector('[data-act="char-action"][data-type="offer"]'), "offers shown");
-  assert.equal(col.querySelector('[data-act="char-action"][data-type="talk"]'), null, "talk still filtered out");
+test("the profile's status sheet hosts the Actions (give, provoke...; talk filtered)", () => {
+  const el = parse(renderApp(profileOpen(PROFILE_DATA)));
+  const pane = el.querySelector(".profile-pane");
+  const actions = pane.querySelector(".profile-actions");
+  assert.ok(actions, "Actions section on the status sheet");
+  assert.ok(actions.querySelector('[data-act="char-action"][data-type="give"]'), "give action");
+  assert.ok(actions.querySelector('[data-act="char-action"][data-type="offer"]'), "offers");
+  assert.equal(actions.querySelector('[data-act="char-action"][data-type="talk"]'), null, "talk filtered out");
 });
 
 test("the integrated deck renders exits, scene actions and the current goal in ONE header", () => {

@@ -115,3 +115,18 @@ export function renderStack(stack, scope) {
       .join("")}
   </div>`;
 }
+
+// A character offer button (Give..., Provoke, narrator offers). Lives with
+// the widgets: the profile renders these now (cards just hint at the panel).
+export function sceneActionBtn(a, locked) {
+  return `<button type="button" class="chip-btn" data-act="scene-action" data-type="${escapeHtml(a.type)}" data-label="${escapeHtml(a.label)}" ${locked ? "disabled" : ""}>${escapeHtml(a.label)}</button>`;
+}
+
+export function exitBtn(e, locked) {
+  const ic = e.isBack ? "chevronLeft" : "compass";
+  return `<button type="button" class="chip-btn exit${e.isBack ? " back" : ""}" data-act="exit" data-label="${escapeHtml(e.label)}" data-target="${escapeHtml(e.target || "")}" ${locked ? "disabled" : ""}>${icon(ic)}<span>${escapeHtml(e.label)}</span></button>`;
+}
+
+export function charActionBtn(a, c, locked) {
+  return `<button type="button" class="chip-btn" data-act="char-action" data-type="${escapeHtml(a.type)}" data-label="${escapeHtml(a.label)}" data-char-id="${escapeHtml(c.id)}" data-char-name="${escapeHtml(c.name)}" ${locked ? "disabled" : ""}>${escapeHtml(a.label)}</button>`;
+}

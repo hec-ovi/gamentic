@@ -6,7 +6,7 @@ import { escapeHtml, help, holoFx, initials, titleCase } from "./common.js";
 import { renderInspectModal } from "./inspect.js";
 import { renderProfile } from "./profile.js";
 import { renderStory } from "./story.js";
-import { contextMeter, renderComposer, renderStack, sceneItemSlot, slotGrid } from "./widgets.js";
+import { contextMeter, exitBtn, renderComposer, renderStack, sceneActionBtn, sceneItemSlot, slotGrid } from "./widgets.js";
 
 // ---------------------------------------------------------------------------
 // Play
@@ -186,27 +186,17 @@ export function renderCharacters(s, locked, g = {}) {
 
 // A character is a tall vertical card column: the full-body reference art fills
 // the column, identity reads off a plate at its foot, and only the Carrying
-// row + one "Actions" button hang below (the description lives in the
-// profile, not on the card). "Actions" expands the offer buttons (Give,
-// Provoke, ...); tapping the card opens the FULL-SCREEN profile.
+// row hangs below. Everything else - description, actions, whisper - lives in
+// the FULL-SCREEN profile; the card just hints at it ("expand to interact").
 export function renderCharColumn(c, s, locked, g = {}) {
+  void locked;
+  void g;
   const hp =
     c.life != null && c.maxLife
       ? `<div class="char-hp" title="${c.life}/${c.maxLife}">
            <div class="hp-track"><div class="hp-fill" style="width:${Math.max(0, Math.min(100, (c.life / c.maxLife) * 100))}%"></div></div>
          </div>`
       : "";
-  const actions = c.actions.filter((a) => a.type !== "talk");
-  const open = g.actionsFor === c.id;
-  const actionsBlock = actions.length
-    ? `<div class="char-actions">
-         <button type="button" class="chip-btn actions-toggle${open ? " open" : ""}" data-act="toggle-char-actions"
-                 data-char-id="${escapeHtml(c.id)}" aria-expanded="${open}" title="What you can do to ${escapeHtml(c.name)}">
-           ${icon("zap")}<span>Actions</span>
-         </button>
-         ${open ? actions.map((a) => charActionBtn(a, c, locked)).join("") : ""}
-       </div>`
-    : "";
   return `
     <article class="char-col${c.alive ? "" : " dead"}" data-char-id="${escapeHtml(c.id)}" style="--speaker:${escapeHtml(c.color)}">
       <button type="button" class="col-art" data-act="open-profile" data-char-id="${escapeHtml(c.id)}" data-char-name="${escapeHtml(c.name)}" title="Open ${escapeHtml(c.name)}'s profile" aria-label="Open ${escapeHtml(c.name)}'s profile">
@@ -223,7 +213,7 @@ export function renderCharColumn(c, s, locked, g = {}) {
         <span class="inv-mini-label">Carrying</span>
         ${slotGrid(c.inventory, 3, "char-items")}
       </div>
-      ${actionsBlock}
+      <span class="char-hint">${icon("panel")}<span>expand to interact</span></span>
     </article>`;
 }
 
@@ -260,19 +250,6 @@ export function castRow(c) {
           </button>`;
 }
 
-// --- action buttons (button -> segment mapping is resolved in app.js) ---
-export function sceneActionBtn(a, locked) {
-  return `<button type="button" class="chip-btn" data-act="scene-action" data-type="${escapeHtml(a.type)}" data-label="${escapeHtml(a.label)}" ${locked ? "disabled" : ""}>${escapeHtml(a.label)}</button>`;
-}
-
-export function exitBtn(e, locked) {
-  const ic = e.isBack ? "chevronLeft" : "compass";
-  return `<button type="button" class="chip-btn exit${e.isBack ? " back" : ""}" data-act="exit" data-label="${escapeHtml(e.label)}" data-target="${escapeHtml(e.target || "")}" ${locked ? "disabled" : ""}>${icon(ic)}<span>${escapeHtml(e.label)}</span></button>`;
-}
-
-export function charActionBtn(a, c, locked) {
-  return `<button type="button" class="chip-btn" data-act="char-action" data-type="${escapeHtml(a.type)}" data-label="${escapeHtml(a.label)}" data-char-id="${escapeHtml(c.id)}" data-char-name="${escapeHtml(c.name)}" ${locked ? "disabled" : ""}>${escapeHtml(a.label)}</button>`;
-}
 
 export function renderActionBar(g, s, locked) {
   const cmp = g.composer || { mode: "do", stack: [] };

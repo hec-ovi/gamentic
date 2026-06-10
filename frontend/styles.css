@@ -625,7 +625,8 @@ button { font: inherit; cursor: pointer; }
 
 /* confirmation modal */
 .modal-overlay {
-  position: fixed; inset: 0; z-index: 90; display: grid; place-items: center;
+  /* above the profile screen (110): inspect/give open from inside it too */
+  position: fixed; inset: 0; z-index: 120; display: grid; place-items: center;
   background: rgba(2, 6, 14, 0.72); backdrop-filter: blur(4px);
   animation: fade-in 0.18s ease both;
 }
@@ -750,9 +751,15 @@ button { font: inherit; cursor: pointer; }
 @keyframes craft-sweep { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
 
 /* ---- settings (system) ---- */
-.set-main { position: relative; z-index: 2; flex: 1; min-height: 0; overflow-y: auto; padding: clamp(1.4rem, 5vw, 3rem); display: flex; flex-direction: column; align-items: center; gap: 1.2rem; }
+/* settings is a 2x2 PANEL GRID, not a scrolling column: the screen has the
+   room, so use it (audio | adventure / danger | foot) */
+.set-main { position: relative; z-index: 2; flex: 1; min-height: 0; overflow-y: auto; padding: clamp(1.2rem, 3vw, 2.2rem);
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.2rem;
+  align-content: start; max-width: 1240px; width: 100%; margin: 0 auto; }
+.set-main > .set-foot { grid-column: 1 / -1; justify-self: center; }
+@media (max-width: 860px) { .set-main { grid-template-columns: 1fr; } }
 .holo-panel {
-  position: relative; width: 100%; max-width: 560px;
+  position: relative; width: 100%; align-self: start;
   background: linear-gradient(180deg, rgba(16, 32, 52, 0.45), rgba(7, 14, 26, 0.3));
   border: 1px solid var(--holo-line-soft);
   clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
@@ -965,7 +972,8 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 .chip-btn.whisper:hover { color: var(--gold); border-color: var(--gold); box-shadow: 0 0 12px rgba(242, 184, 75, 0.2); }
 
 /* play body: story + character column */
-.play-body { position: relative; z-index: 2; flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr clamp(290px, 26vw, 360px); gap: 1rem; padding: 1rem clamp(0.8rem, 2vw, 1.4rem); }
+/* the character holders get real presence: there is screen to spare */
+.play-body { position: relative; z-index: 2; flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr clamp(340px, 36vw, 640px); gap: 1rem; padding: 1rem clamp(0.8rem, 2vw, 1.4rem); }
 .play-stage .story { background: linear-gradient(180deg, rgba(12, 20, 32, 0.5), rgba(7, 12, 22, 0.4)); border: 1px solid var(--holo-line-soft); border-radius: 0;
   clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
   padding: 1.3rem clamp(1rem, 3vw, 2rem); overflow-y: auto; min-height: 0; position: relative; }
@@ -996,7 +1004,7 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 /* ---- character columns: tall vertical full-body cards (the reference look) ---- */
 .char-deck { display: flex; gap: 0.7rem; align-items: stretch; }
 .char-col {
-  position: relative; flex: 1 1 0; min-width: 0; max-width: 230px;
+  position: relative; flex: 1 1 0; min-width: 0; max-width: 320px;
   display: flex; flex-direction: column;
   background: linear-gradient(180deg, rgba(16, 32, 52, 0.55), rgba(8, 15, 28, 0.4));
   border: 1px solid var(--holo-line-soft); border-top: 2px solid var(--speaker);
@@ -1061,17 +1069,15 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 .char-desc { margin: 0.6rem 0 0.5rem; font-size: 0.8rem; color: var(--holo-dim); line-height: 1.4; }
 .inv-mini-label { font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--holo-dim); }
 .char-items .slot { width: 30px; height: 30px; }
-/* character offers fold behind ONE quiet "Actions" button; the expanded
-   buttons stay light text-buttons that glow on hover */
-.char-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin-top: 0.5rem; }
-.char-actions .chip-btn {
-  font-size: 0.68rem; padding: 0.22rem 0.45rem;
-  background: transparent; border-color: transparent; color: var(--holo-dim);
+/* the card only HINTS at interaction; the actions live in the profile */
+.char-hint {
+  display: inline-flex; align-items: center; gap: 0.35rem; margin: 0.45rem 0.6rem 0.6rem;
+  font-family: var(--holo-display); font-size: 0.58rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--holo-dim); opacity: 0.8;
 }
-.char-actions .chip-btn:hover:not(:disabled) { color: var(--holo-cyan); border-color: var(--holo-line-soft); background: rgba(47, 230, 255, 0.06); }
-.char-actions .actions-toggle { border-color: var(--holo-line-soft); display: inline-flex; align-items: center; gap: 0.3rem; }
-.char-actions .actions-toggle svg { width: 0.9em; height: 0.9em; fill: none; stroke: currentColor; stroke-width: 2; }
-.char-actions .actions-toggle.open { color: var(--holo-cyan); border-color: var(--holo-cyan); background: rgba(47, 230, 255, 0.08); }
+.char-hint svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; }
+.char-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; }
+.char-actions .chip-btn { font-size: 0.78rem; padding: 0.35rem 0.7rem; }
 
 /* action bar */
 .play-actionbar { position: relative; z-index: 3; border-top: 1px solid var(--holo-line-soft); background: linear-gradient(0deg, rgba(10, 20, 36, 0.7), transparent); padding: 0.7rem clamp(0.8rem, 2vw, 1.4rem); display: flex; flex-direction: column; gap: 0.6rem; }

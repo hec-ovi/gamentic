@@ -17,6 +17,11 @@ import { continueStory, stopLateWatch, takeTurn } from "./turns.js";
 // render + event binding
 // ---------------------------------------------------------------------------
 
+// Inner scroll surfaces (besides the story, which has its own pin-to-bottom
+// rule) whose position must SURVIVE a full rebuild - a re-render must never
+// read as a "refresh".
+const KEEP_SCROLL = [".char-column", ".set-main", ".profile-main"];
+
 export function render() {
   closeTagger();
   // chat scroll rule: keep the reader's place across rebuilds; pin to the
@@ -24,9 +29,17 @@ export function render() {
   const story = root.querySelector("#storyStream");
   const stick = !story || storyNearBottom(story);
   const prevTop = story ? story.scrollTop : 0;
+  const kept = KEEP_SCROLL.map((sel) => {
+    const el = root.querySelector(sel);
+    return el && el.scrollTop ? [sel, el.scrollTop] : null;
+  }).filter(Boolean);
   root.dataset.view = state.view;
   root.innerHTML = renderApp(state);
   bind();
+  kept.forEach(([sel, top]) => {
+    const el = root.querySelector(sel);
+    if (el) el.scrollTop = top;
+  });
   if (state.view === "play") {
     const fresh = root.querySelector("#storyStream");
     if (fresh) {
@@ -223,13 +236,6 @@ export function onAction(act, el) {
       break;
     case "char-action":
       onCharAction(el);
-      break;
-    case "toggle-char-actions":
-      // expand/collapse a card's offer buttons (read-only: works mid-turn too)
-      if (state.active) {
-        state.active.actionsFor = state.active.actionsFor === el.dataset.charId ? null : el.dataset.charId;
-        render();
-      }
       break;
     case "open-profile":
       openProfile(el.dataset.charId, el.dataset.charName);

@@ -673,12 +673,14 @@ test("Give opens an item picker and sends a give segment with the item id", asyn
     }),
   );
   await gotoPlay(u);
-  // the offers fold behind the card's Actions button
-  const col = () => document.querySelector('.char-col[data-char-id="c1"]');
-  expect(within(col()).queryByRole("button", { name: /give/i })).toBeNull();
-  await u.click(within(col()).getByRole("button", { name: /^actions$/i }));
-  await u.click(within(col()).getByRole("button", { name: /give/i }));
-  // picker lists the player's inventory item; the segment carries its id
+  // the card holds no buttons: Give lives in the profile's Actions section
+  const col = document.querySelector('.char-col[data-char-id="c1"]');
+  expect(within(col).queryByRole("button", { name: /give/i })).toBeNull();
+  await u.click(within(col).getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getByRole("button", { name: /give/i })).toBeTruthy());
+  await u.click(within(profileEl()).getByRole("button", { name: /give/i }));
+  // picker lists the player's inventory item (above the profile); id on the wire
   const pick = await screen.findByRole("button", { name: /^credstick$/i });
   await u.click(pick);
   await waitFor(() => expect(body).toBeTruthy());
