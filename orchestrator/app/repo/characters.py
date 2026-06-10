@@ -185,6 +185,13 @@ def set_following(conn, cid: str, following: bool) -> None:
     conn.execute("UPDATE characters SET following=? WHERE id=?", (1 if following else 0, cid))
 
 
+def set_character_location(conn, cid: str, location: str) -> None:
+    """Move a character to a scene. The location passes through the same canonical key
+    normalization scenes use, so a drifting name can never strand a character at a key
+    no scene lookup will match."""
+    conn.execute("UPDATE characters SET location=? WHERE id=?", (norm_name(location), cid))
+
+
 def set_character_description(conn, cid: str, description: str) -> None:
     conn.execute("UPDATE characters SET description=? WHERE id=?", (description, cid))
 

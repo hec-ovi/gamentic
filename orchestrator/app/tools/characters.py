@@ -103,8 +103,7 @@ def set_following(conn, gid, args, actor):
     changed = bool(ch["following"]) != foll
     repo.set_following(conn, ch["id"], foll)
     if foll:  # a new follower joins the player's current scene
-        conn.execute("UPDATE characters SET location=? WHERE id=?",
-                     (repo.get_player(conn, gid)["location"], ch["id"]))
+        repo.set_character_location(conn, ch["id"], repo.get_player(conn, gid)["location"])
     if changed:
         repo.add_moment(conn, ch["id"], "Began traveling with the player" if foll
                         else "Parted ways with the player")
