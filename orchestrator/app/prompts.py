@@ -196,11 +196,17 @@ def build_character_messages(conn, gid: str, character, scene_limit: int) -> lis
     knowledge_block = (
         f"\nWHAT YOU PRIVATELY KNOW: {character['knowledge']}" if character["knowledge"] else ""
     )
+    # Traits unlocked through play feed back into the agent, so the personality the
+    # story revealed is the personality the character keeps playing.
+    traits = [t["text"] for t in repo.character_traits(character)]
+    traits_block = (f"\nWHAT THE STORY HAS REVEALED ABOUT YOU (stay true to it): "
+                    f"{'; '.join(traits)}" if traits else "")
     system = render(
         "character.system.md",
         name=character["name"],
         persona=character["persona"],
         knowledge_block=knowledge_block,
+        traits_block=traits_block,
     )
     user = render("character.user.md", location=location, scene=_transcript(scene), name=character["name"])
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]

@@ -159,6 +159,20 @@ def continue_story(gid: str, background_tasks: BackgroundTasks):
     return _resolved_turn(gid, background_tasks, continue_story=True)
 
 
+@app.get("/games/{gid}/characters/{cid}/profile")
+def character_profile(gid: str, cid: str):
+    """The full-screen character view: public card data, traits unlocked through play,
+    the moments shared with the player (including private exchanges), and story images
+    as memories. Spoiler-safe: persona and private knowledge never leave the DB."""
+    with db.get_conn() as conn:
+        if not repo.get_game(conn, gid):
+            raise HTTPException(404, "game not found")
+        prof = repo.character_profile(conn, gid, cid)
+    if not prof:
+        raise HTTPException(404, "character not found")
+    return prof
+
+
 @app.post("/games/{gid}/view")
 def view_scene(gid: str, body: ViewIn | None = None):
     """The 'See' button: generate an image of the current scene WITH the characters present

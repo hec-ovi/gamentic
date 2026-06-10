@@ -196,6 +196,17 @@ NARRATOR_TOOLS = [
             "item": {"type": "string"}, "target": {"type": "string"}},
             "required": ["item", "target"]}}},
     {"type": "function", "function": {
+        "name": "note_trait",
+        "description": "Unlock a lasting personality trait of a character that THIS moment "
+                       "just revealed through their behavior (never invented). Short and "
+                       "concrete: 'distrusts authority', 'sentimental about her ship'. Use "
+                       "sparingly; a trait is earned by a real moment. It appears on their "
+                       "card and they will stay true to it.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"},
+            "trait": {"type": "string", "description": "The revealed trait, a short phrase."},
+        }, "required": ["name", "trait"]}}},
+    {"type": "function", "function": {
         "name": "note_scene",
         "description": "Leave a draft note on the CURRENT scene (open threads, what was left "
                        "unresolved, who or what stayed behind), so when the player returns you "
@@ -459,6 +470,15 @@ def apply_tool(conn, gid: str, name: str, args: dict, actor=None) -> dict:
             label = (args.get("label") or "").strip()
             ok = repo.offer_scene_action(conn, gid, label, settings.SCENE_ACTION_CAP)
             return _result("state") if ok else _invalid(f"offer_scene_action: scene already has {settings.SCENE_ACTION_CAP} actions")
+        if name == "note_trait":
+            who = (args.get("name") or "").strip()
+            ch = repo.find_character_by_name(conn, gid, who)
+            if not ch:
+                return _invalid(f"note_trait: no character '{who}'")
+            trait = repo.add_trait(conn, ch["id"], args.get("trait", ""), settings.CHAR_TRAIT_CAP)
+            if not trait:
+                return _result("state")  # duplicate or full: silent
+            return _result("state", f"Trait unlocked: {ch['name']} - {trait}.")
         if name == "note_scene":
             note = (args.get("note") or "").strip()
             repo.set_scene_draft(conn, gid, note)

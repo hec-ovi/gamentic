@@ -47,6 +47,7 @@ class Settings:
     SCENE_INVENTORY_CAP = int(os.getenv("SCENE_INVENTORY_CAP", "6"))
     CHAR_INVENTORY_CAP = int(os.getenv("CHAR_INVENTORY_CAP", "3"))
     CHAR_ACTION_CAP = int(os.getenv("CHAR_ACTION_CAP", "3"))
+    CHAR_TRAIT_CAP = int(os.getenv("CHAR_TRAIT_CAP", "12"))   # unlocked traits per character
     SCENE_ACTION_CAP = int(os.getenv("SCENE_ACTION_CAP", "3"))
 
     DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "..", "gamentic.db"))

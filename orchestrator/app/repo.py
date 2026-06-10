@@ -500,6 +500,68 @@ def set_character_description(conn, cid: str, description: str) -> None:
     conn.execute("UPDATE characters SET description=? WHERE id=?", (description, cid))
 
 
+def add_trait(conn, cid: str, text: str, cap: int) -> str | None:
+    """Unlock a personality trait on a character (earned through play). Returns the
+    cleaned trait text, or None when it is a duplicate, empty, or the card is full.
+    Stamped with the story clock so the profile can say WHEN it was revealed."""
+    text = " ".join((text or "").split()).strip().rstrip(".")
+    if not text:
+        return None
+    c = get_character(conn, cid)
+    traits = db.loads(c["traits"], [])
+    if len(traits) >= cap or any(t["text"].lower() == text.lower() for t in traits):
+        return None
+    minutes = get_game(conn, c["game_id"])["time_minutes"] or 0
+    traits.append({"id": _id(), "text": text, "minutes": minutes})
+    conn.execute("UPDATE characters SET traits=? WHERE id=?", (json.dumps(traits), cid))
+    return text
+
+
+def character_traits(c) -> list[dict]:
+    return [{"id": t["id"], "text": t["text"],
+             "unlocked": time_at(t.get("minutes") or 0)["label"]}
+            for t in db.loads(c["traits"], [])]
+
+
+def character_profile(conn, gid: str, cid: str) -> dict | None:
+    """The full-screen character view: public card data + unlocked traits + the moments
+    shared with the player (their words/acts, including private exchanges) + story images
+    as memories. PLAYER-VISIBLE only: persona and private knowledge never leave the DB."""
+    c = get_character(conn, cid)
+    if not c or c["game_id"] != gid:
+        return None
+    rows = conn.execute(
+        "SELECT * FROM beats WHERE game_id=? AND (speaker=? OR private_with=?) "
+        "AND kind IN ('dialogue','action') ORDER BY turn_index DESC, seq DESC LIMIT 12",
+        (gid, cid, cid)).fetchall()
+    moments = [{"turn_index": b["turn_index"], "kind": b["kind"], "text": b["text"],
+                "speaker": "player" if b["speaker"] == "player" else "character",
+                "private": bool(b["private_with"])} for b in reversed(rows)]
+    # memories: story images from places this character has been part of, or that name them
+    locs = {r["location"] for r in conn.execute(
+        "SELECT DISTINCT location FROM beats WHERE game_id=? AND speaker=?",
+        (gid, cid)).fetchall() if r["location"]}
+    mem_rows = conn.execute(
+        "SELECT * FROM beats WHERE game_id=? AND kind='image' AND image_url IS NOT NULL "
+        "ORDER BY turn_index DESC LIMIT 24", (gid,)).fetchall()
+    name_low = (c["name"] or "").lower()
+    memories = [{"image_url": b["image_url"], "caption": b["text"], "turn_index": b["turn_index"]}
+                for b in mem_rows
+                if b["location"] in locs or (name_low and name_low in (b["text"] or "").lower())][:8]
+    memories.reverse()
+    return {
+        "id": c["id"], "name": c["name"], "description": c["description"],
+        "disposition": c["disposition"], "following": bool(c["following"]),
+        "alive": bool(c["alive"]), "life": c["life"], "max_life": c["max_life"],
+        "face_url": c["face_url"], "body_url": c["body_front_url"],
+        "voice_id": c["voice_id"], "color": c["color"],
+        "carrying": visible_items(c["inventory"]),
+        "traits": character_traits(c),
+        "moments": moments,
+        "memories": memories,
+    }
+
+
 def offer_action(conn, cid: str, label: str, cap_total: int) -> bool:
     """Add a narrator-offered contextual action to a character, within the total-action cap."""
     from . import constants
@@ -847,6 +909,7 @@ def game_state(conn, gid: str) -> dict:
          "face_url": c["face_url"], "body_url": c["body_front_url"],
          "body_front_url": c["body_front_url"], "body_side_url": c["body_side_url"],
          "inventory": visible_items(c["inventory"]),
+         "traits": character_traits(c),
          "context": {"used": c["context_used"] or 0, "max": settings.LLM_CONTEXT_SIZE},
          "available_actions": available_actions(conn, c, settings.CHAR_ACTION_CAP)}
         for c in get_characters(conn, gid)

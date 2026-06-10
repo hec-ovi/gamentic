@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS characters (
     disposition TEXT DEFAULT 'neutral',  -- friendly | neutral | hostile | unknown (FSM)
     following INTEGER DEFAULT 0,      -- moves with the player between scenes
     offers TEXT DEFAULT '[]',         -- narrator-offered contextual actions (JSON list of {id,label})
-    context_used INTEGER DEFAULT 0    -- this character agent's last prompt size (own context meter)
+    context_used INTEGER DEFAULT 0,   -- this character agent's last prompt size (own context meter)
+    traits TEXT DEFAULT '[]'          -- personality traits UNLOCKED through play (JSON list of {id,text,minutes})
 );
 
 CREATE TABLE IF NOT EXISTS quests (
@@ -162,6 +163,7 @@ _MIGRATIONS = {
         "description": "TEXT DEFAULT ''",
         "offers": "TEXT DEFAULT '[]'",       # narrator-offered contextual actions (JSON)
         "context_used": "INTEGER DEFAULT 0",
+        "traits": "TEXT DEFAULT '[]'",       # personality traits unlocked through play (JSON)
     },
     "games": {
         "scene_status": "TEXT DEFAULT 'calm'",

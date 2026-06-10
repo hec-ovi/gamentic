@@ -156,6 +156,7 @@ class CharacterOut(BaseModel):
     body_front_url: Optional[str] = None
     body_side_url: Optional[str] = None
     inventory: list[dict] = Field(default_factory=list)        # revealed items (<= 3)
+    traits: list[dict] = Field(default_factory=list)           # personality traits unlocked through play
     context: dict = Field(default_factory=dict)                # this agent's own {used, max} meter
     available_actions: list[dict] = Field(default_factory=list)  # action buttons (<= 3)
 
