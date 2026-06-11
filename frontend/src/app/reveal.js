@@ -2,7 +2,6 @@
 // atomically, so the PACING is ours - typewriter prose, instant receipts,
 // fading images, voice pipelined per beat.
 
-import { icon } from "../icons.js";
 import { stripWrappingQuotes } from "../render.js";
 import { cssId, root, sleep, state, storyNearBottom, voice } from "./ctx.js";
 import { render } from "./ui.js";
@@ -191,27 +190,10 @@ export function followStory() {
   if (thread && storyNearBottom(thread)) thread.scrollTop = thread.scrollHeight;
 }
 
-// A new image landed in the flow: bring it into view when the reader is at the
-// bottom; otherwise offer a small "new image below" affordance instead of
-// yanking them away from what they are reading.
+// A new image landed in the flow: it ALWAYS comes into view (owner decision,
+// round 3.5 - the old near-bottom rule with a "new image below" chip left late
+// renders unseen). Works for the story stream and the whisper thread alike.
 export function announceImage(el) {
-  const story = root.querySelector("#storyStream");
-  if (!story) return;
-  if (storyNearBottom(story)) {
-    if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    else followStory();
-    return;
-  }
-  if (story.querySelector(".new-image-chip")) return;
-  const chip = document.createElement("button");
-  chip.type = "button";
-  chip.className = "new-image-chip";
-  chip.innerHTML = `${icon("eye")}<span>New image below</span>`;
-  chip.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", behavior: "smooth" });
-    chip.remove();
-  });
-  story.appendChild(chip);
-  setTimeout(() => chip.remove(), 15000);
+  if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  else followStory();
 }

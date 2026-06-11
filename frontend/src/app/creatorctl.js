@@ -1,6 +1,6 @@
 // The story creator: persisted chat sessions, restore-on-entry, finalize.
 
-import { api, rand, state } from "./ctx.js";
+import { api, rand, root, state } from "./ctx.js";
 import { openGame } from "./game.js";
 import { render } from "./ui.js";
 
@@ -103,6 +103,9 @@ export async function sendCreatorMessage(raw) {
   } finally {
     c.busy = false;
     render();
+    // the reply landed: hand the keyboard back to the chat box (owner: never
+    // make the player click the box again after every reply)
+    root.querySelector('[name="creatorText"]')?.focus();
   }
 }
 
@@ -129,5 +132,6 @@ export async function beginAdventure() {
       state.backendOnline = false;
     }
     render();
+    root.querySelector('[name="creatorText"]')?.focus();
   }
 }

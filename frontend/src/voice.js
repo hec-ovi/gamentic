@@ -72,9 +72,20 @@ export class Voice {
           body: JSON.stringify({ text: clean, voice_id: voiceId, ...(emotion ? { emotion } : {}) }),
         });
         if (!res || !res.ok) return null;
-        const data = await res.json();
-        if (!data || !data.audio_url) return null;
-        const entry = { audioUrl: data.audio_url, duration: Number(data.duration_s) || null };
+        // Cloud audio passthrough (frontend-api.md): when the nginx /voice
+        // proxy is retargeted at the orchestrator (a cloud provider holds the
+        // keys server-side), the response is the AUDIO BYTES themselves, not
+        // { audio_url }. Branch on content-type; the local shape is unchanged.
+        const type = String((res.headers && res.headers.get && res.headers.get("content-type")) || "");
+        let entry = null;
+        if (type.startsWith("audio/")) {
+          if (typeof URL === "undefined" || !URL.createObjectURL || typeof res.blob !== "function") return null;
+          entry = { audioUrl: URL.createObjectURL(await res.blob()), duration: null };
+        } else {
+          const data = await res.json();
+          if (!data || !data.audio_url) return null;
+          entry = { audioUrl: data.audio_url, duration: Number(data.duration_s) || null };
+        }
         this._cache.set(key, entry);
         return entry;
       } catch {

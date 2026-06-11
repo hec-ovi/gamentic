@@ -141,3 +141,31 @@ export function makeProfile(over = {}) {
 }
 
 export const GAMES = [{ id: "g-test", title: "Test Adventure", status: "active", created_at: "2026-06-09" }];
+
+// A controllable stand-in for the browser's EventSource (jsdom has none).
+// Tests install it with vi.stubGlobal("EventSource", FakeEventSource), grab
+// the instance the app opened, and emit() wire-shaped media-ready events.
+export class FakeEventSource {
+  static instances = [];
+  constructor(url) {
+    this.url = url;
+    this.readyState = 0;
+    this.onmessage = null;
+    this.onopen = null;
+    this.onerror = null;
+    FakeEventSource.instances.push(this);
+  }
+  emit(data) {
+    this.onmessage && this.onmessage({ data: typeof data === "string" ? data : JSON.stringify(data) });
+  }
+  open() {
+    this.readyState = 1;
+    this.onopen && this.onopen({});
+  }
+  fail() {
+    this.onerror && this.onerror({});
+  }
+  close() {
+    this.readyState = 2;
+  }
+}

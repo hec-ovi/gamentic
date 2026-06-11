@@ -4,7 +4,7 @@ Resolver-style map of the UI layer: find the thing you want to change, go straig
 
 ## The flow of one turn
 
-Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> `adapters.mapGameState`/`mapBeats` -> `render.js` rebuilds the screen with new beats veiled -> `diffState` notices + flashes -> the staged reveal types them out (voice pipelined per beat) -> `watchLateBeats` polls `GET /beats?since=` for background images (look shots, item cards) for ~45s.
+Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> `adapters.mapGameState`/`mapBeats` -> `render.js` morphs the screen with new beats veiled -> `diffState` notices + flashes -> the staged reveal types them out (voice pipelined per beat) -> background media (look shots, item cards, late art) arrives by SSE push: `mediastream.js` listens on `GET /games/{gid}/events` and re-fetches `/state` or `/beats?since=` on signal (60s fallback sweep for SSE-hostile proxies).
 
 ## Files
 
@@ -17,9 +17,10 @@ Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> `adap
 | `src/app.js` | The BOOT facade: `init()` (exported for tests) + auto-init. The controller lives in `src/app/`. |
 | `src/app/ctx.js` | The ONE in-memory state, the voice engine, the api client and root element, shared as live bindings. |
 | `src/app/ui.js` | `render()` (DOM morph via idiomorph), `delegate()` (five root listeners, wired once), the `[data-act]` action dispatcher, the partial busy-lock gate. |
-| `src/app/turns.js` | The turn loop: action/continue, the optimistic echo + failure restore, the wish, the late-image-beat watch. |
+| `src/app/turns.js` | The turn loop: action/continue, the optimistic echo + failure restore, the wish, the post-turn focus return. |
 | `src/app/reveal.js` | The staged reveal: typewriter, veils, voice pacing, follow-scroll, the new-image affordances. |
-| `src/app/game.js` | Library, open/resume, delete, wipe-all, export/import, late-art /state polling. |
+| `src/app/game.js` | Library, open/resume, delete, wipe-all, export/import. |
+| `src/app/mediastream.js` | Media-ready SSE push (one EventSource per game), the /state and /beats one-shot fetchers, the 60s fallback sweep. |
 | `src/app/playctl.js` | Scene/character action buttons, tap-to-inspect + /explain, the give flow, the @ tagger. |
 | `src/app/profilectl.js` | Profile open/refetch and the in-place (flick-free) tab switch. |
 | `src/app/composerctl.js` | Composer modes, the current line as a segment, stacking, the public/private execute paths. |
@@ -57,11 +58,11 @@ Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> `adap
 | Quote stripping on speech | `render.js` (stripWrappingQuotes) | `test/render.test.js` |
 | Speak button states (loading/playing/idle) | `app.js` (speakBeat, applySpeakStates) | `test/play.component.test.js` |
 | Scene-art anchoring (establishing narration, never "latest") | `render.js` (renderStory, sceneArtCard) | `test/render.test.js`, `test/play.component.test.js` |
-| Late image beats (look shots, item unlock cards) | `app.js` (watchLateBeats), `render.js` (renderImageBeat, renderViewPending) | `test/play.component.test.js`, `test/render.test.js` |
+| Late media (look shots, item cards, art) via SSE push + fallback sweep | `app/mediastream.js`, `render.js` (renderImageBeat, renderViewPending) | `test/play.component.test.js` |
 | Item thumbnails + tap-to-inspect + /explain | `render.js` (slot builders, renderInspectModal), `app.js` (openInspect, doExplain) | `test/play.component.test.js` |
 | Trait receipts (celebration tone) | `render.js` (systemTone "trait") | `test/render.test.js` |
 | Transition notices + HUD flashes | `transitions.js`, `app.js` (applyTransitions) | `test/transitions.test.js` |
-| Voice playback (speak-not-stream, FIFO, autoplay split) | `voice.js`, `app.js` (autoplayFor, reveal pipeline) | `test/voice.test.js`, `test/play.component.test.js` |
+| Voice playback (speak-not-stream, FIFO, autoplay split, cloud-bytes branch) | `voice.js`, `app.js` (autoplayFor, reveal pipeline) | `test/voice.test.js`, `test/play.component.test.js` |
 | Theme tokens + the no-literal contract | `themes/hightech.css`, `styles.css` | `test/theme.lint.test.js` |
 | Turn pacing selects (voices per turn / acts per voice) | `render/screens.js` (pacingSelect), `app/settingsctl.js` (NUMERIC_GAME_SETTINGS) | `test/play.component.test.js`, `test/render.test.js` |
 | Private look from the profile (whisper mode:"look"; thread placeholder) | `composer.js` (buildSegment), `app/composerctl.js`, `render/profile.js` | `test/play.component.test.js` |
@@ -71,4 +72,4 @@ Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> `adap
 
 ## Tests
 
-`npm test` (vitest, jsdom): 178 tests in 10 files. Component tests mount the real `app.js` via `init()`, drive it with `@testing-library/user-event`, and intercept the orchestrator with MSW at the network layer (`test/setup.js` holds the default handlers + per-test poller teardown, `test/fixtures.js` the wire-shaped builders). `test/theme.lint.test.js` enforces the theme contract.
+`npm test` (vitest, jsdom): 186 tests in 10 files. Component tests mount the real `app.js` via `init()`, drive it with `@testing-library/user-event`, and intercept the orchestrator with MSW at the network layer (`test/setup.js` holds the default handlers + per-test poller teardown, `test/fixtures.js` the wire-shaped builders). `test/theme.lint.test.js` enforces the theme contract.

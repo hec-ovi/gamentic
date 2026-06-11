@@ -60,3 +60,16 @@ test("sending a creator message stores the session id for a later restore", asyn
   expect(await screen.findByText("Tell me more.")).toBeTruthy();
   expect(localStorage.getItem(SESSION_KEY)).toMatch(/^creator-/);
 });
+
+test("focus returns to the creator chat box when the reply lands", async () => {
+  server.use(http.post(`${API}/create/message`, () => HttpResponse.json({ reply: "A lighthouse. Good. What haunts it?" })));
+  const u = user();
+  await mountApp();
+  await u.click(await screen.findByRole("button", { name: /forge a world/i }));
+  const box = await screen.findByPlaceholderText(/describe your world/i);
+  await u.type(box, "a haunted lighthouse");
+  await u.click(screen.getByRole("button", { name: /^send$/i })); // focus lands on the button
+  await screen.findByText(/what haunts it/i);
+  // the reply landed: the keyboard comes back to the chat box on its own
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByPlaceholderText(/describe your world/i)));
+});

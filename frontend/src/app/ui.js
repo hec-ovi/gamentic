@@ -8,12 +8,13 @@ import { executeComposer, executePrivate, setComposerMode, stackSegment, unstack
 import { beginAdventure, clearCreatorSession, enterCreator, resetCreator, sendCreatorMessage } from "./creatorctl.js";
 import { root, state, storyNearBottom, voice } from "./ctx.js";
 import { showHelp } from "./cues.js";
-import { exportGame, importGameFile, markArtReveals, openGame, refreshLibrary, removeGame, stopPolling, wipeEverything } from "./game.js";
+import { exportGame, importGameFile, markArtReveals, openGame, refreshLibrary, removeGame, wipeEverything } from "./game.js";
+import { stopMediaWatch } from "./mediastream.js";
 import { closeTagger, doExplain, doGive, onCharAction, openInspect, openTagger, takeSceneAction } from "./playctl.js";
 import { openProfile, switchProfileTab } from "./profilectl.js";
 import { applyMemorySetting, patchGameSettings, updateSetting } from "./settingsctl.js";
 import { applySpeakStates, speakBeat } from "./speech.js";
-import { continueStory, stopLateWatch, takeTurn } from "./turns.js";
+import { continueStory, takeTurn } from "./turns.js";
 
 // ---------------------------------------------------------------------------
 // render + event binding
@@ -220,8 +221,7 @@ export function onAction(act, el) {
       enterCreator();
       break;
     case "go-menu":
-      stopPolling();
-      stopLateWatch();
+      stopMediaWatch();
       voice.stop(); // the story must not keep talking over the menu
       voice.flush();
       state.view = "menu";
@@ -229,8 +229,7 @@ export function onAction(act, el) {
       refreshLibrary();
       break;
     case "go-library":
-      stopPolling();
-      stopLateWatch();
+      stopMediaWatch();
       voice.stop();
       voice.flush();
       state.view = "library";

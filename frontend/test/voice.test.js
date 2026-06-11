@@ -204,3 +204,38 @@ test("prepare passes the beat's emotion through to /voice/speak (omitted when em
   assert.equal(calls.length, 2);
   assert.equal("emotion" in calls[1], false);
 });
+
+test("cloud audio passthrough: an audio/* response becomes a playable object URL", async () => {
+  // when nginx retargets /voice at the orchestrator (cloud provider, keys
+  // server-side), the response is raw audio bytes, not { audio_url }
+  const fetchImpl = async () => ({
+    ok: true,
+    headers: { get: (k) => (k.toLowerCase() === "content-type" ? "audio/wav" : null) },
+    blob: async () => ({ size: 4, type: "audio/wav" }),
+  });
+  const hadCreate = typeof URL.createObjectURL === "function";
+  const orig = URL.createObjectURL;
+  URL.createObjectURL = () => "blob:cloud-line-1";
+  try {
+    const v = new Voice({ fetchImpl });
+    const got = await v.prepare({ text: "Hush now.", voiceId: "v-cloud" });
+    assert.deepEqual(got, { audioUrl: "blob:cloud-line-1", duration: null });
+    // and it caches like the url shape does
+    const again = await v.prepare({ text: "Hush now.", voiceId: "v-cloud" });
+    assert.equal(again.audioUrl, "blob:cloud-line-1");
+  } finally {
+    if (hadCreate) URL.createObjectURL = orig;
+    else delete URL.createObjectURL;
+  }
+});
+
+test("the local { audio_url } shape is untouched by the bytes branch", async () => {
+  const fetchImpl = async () => ({
+    ok: true,
+    headers: { get: (k) => (k.toLowerCase() === "content-type" ? "application/json" : null) },
+    json: async () => ({ audio_url: "/audio/x.wav", duration_s: 2.5 }),
+  });
+  const v = new Voice({ fetchImpl });
+  const got = await v.prepare({ text: "hi", voiceId: "v1" });
+  assert.deepEqual(got, { audioUrl: "/audio/x.wav", duration: 2.5 });
+});

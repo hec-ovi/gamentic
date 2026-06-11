@@ -9,7 +9,7 @@ import { screen, within, waitFor } from "@testing-library/dom";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { server, mountApp } from "./setup.js";
-import { makeState, makeBeat, makeProfile } from "./fixtures.js";
+import { FakeEventSource, makeState, makeBeat, makeProfile } from "./fixtures.js";
 
 const API = "http://localhost:8000";
 const user = () => userEvent.setup({ delay: null });
@@ -758,28 +758,37 @@ test("a turn that reveals an exit shows a transition notice and the exit becomes
   expect(screen.getByRole("button", { name: /the back room/i })).toBeTruthy();
 });
 
-test("art polling fills the scene image into the prose once it is generated", async () => {
+test("a scene media-ready event (SSE) slots the generated image into the prose", async () => {
   const u = user();
-  const pending = makeState({ images_enabled: true });
-  const ready = makeState({
-    images_enabled: true,
-    scene: { id: "sc1", name: "The Last Breath", description: "d", status: "tense", image_url: "/media/g/scene.png", exits: [], items: [], available_actions: [] },
-  });
-  let calls = 0;
-  server.use(
-    http.get(`${API}/games/:id/state`, () => {
-      calls += 1;
-      return HttpResponse.json(calls > 1 ? ready : pending);
-    }),
-  );
-  await gotoPlay(u);
-  // images on + no art yet -> a loader card in the story
-  expect(document.querySelector("#storyStream .prose-art.art-loading")).toBeTruthy();
-  // the poll (2.5s interval) swaps the real image in
-  await waitFor(() => expect(document.querySelector('#storyStream .prose-art img[src="/media/g/scene.png"]')).toBeTruthy(), {
-    timeout: 7000,
-  });
-}, 10000);
+  vi.stubGlobal("EventSource", FakeEventSource);
+  try {
+    const pending = makeState({ images_enabled: true });
+    const ready = makeState({
+      images_enabled: true,
+      scene: { id: "sc1", name: "The Last Breath", description: "d", status: "tense", image_url: "/media/g/scene.png", exits: [], items: [], available_actions: [] },
+    });
+    let calls = 0;
+    server.use(
+      http.get(`${API}/games/:id/state`, () => {
+        calls += 1;
+        return HttpResponse.json(calls > 1 ? ready : pending);
+      }),
+    );
+    await gotoPlay(u);
+    // images on + no art yet -> a loader card in the story
+    expect(document.querySelector("#storyStream .prose-art.art-loading")).toBeTruthy();
+    // ONE stream per open game, on the orchestrator's events endpoint
+    const es = FakeEventSource.instances[FakeEventSource.instances.length - 1];
+    expect(es.url).toMatch(/\/games\/g-test\/events$/);
+    // the backend announces the persisted render; the app re-fetches /state
+    es.open();
+    es.emit({ kind: "scene", scene_id: "sc1" });
+    await waitFor(() => expect(document.querySelector('#storyStream .prose-art img[src="/media/g/scene.png"]')).toBeTruthy());
+  } finally {
+    vi.unstubAllGlobals();
+    FakeEventSource.instances.length = 0;
+  }
+});
 
 // state override with images enabled + scene art present (no poll loader noise)
 const IMAGED = () =>
@@ -841,9 +850,12 @@ test("the scene base actions rewire: 'Look around' and 'Search' send look segmen
   expect(bodies[1].segments).toEqual([{ type: "look", text: "for anything hidden or useful here" }]);
 });
 
-test("after a look turn, late image beats are polled in and the rendering hint resolves", async () => {
+test("after a look turn, the SSE beat event pulls the late images in and the rendering hint resolves", async () => {
   const u = user();
-  let polled = 0;
+  vi.stubGlobal("EventSource", FakeEventSource);
+  const intoView = vi.fn();
+  Element.prototype.scrollIntoView = intoView; // jsdom has none; the arrival MUST scroll
+  let imagesReady = false;
   server.use(
     http.get(`${API}/games/:id/state`, () => HttpResponse.json(IMAGED())),
     http.post(`${API}/games/:id/action`, () =>
@@ -853,9 +865,7 @@ test("after a look turn, late image beats are polled in and the rendering hint r
       const since = new URL(request.url).searchParams.get("since");
       if (since === null)
         return HttpResponse.json({ beats: [makeBeat({ id: "open", turn_index: 1, text: "Rain hammers the window of The Last Breath." })] });
-      polled += 1;
-      // the narrator-granted image + an item unlock card land on the SECOND poll
-      if (Number(since) >= 2 && polled > 1) {
+      if (Number(since) >= 2 && imagesReady) {
         return HttpResponse.json({
           beats: [
             makeBeat({ id: "li1", turn_index: 3, seq: 0, speaker: "narrator", kind: "image", text: "the whole scene", image_url: "/media/g-test/look1.png" }),
@@ -874,10 +884,14 @@ test("after a look turn, late image beats are polled in and the rendering hint r
   // the subtle hint shows while the look image renders in the background
   await waitFor(() => expect(document.querySelector(".render-hint")).toBeTruthy());
 
-  // the late beats land via GET /beats?since= (3s cadence), through the staged reveal
+  // the backend announces the persisted beat; the app pulls GET /beats?since=
+  imagesReady = true;
+  FakeEventSource.instances[FakeEventSource.instances.length - 1].emit({ kind: "beat", private_with: null });
   await waitFor(() => expect(document.querySelector('.beat-image img[src="/media/g-test/look1.png"]')).toBeTruthy(), {
     timeout: 12000,
   });
+  // an arriving image ALWAYS comes into view (owner, round 3.5)
+  await waitFor(() => expect(intoView).toHaveBeenCalled());
   // the narrator shot is the hero; the item card is SMALL with its name label
   const hero = document.querySelector('[data-beat-id="li1"]');
   expect(hero.classList.contains("item-card")).toBe(false);
@@ -890,6 +904,9 @@ test("after a look turn, late image beats are polled in and the rendering hint r
   });
   // and the hint resolves once the image arrives
   await waitFor(() => expect(document.querySelector(".render-hint")).toBeNull());
+  vi.unstubAllGlobals();
+  FakeEventSource.instances.length = 0;
+  delete Element.prototype.scrollIntoView;
 }, 20000);
 
 test("Continue advances the story with NO player input and renders no player beat", async () => {
@@ -1337,7 +1354,7 @@ test("turn pacing: the two selects PATCH turn_voices / turn_acts; Default sends 
   await waitFor(() => expect(patches).toContainEqual({ turn_acts: 0 }));
 });
 
-test("a look's rendering hint NEVER expires: it outlives the 45s window, polling backs off, and the image swaps in", async () => {
+test("no SSE: the hint never expires and the 60s fallback sweep still pulls the guaranteed image", async () => {
   const u = user();
   const realSetTimeout = globalThis.setTimeout;
   const realTick = (ms = 10) => new Promise((r) => realSetTimeout(r, ms));
@@ -1363,10 +1380,14 @@ test("a look's rendering hint NEVER expires: it outlives the 45s window, polling
   await u.click(await screen.findByRole("button", { name: /enter your saved worlds/i }));
   await u.click(await screen.findByRole("button", { name: /^enter$/i }));
   await screen.findAllByText("The Last Breath");
-  app.destroy(); // stop the real-clock pollers from the open before faking time
+  app.destroy(); // stop the real-clock sweep from the open before faking time
 
   vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval"] });
   try {
+    // restart the media watch on the FAKE clock (same module registry as the app)
+    const { watchMedia } = await import("../src/app/mediastream.js");
+    watchMedia(app.state.active);
+
     // fire the look natively (user-event sleeps don't mix with a fake clock)
     document.querySelector('[data-act="cmp-mode"][data-mode="look"]').click();
     document.querySelector("#cmpInput").textContent = "the wreck";
@@ -1374,32 +1395,28 @@ test("a look's rendering hint NEVER expires: it outlives the 45s window, polling
     await realTick(30); // let the POST resolve through MSW
     expect(document.querySelector(".render-hint")).toBeTruthy();
 
-    const drain = async (fakeMs) => {
-      for (let t = 0; t < fakeMs; t += 3000) {
-        await vi.advanceTimersByTimeAsync(3000);
-        await realTick(5); // let each tick's fetch land
+    const sweep = async (fakeMs) => {
+      for (let s = 0; s < fakeMs; s += 30000) {
+        await vi.advanceTimersByTimeAsync(30000);
+        await realTick(5); // let each sweep's fetch land
       }
     };
 
-    // past the old 45s cliff: the hint MUST survive (the image is guaranteed)
-    await drain(48000);
+    // a minute of silence: the sweep polled once, the hint is STILL there
+    await sweep(61000);
+    expect(polls.length).toBeGreaterThanOrEqual(1);
     expect(document.querySelector(".render-hint")).toBeTruthy();
 
-    // after ~60s the poll backs off to every 3rd tick (~9s)
-    await drain(15000); // through the 60s mark
-    const atBackoff = polls.length;
-    await drain(30000); // 30s inside the backoff zone: ~3-4 polls, not 10
-    const inBackoff = polls.length - atBackoff;
-    expect(inBackoff).toBeGreaterThanOrEqual(2);
-    expect(inBackoff).toBeLessThanOrEqual(5);
+    // five more minutes of silence: still no lie, the hint holds
+    await sweep(300000);
     expect(document.querySelector(".render-hint")).toBeTruthy();
 
-    // the render finally lands: the placeholder swaps for the image
+    // the render finally lands: the next sweep swaps it in place
     lateImage = makeBeat({
       id: "lk-img", kind: "image", speaker: "narrator", turn_index: 8,
       image_url: "/media/g-test/look.png", text: "The wreck up close, hull torn open.",
     });
-    await drain(12000);
+    await sweep(61000);
     expect(document.querySelector(".render-hint")).toBeNull();
     expect(document.querySelector('#storyStream [data-beat-id="lk-img"] img')).toBeTruthy();
   } finally {
@@ -1510,4 +1527,105 @@ test("delegated noop shield: clicks inside a modal body never reach the overlay'
   await u.click(document.querySelector(".modal-overlay"));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: /delete adventure/i })).toBeNull());
   expect(screen.getByText("Test Adventure")).toBeTruthy(); // nothing was deleted
+});
+
+// ---------------------------------------------------------------------------
+// round 3.5: SSE reconnect, whole-figure lightbox, focus return
+// ---------------------------------------------------------------------------
+
+test("an SSE drop owes a catch-up: reconnect re-fetches /state AND /beats once", async () => {
+  const u = user();
+  vi.stubGlobal("EventSource", FakeEventSource);
+  try {
+    let stateCalls = 0;
+    const sinceCalls = [];
+    server.use(
+      http.get(`${API}/games/:id/state`, () => {
+        stateCalls += 1;
+        return HttpResponse.json(makeState({ images_enabled: true }));
+      }),
+      http.get(`${API}/games/:id/beats`, ({ request }) => {
+        const since = new URL(request.url).searchParams.get("since");
+        if (since !== null) sinceCalls.push(since);
+        return HttpResponse.json({
+          beats: since === null ? [makeBeat({ id: "open", text: "Rain hammers the window of The Last Breath." })] : [],
+        });
+      }),
+    );
+    await gotoPlay(u);
+    const es = FakeEventSource.instances[FakeEventSource.instances.length - 1];
+    const before = stateCalls;
+    es.open(); // a clean first open owes nothing
+    await waitFor(() => expect(stateCalls).toBe(before));
+    es.fail(); // the proxy hiccups; the browser will reconnect on its own
+    es.open(); // ...and the reconnect catches up on BOTH endpoints
+    await waitFor(() => expect(stateCalls).toBe(before + 1));
+    await waitFor(() => expect(sinceCalls.length).toBeGreaterThanOrEqual(1));
+  } finally {
+    vi.unstubAllGlobals();
+    FakeEventSource.instances.length = 0;
+  }
+});
+
+test("the WHOLE image figure opens the lightbox - clicking the caption plate included", async () => {
+  const u = user();
+  server.use(
+    http.get(`${API}/games/:id/beats`, ({ request }) =>
+      new URL(request.url).searchParams.has("since")
+        ? HttpResponse.json({ beats: [] })
+        : HttpResponse.json({
+            beats: [
+              makeBeat({ id: "open", text: "Rain hammers the window of The Last Breath." }),
+              makeBeat({ id: "img1", kind: "image", speaker: "narrator", turn_index: 1, seq: 1, text: "The bar in neon dusk.", image_url: "/media/g-test/dusk.png" }),
+            ],
+          }),
+    ),
+  );
+  await gotoPlay(u);
+  const fig = await waitFor(() => {
+    const f = document.querySelector('figure.beat-image[data-beat-id="img1"]');
+    expect(f).toBeTruthy();
+    return f;
+  });
+  // click the CAPTION, not the img: the whole figure is the trigger now
+  await u.click(fig.querySelector("figcaption"));
+  await waitFor(() => expect(document.querySelector(".lightbox-overlay")).toBeTruthy());
+  expect(document.querySelector(".lightbox-overlay img").getAttribute("src")).toBe("/media/g-test/dusk.png");
+  expect(document.querySelector(".lightbox-caption").textContent).toMatch(/neon dusk/);
+  await u.click(document.querySelector(".lightbox-overlay"));
+  await waitFor(() => expect(document.querySelector(".lightbox-overlay")).toBeNull());
+});
+
+test("focus returns to the main composer when a turn resolves", async () => {
+  const u = user();
+  server.use(
+    http.post(`${API}/games/:id/action`, async () => {
+      await delay(150);
+      return HttpResponse.json({ beats: [makeBeat({ id: "n9", text: "Done." })], state: makeState() });
+    }),
+  );
+  await gotoPlay(u);
+  await u.type(cmpBox(), "open the door");
+  await u.click(screen.getByRole("button", { name: /^send$/i })); // focus lands on the button
+  await waitFor(composerLive, { timeout: 4000 });
+  await waitFor(() => expect(document.activeElement).toBe(document.querySelector("#cmpInput")));
+});
+
+test("focus returns to the WHISPER composer when a whisper turn resolves", async () => {
+  const u = user();
+  server.use(
+    http.post(`${API}/games/:id/action`, async () => {
+      await delay(150);
+      return HttpResponse.json({ beats: [makeBeat({ text: "ok", private_with: "c1" })], state: makeState() });
+    }),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getByRole("tab", { name: /whisper/i })).toBeTruthy());
+  await u.click(within(profileEl()).getByRole("tab", { name: /whisper/i }));
+  await waitFor(() => expect(pmBox(/what you say/i)).toBeTruthy());
+  await u.type(pmBox(/what you say/i), "psst");
+  await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
+  await waitFor(() => expect(document.activeElement).toBe(document.querySelector("#pmInput")), { timeout: 4000 });
 });

@@ -5,11 +5,11 @@ import { mapBeats, mapGameState } from "../adapters.js";
 import { diffState } from "../transitions.js";
 import { api, root, state } from "./ctx.js";
 import { applyTransitions, showToast } from "./cues.js";
-import { maybePollForArt, stopPolling } from "./game.js";
+import { pullBeats } from "./mediastream.js";
 import { refreshProfile } from "./profilectl.js";
 import { startReveal } from "./reveal.js";
 import { withVoice } from "./speech.js";
-import { render } from "./ui.js";
+import { focusComposer, render } from "./ui.js";
 
 // ---------------------------------------------------------------------------
 // take a turn
@@ -127,8 +127,6 @@ export function captureWish(g) {
 export async function resolveTurn(g, send, { look = false, echo = null, restore = null, wish = null, via = null } = {}) {
   g.generating = true;
   g.skipReveal = true; // fast-forward any reveal still running from last turn
-  stopLateWatch(); // the new turn supersedes the previous watch window
-  stopPolling(); // an in-flight /state art poll must never clobber the fresh state
   if (echo && echo.length) g.beats = [...g.beats, ...echo];
   render();
   let failed = false;
@@ -165,10 +163,31 @@ export async function resolveTurn(g, send, { look = false, echo = null, restore 
     if (failed) restoreInput(g, restore);
     applyTransitions(g); // notices + one-shot flashes from the diff
     startReveal(g);
-    maybePollForArt();
-    watchLateBeats(g); // narrator images + item unlock cards land seconds later
+    if (g.pullOwed) {
+      g.pullOwed = false;
+      pullBeats(g); // a media-ready event fired mid-turn; settle the debt now
+    }
     if (g.profile) refreshProfile(g); // the open profile reflects the new turn
+    refocusComposer(g); // the lock lifted: hand the keyboard straight back
   }
+}
+
+// The reply landed and the composer unlocked: focus the active input so the
+// player never has to click the box again after every turn (owner request).
+// Never steal focus from another control they are actively using (the wish
+// line, a settings field, a different composer).
+function refocusComposer(g) {
+  if (state.active !== g || state.view !== "play") return;
+  const focused = typeof document !== "undefined" ? document.activeElement : null;
+  if (
+    focused &&
+    focused !== document.body &&
+    (focused.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(focused.tagName))
+  ) {
+    return;
+  }
+  const pm = g.profile && g.profile.tab === "whisper";
+  focusComposer(pm ? "#pmInput" : "#cmpInput");
 }
 
 // Put the typed content back where it came from after a failed turn: a single
@@ -213,68 +232,3 @@ export function lastTurnIndexOf(beats, fallback = 0) {
   for (const b of beats) if (Number.isInteger(b.turnIndex) && b.turnIndex > max) max = b.turnIndex;
   return max;
 }
-
-// ---------------------------------------------------------------------------
-// Post-turn image watch: narrator-granted images (look turns, dramatic moments)
-// and item unlock cards render in the BACKGROUND and land as new image beats a
-// few seconds after the turn. Poll GET /beats?since=<last turn_index> every ~3s
-// for ~45s and append what arrives through the usual staged reveal.
-// ---------------------------------------------------------------------------
-
-export const LATE_BEAT_INTERVAL = 3000;
-
-export const LATE_BEAT_TICKS = 15; // ~45s window for NON-look turns
-
-// A LOOK turn ALWAYS produces exactly one image beat (narrator framing or the
-// server's snapshot fallback), so its placeholder must NEVER expire on a timer:
-// renders queue behind other GPU work and can lag minutes. After ~60s the poll
-// just backs off to every 3rd tick (~9s) and keeps waiting for the swap-in.
-export const LATE_BEAT_BACKOFF_AFTER = 20; // ticks (~60s)
-
-export const LATE_BEAT_BACKOFF_EVERY = 3; // then poll every 3rd tick (~9s)
-
-export function watchLateBeats(g) {
-  stopLateWatch();
-  if (!g || !Number.isInteger(g.lastTurnIndex)) return;
-  let ticks = 0;
-  const timer = setInterval(async () => {
-    // peeking at settings PAUSES the watch (the game is live behind it);
-    // only leaving the game ends it
-    if (state.active === g && state.view === "settings") return;
-    ticks += 1;
-    if (state.active !== g || state.view !== "play") return stopLateWatch();
-    // the generic window applies only when no image is owed (a spontaneous
-    // image is a maybe); a pending look image keeps the watch alive
-    if (ticks > LATE_BEAT_TICKS && !g.pendingView) return stopLateWatch();
-    if (ticks > LATE_BEAT_BACKOFF_AFTER && ticks % LATE_BEAT_BACKOFF_EVERY !== 0) return;
-    try {
-      const res = await api.getBeats(g.id, g.lastTurnIndex);
-      // a new turn superseded this watch, or the user left, while we awaited
-      if (lateTimer !== timer || state.active !== g || state.view !== "play") return;
-      const seen = new Set(g.beats.map((b) => b.id));
-      const fresh = mapBeats((res && res.beats) || [])
-        .filter((b) => !seen.has(b.id))
-        .map((b) => withVoice(b));
-      if (!fresh.length) return;
-      g.beats = [...g.beats, ...fresh];
-      g.lastTurnIndex = lastTurnIndexOf(g.beats, g.lastTurnIndex);
-      if (fresh.some((b) => b.kind === "image" && b.speaker !== "system")) g.pendingView = false;
-      // a panel-launched look's image lands here, seconds later: mirror it
-      const tagged = g.lastVia ? fresh.map((b) => (b.kind === "image" ? { ...b, viaProfile: g.lastVia } : b)) : fresh;
-      if (g.lastVia) g.beats = [...g.beats.filter((b) => !tagged.some((t) => t.id === b.id)), ...tagged];
-      g.revealQueue = [...(g.revealQueue || []), ...fresh.map((b) => b.id)];
-      render();
-      startReveal(g);
-    } catch {
-      /* keep watching */
-    }
-  }, LATE_BEAT_INTERVAL);
-  lateTimer = timer;
-}
-
-export function stopLateWatch() {
-  if (lateTimer) clearInterval(lateTimer);
-  lateTimer = null;
-}
-
-export let lateTimer = null; // post-turn late-image-beat polling (look images, item cards)

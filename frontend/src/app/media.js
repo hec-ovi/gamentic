@@ -6,9 +6,17 @@
 // ---------------------------------------------------------------------------
 
 export function maybeOpenLightbox(e) {
-  const img = e.target;
-  if (!img || img.tagName !== "IMG") return;
-  if (img.closest("button")) return; // item-slot buttons keep their own click
+  let img = e.target && e.target.tagName === "IMG" ? e.target : null;
+  if (!img && e.target && e.target.closest) {
+    // the WHOLE figure opens the image - caption plate and frame included
+    // (the prose-art figcaption is pointer-events:none chrome, so its clicks
+    // land on the figure, never the img). A still-loading skeleton has
+    // nothing to show and stays inert.
+    const fig = e.target.closest("figure.prose-art, figure.beat-image, .pm-image figure");
+    if (fig && !fig.classList.contains("art-loading")) img = fig.querySelector("img");
+  }
+  if (!img) return;
+  if (e.target.closest && e.target.closest("button")) return; // item-slot buttons keep their own click
   const src = img.getAttribute("src") || "";
   if (!src.startsWith("/")) return; // only our same-origin game media
   e.preventDefault();

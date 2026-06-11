@@ -5,9 +5,9 @@ import { mapBeats, mapGameState } from "../adapters.js";
 import { clearCreatorSession, resetCreator } from "./creatorctl.js";
 import { api, root, state, voice } from "./ctx.js";
 import { showToast } from "./cues.js";
-import { announceImage } from "./reveal.js";
 import { withVoice } from "./speech.js";
-import { lastTurnIndexOf, stopLateWatch, watchLateBeats } from "./turns.js";
+import { lastTurnIndexOf } from "./turns.js";
+import { stopMediaWatch, watchMedia } from "./mediastream.js";
 import { render } from "./ui.js";
 
 // ---------------------------------------------------------------------------
@@ -35,8 +35,7 @@ export async function wipeEverything() {
   render();
   try {
     await api.wipeAll();
-    stopPolling();
-    stopLateWatch();
+    stopMediaWatch();
     voice.stop();
     voice.flush();
     state.active = null;
@@ -72,8 +71,7 @@ export async function removeGame(id) {
 // ---------------------------------------------------------------------------
 
 export async function openGame(gameId) {
-  stopPolling();
-  stopLateWatch();
+  stopMediaWatch();
   state.active = {
     id: gameId,
     state: null,
@@ -112,8 +110,7 @@ export async function openGame(gameId) {
   } finally {
     if (state.active) state.active.generating = false;
     render();
-    maybePollForArt();
-    watchLateBeats(state.active); // a just-left turn's image may still land
+    watchMedia(state.active); // media-ready push + the slow fallback sweep
   }
 }
 
@@ -184,68 +181,6 @@ export function readFileText(file) {
   });
 }
 
-export let pollTimer = null; // late-art /state polling
-
-// (turn autoplay is handled by the staged reveal: each speech beat's audio is
-// prepared in a pipeline and played when that beat reveals)
-
-// ---------------------------------------------------------------------------
-// late-arriving art: media is optional + async (image gen lags). Poll /state
-// until the scene image and character faces fill in, then slot them in. Slots
-// already reserve space so swapping art in never relayouts.
-// ---------------------------------------------------------------------------
-
-export function artMissing(s) {
-  if (!s) return false;
-  // images_enabled is the rule: false means images are OFF - nothing is coming,
-  // show static placeholders and never poll.
-  if (!s.imagesEnabled) return false;
-  const sceneMissing = s.scene && !s.scene.imageUrl;
-  const portraitMissing = (s.characters || []).some((c) => c.alive && c.present && (!c.faceUrl || !c.bodyUrl));
-  return Boolean(sceneMissing || portraitMissing);
-}
-
-export function maybePollForArt() {
-  stopPolling();
-  const g = state.active;
-  if (!g || !g.state || !artMissing(g.state)) return;
-
-  let tries = 0;
-  const timer = setInterval(async () => {
-    // peeking at settings PAUSES the poll (the game is live behind it)
-    if (state.active === g && state.view === "settings") return;
-    tries += 1;
-    if (state.active !== g || state.view !== "play" || tries > 16) return stopPolling();
-    if (g.generating) return; // the turn's own response carries fresher state
-    try {
-      const mapped = mapGameState(await api.getState(g.id));
-      // a turn resolved (or the user left) while we awaited: this snapshot is
-      // STALE and must never clobber the fresh post-turn state
-      if (pollTimer !== timer || state.active !== g || g.generating) return;
-      const prev = g.state;
-      const gainedPortrait = mapped.characters.some((c) => {
-        const p = prev.characters.find((x) => x.id === c.id) || {};
-        return (c.faceUrl && !p.faceUrl) || (c.bodyUrl && !p.bodyUrl);
-      });
-      const gainedScene = mapped.scene && mapped.scene.imageUrl && !(prev.scene && prev.scene.imageUrl);
-      g.state = mapped;
-      // don't yank the DOM out from under a running typewriter; the art shows
-      // on the next natural render
-      if ((gainedPortrait || gainedScene) && state.view === "play" && !g.revealing) {
-        render();
-        if (gainedScene) {
-          const art = root.querySelector("#storyStream .prose-art img");
-          if (art) announceImage(art.closest(".prose-art") || art);
-        }
-      }
-      if (!artMissing(mapped)) stopPolling();
-    } catch {
-      /* keep trying */
-    }
-  }, 2500);
-  pollTimer = timer;
-}
-
 // Card-reveal: any [data-art] image not yet seen this session gets the
 // collection-card reveal animation, exactly once per url (re-renders rebuild
 // the DOM every turn; without the seen-set the effect would replay each time).
@@ -261,7 +196,3 @@ export function markArtReveals(g) {
   });
 }
 
-export function stopPolling() {
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = null;
-}
