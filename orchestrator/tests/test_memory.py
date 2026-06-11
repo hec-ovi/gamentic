@@ -2,8 +2,9 @@
 
 These pin the two hardest invariants of the brain:
   - Narrator memory: a remembered fact is re-injected into the narrator's context on later turns.
-  - Character POV: a character's context contains ONLY what it could perceive at its location,
-    including same-scene dialogue (within-scene memory) but NOT other locations or hidden state.
+  - Character POV: a character's context contains ONLY what it WITNESSED (stamped per beat),
+    including same-scene dialogue (within-scene memory) but NOT scenes it was absent from
+    or hidden state. A follower keeps what it lived through across moves.
 """
 from app import llm
 
@@ -69,7 +70,9 @@ def test_character_sees_same_scene_dialogue(client, fake_llm):
     assert "what was that noise" not in _user(mara_call).lower()
 
 
-def test_character_pov_excludes_other_locations(client, fake_llm):
+def test_character_pov_excludes_unwitnessed_locations(client, fake_llm):
+    """Witnessed POV: Mara (following) keeps the hall scene she lived through after the
+    move; Bron (left behind in the hall) never sees what was said in the cellar."""
     from app import db
     gid = _new(client, _two_char_world())
     # Mara follows the player so she actually moves to the cellar (scene persistence)
@@ -78,23 +81,33 @@ def test_character_pov_excludes_other_locations(client, fake_llm):
     # turn 1 in the hall: Mara says something hall-specific
     fake_llm.narrator_script = [
         llm.LLMReply(content="The hall is silent.", tool_calls=[llm.ToolCall("cue_character", {"name": "Mara"})]),
-        # turn 2: move everyone to the cellar, cue Mara again
+        # turn 2: move to the cellar (Mara follows, Bron stays), cue Mara again
         llm.LLMReply(content="You descend into the cellar's damp gloom.",
                      tool_calls=[llm.ToolCall("move_location", {"location": "cellar"}),
                                  llm.ToolCall("cue_character", {"name": "Mara"})]),
+        # turn 3: back to the hall, cue Bron
+        llm.LLMReply(content="You climb back up.",
+                     tool_calls=[llm.ToolCall("move_location", {"location": "hall"}),
+                                 llm.ToolCall("cue_character", {"name": "Bron"})]),
     ]
     fake_llm.character_replies = {"Mara": llm.LLMReply(content="The hall reeks of old rot.")}
     client.post(f"/games/{gid}/action", json={"action": "I look around the hall."})
 
-    fake_llm.character_replies = {"Mara": llm.LLMReply(content="It's colder down here.")}
+    fake_llm.character_replies = {"Mara": llm.LLMReply(content="CELLAR_SECRET down here.")}
     client.post(f"/games/{gid}/action", json={"action": "I take the stairs down."})
 
-    # Mara's 2nd context (now in the cellar) must not carry the hall scene
+    # Mara's 2nd context (now in the cellar) KEEPS the hall scene she witnessed
     mara_calls = [c for c in fake_llm.character_calls() if c["system"].startswith("You are Mara")]
     cellar_ctx = _user(mara_calls[-1])
     assert "cellar" in cellar_ctx.lower()
-    assert "reeks of old rot" not in cellar_ctx          # hall-only dialogue is gone
-    assert "The hall is silent" not in cellar_ctx        # hall-only narration is gone
+    assert "reeks of old rot" in cellar_ctx              # the follower remembers
+
+    fake_llm.character_replies = {"Bron": llm.LLMReply(content="You were gone a while.")}
+    client.post(f"/games/{gid}/action", json={"action": "I head back up."})
+    bron_calls = [c for c in fake_llm.character_calls() if c["system"].startswith("You are Bron")]
+    bron_ctx = _user(bron_calls[-1])
+    assert "CELLAR_SECRET" not in bron_ctx               # he was not there
+    assert "damp gloom" not in bron_ctx                  # nor the cellar narration
 
 
 def test_narrator_sees_full_history_across_locations(client, fake_llm):

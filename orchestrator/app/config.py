@@ -32,13 +32,26 @@ class Settings:
     HISTORY_BEATS = int(os.getenv("HISTORY_BEATS", "80"))   # raw recent beats fed to narrator
     # Rolling story recap: everything OLDER than the recent turns gets folded into a
     # compact facts-only summary (one background LLM call), so the narrator knows the
-    # WHOLE story at a bounded token cost. Characters are NEVER summarized (they keep
-    # their small scene windows by design).
+    # WHOLE story at a bounded token cost. Characters fold separately (CHAR_SUMMARY_*
+    # below) from witnessed beats only.
     SUMMARY_ENABLED = os.getenv("SUMMARY_ENABLED", "true").lower() == "true"
     SUMMARY_EVERY_TURNS = int(os.getenv("SUMMARY_EVERY_TURNS", "10"))  # fold cadence
     SUMMARY_KEEP_TURNS = int(os.getenv("SUMMARY_KEEP_TURNS", "8"))     # newest turns never folded
     SUMMARY_MAX_TOKENS = int(os.getenv("SUMMARY_MAX_TOKENS", "640"))
-    SCENE_BEATS = int(os.getenv("SCENE_BEATS", "14"))       # recent beats a character perceives
+    SCENE_BEATS = int(os.getenv("SCENE_BEATS", "14"))       # legacy location window (scene_beats_for_character)
+    # Character memory (each character agent has its OWN whole context, bounded):
+    # verbatim window = the newest beats THEY witnessed (stamped per beat, follows them
+    # across scenes); everything older folds into their private recap below.
+    CHAR_HISTORY_BEATS = int(os.getenv("CHAR_HISTORY_BEATS", "30"))
+    # Per-character rolling recap: when a character has accumulated CHAR_SUMMARY_EVERY
+    # unfolded witnessed BEATS (the cadence unit is beats; the fold cursor is a beats
+    # turn_index like the game recap), one background LLM call folds them into their
+    # memory_summary. Only story-central characters ever cross the threshold, so this
+    # never adds a per-turn call for the whole cast.
+    CHAR_SUMMARY_ENABLED = os.getenv("CHAR_SUMMARY_ENABLED", "true").lower() == "true"
+    CHAR_SUMMARY_EVERY = int(os.getenv("CHAR_SUMMARY_EVERY", "12"))      # cadence, in witnessed beats
+    CHAR_SUMMARY_KEEP_TURNS = int(os.getenv("CHAR_SUMMARY_KEEP_TURNS", "8"))  # newest turns never folded
+    CHAR_SUMMARY_MAX_TOKENS = int(os.getenv("CHAR_SUMMARY_MAX_TOKENS", "320"))
     LORE_BUDGET = int(os.getenv("LORE_BUDGET", "8"))        # max lore entries injected
     MAX_CHARACTER_REACTIONS = int(os.getenv("MAX_CHARACTER_REACTIONS", "3"))
     # Multi-actor cascade caps (pacing + runaway-loop guard; research: cap cascade depth)

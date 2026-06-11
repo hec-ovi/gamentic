@@ -201,6 +201,13 @@ def set_character_context(conn, char_id: str, used: int) -> None:
     conn.execute("UPDATE characters SET context_used=? WHERE id=?", (int(used or 0), char_id))
 
 
+def set_character_summary(conn, cid: str, text: str, through_turn: int) -> None:
+    """Store a character's updated private recap and the beats turn_index it covers
+    through (the same cursor unit as the game recap)."""
+    conn.execute("UPDATE characters SET memory_summary=?, summarized_through=? WHERE id=?",
+                 (text, int(through_turn), cid))
+
+
 # ---------- traits (personality unlocked through play) ----------
 
 def add_trait(conn, cid: str, text: str, cap: int) -> str | None:
@@ -261,8 +268,12 @@ def add_moment(conn, cid: str, text: str, cap: int = 20) -> str | None:
         return None
     c = get_character(conn, cid)
     moments = db.loads(c["moments"], []) if "moments" in c.keys() else []
-    if len(moments) >= cap or any(m["text"].lower() == text.lower() for m in moments):
+    if any(m["text"].lower() == text.lower() for m in moments):
         return None
+    # at the cap the OLDEST memory yields: in a long story the newest pivotal events
+    # matter more than the first ones (rejecting new arrivals froze the list in act one)
+    if len(moments) >= cap:
+        moments = moments[-(cap - 1):]
     minutes = games.get_game(conn, c["game_id"])["time_minutes"] or 0
     moments.append({"id": _id(), "text": text, "minutes": minutes})
     conn.execute("UPDATE characters SET moments=? WHERE id=?", (json.dumps(moments), cid))

@@ -223,6 +223,8 @@ def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
             background_tasks.add_task(integrate.generate_item_image, gid, it["name"])
     if settings.SUMMARY_ENABLED:
         background_tasks.add_task(engine.maybe_update_summary, gid)  # fold old chapters
+    if settings.CHAR_SUMMARY_ENABLED:
+        background_tasks.add_task(engine.maybe_update_character_summaries, gid)  # per-character folds
     return result
 
 

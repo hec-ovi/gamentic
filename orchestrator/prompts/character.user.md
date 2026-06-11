@@ -1,4 +1,4 @@
-CURRENT SCENE ({{location}}):
+{{memory_block}}CURRENT SCENE ({{location}}):
 {{scene}}
 
-Respond now, in character, as {{name}}.
+Respond now, in character, as {{name}}{{anchor}}.

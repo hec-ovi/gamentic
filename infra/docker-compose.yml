@@ -239,6 +239,12 @@ services:
       - SUMMARY_ENABLED=${SUMMARY_ENABLED:-true}
       - SUMMARY_EVERY_TURNS=${SUMMARY_EVERY_TURNS:-10}
       - SUMMARY_KEEP_TURNS=${SUMMARY_KEEP_TURNS:-8}
+      # character memory: per-character witnessed window + private rolling recap
+      - CHAR_HISTORY_BEATS=${CHAR_HISTORY_BEATS:-30}
+      - CHAR_SUMMARY_ENABLED=${CHAR_SUMMARY_ENABLED:-true}
+      - CHAR_SUMMARY_EVERY=${CHAR_SUMMARY_EVERY:-12}
+      - CHAR_SUMMARY_KEEP_TURNS=${CHAR_SUMMARY_KEEP_TURNS:-8}
+      - CHAR_SUMMARY_MAX_TOKENS=${CHAR_SUMMARY_MAX_TOKENS:-320}
     volumes:
       - ../orchestrator/data:/data
     ports:

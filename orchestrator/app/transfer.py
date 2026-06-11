@@ -172,9 +172,15 @@ def _import_checkpoint(conn, data: dict) -> str:
         b = fix_media(b)
         if b.get("kind") == "image" and not b.get("image_url"):
             continue                       # a story image whose file did not travel
-        _insert(conn, "beats", b, {
+        overrides = {
             "id": repo._id(), "game_id": new_gid,
             "speaker": char_map.get(b.get("speaker"), b.get("speaker")),
             "private_with": char_map.get(b.get("private_with"), b.get("private_with")),
-        })
+        }
+        # witness stamps carry character ids too; without the remap the imported game's
+        # characters would never match them again and lose their memory of these beats
+        if b.get("witnesses"):
+            ids = db.loads(b["witnesses"], [])
+            overrides["witnesses"] = json.dumps([char_map.get(i, i) for i in ids])
+        _insert(conn, "beats", b, overrides)
     return new_gid

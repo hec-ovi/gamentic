@@ -76,7 +76,9 @@ CREATE TABLE IF NOT EXISTS characters (
     origin TEXT DEFAULT '',           -- their backstory (narrator + the character know it; player discovers it)
     origin_revealed TEXT DEFAULT '[]',-- pieces of the origin the player has learned (JSON list of {id,text,minutes})
     moments TEXT DEFAULT '[]',        -- PIVOTAL shared events with the player (JSON list of {id,text,minutes})
-    relation TEXT DEFAULT ''          -- what they ARE to the player (free 1-2 words: sister, boss, rival...)
+    relation TEXT DEFAULT '',         -- what they ARE to the player (free 1-2 words: sister, boss, rival...)
+    memory_summary TEXT DEFAULT '',   -- THEIR private rolling recap, built only from beats they witnessed
+    summarized_through INTEGER DEFAULT 0  -- beats turn_index folded so far (same cursor unit as the game recap)
 );
 
 CREATE TABLE IF NOT EXISTS quests (
@@ -119,6 +121,8 @@ CREATE TABLE IF NOT EXISTS beats (
     audio_url TEXT,
     private_with TEXT,               -- if set, a private beat only this character (+ player + narrator) sees
     emotion TEXT DEFAULT '',         -- a dialogue beat's base tone for the voice ('angry', 'whisper', ...)
+    witnesses TEXT,                  -- JSON list of character ids who perceived the beat (NULL = legacy row,
+                                     -- read via the old location-match rule; player/narrator are implicit)
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -184,6 +188,8 @@ _MIGRATIONS = {
         "origin_revealed": "TEXT DEFAULT '[]'",
         "moments": "TEXT DEFAULT '[]'",
         "relation": "TEXT DEFAULT ''",
+        "memory_summary": "TEXT DEFAULT ''",
+        "summarized_through": "INTEGER DEFAULT 0",  # beats turn_index, same unit as games.summarized_through
     },
     "games": {
         "scene_status": "TEXT DEFAULT 'calm'",
@@ -202,6 +208,7 @@ _MIGRATIONS = {
     "beats": {
         "private_with": "TEXT",
         "emotion": "TEXT DEFAULT ''",
+        "witnesses": "TEXT",   # NULL on pre-migration rows: readers fall back to location-match
     },
     "scenes": {
         "left_at_minutes": "INTEGER",
