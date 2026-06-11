@@ -73,6 +73,10 @@ class Settings:
     DAY_START_HOUR = int(os.getenv("DAY_START_HOUR", "8"))     # in-fiction hour at story start
     TIME_ADVANCE_CAP_DAYS = int(os.getenv("TIME_ADVANCE_CAP_DAYS", "30"))  # max one advance_time jump
 
+    # SSE keepalive: a comment ping every N seconds keeps proxies from idling the
+    # /games/{gid}/events stream out (small in tests, 20s live).
+    EVENTS_KEEPALIVE_S = float(os.getenv("EVENTS_KEEPALIVE_S", "20"))
+
     # Hard ceiling on ONE apply_damage/attack call, whoever calls it. The engine clamps
     # client-supplied attack amounts separately; this is defense in depth at the tool
     # layer (live: a player segment rode amount=9999 through adjudication and one-shot

@@ -2,6 +2,7 @@
 
 Plain REST, sequential. One POST /games/{id}/action returns a fully-resolved turn.
 """
+import asyncio
 import logging
 import os
 import re
@@ -10,9 +11,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from . import db, repo, engine, creator, integrate, prompts, llm, constants, transfer
+from .integrate import events as game_events
 from .config import settings
 from .providers import DIALECTS, MODALITIES, capability_notes, resolve
 from .providers import audio as audio_providers
@@ -125,6 +127,37 @@ def import_game(payload: dict, background_tasks: BackgroundTasks):
     if need_scene_art:
         background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)
     return {"game_id": gid}
+
+
+@app.get("/games/{gid}/events")
+async def game_events_stream(gid: str):
+    """Server-sent events: a push the moment background media lands (scene art,
+    portraits, item cards, late image beats), so the frontend re-fetches /state or
+    /beats?since= on signal instead of polling blind (live 2026-06-11: the 40s poll
+    ceiling lost a 47s scene render and only F5 recovered it). One comment ping per
+    EVENTS_KEEPALIVE_S keeps proxies from idling the stream out."""
+    with db.get_conn() as conn:
+        if not repo.get_game(conn, gid):
+            raise HTTPException(404, "game not found")
+    q = game_events.subscribe(gid)
+
+    async def stream():
+        # no explicit disconnect poll: starlette cancels this generator when the
+        # client goes away, and the finally is the only cleanup needed
+        try:
+            yield "retry: 3000\n\n"
+            while True:
+                try:
+                    evt = await asyncio.wait_for(q.get(), timeout=settings.EVENTS_KEEPALIVE_S)
+                    yield f"data: {evt}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"
+        finally:
+            game_events.unsubscribe(gid, q)
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
 
 
 @app.get("/games/{gid}/state", response_model=GameState)

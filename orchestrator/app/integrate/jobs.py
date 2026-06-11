@@ -4,7 +4,7 @@ wipe mid-render must never resurrect a media folder), and lands results as beats
 row updates. All run as background tasks except the synchronous See snapshot."""
 from .. import db, repo, media
 from ..config import settings
-from . import image_prompts, storage
+from . import events, image_prompts, storage
 
 
 def _reference_url(stored: str | None) -> str | None:
@@ -60,8 +60,10 @@ def generate_view_snapshot(gid: str, focus: str | None = None,
         # value (live: two beats pointed at one overwritten view-t7.png, two captions)
         url = storage._persist(gid, result["image_url"], f"view-t{turn}-{repo._id()}")
         # private_with: a quiet study from the private panel lands IN that thread
-        return repo.add_beat(conn, gid, "narrator", None, "image", caption, loc,
+        beat = repo.add_beat(conn, gid, "narrator", None, "image", caption, loc,
                              turn_index=turn, image_url=url, private_with=private_with)
+    events.publish(gid, "beat", private_with=private_with)
+    return beat
 
 
 def generate_directed_image(gid: str, description: str, caption: str = "") -> dict | None:
@@ -95,9 +97,11 @@ def generate_directed_image(gid: str, description: str, caption: str = "") -> di
         turn = repo.next_turn_index(conn, gid)
         url = storage._persist(gid, result["image_url"], f"shot-t{turn}-{repo._id()}")
         # the narrator's own visual description IS the moment's concept
-        return repo.add_beat(conn, gid, "narrator", None, "image",
+        beat = repo.add_beat(conn, gid, "narrator", None, "image",
                              image_prompts._concept(caption, description), loc,
                              turn_index=turn, image_url=url)
+    events.publish(gid, "beat")
+    return beat
 
 
 def generate_item_image(gid: str, name: str) -> dict | None:
@@ -124,9 +128,11 @@ def generate_item_image(gid: str, name: str) -> dict | None:
         url = storage._persist(gid, result["image_url"], f"item-{image_prompts._slug(name)}")
         if not repo.set_item_image(conn, gid, name, url):
             return None                                # the item vanished mid-render
-        return repo.add_beat(conn, gid, "system", None, "image",
+        beat = repo.add_beat(conn, gid, "system", None, "image",
                              image_prompts._concept(entry["name"], entry["description"]), loc,
                              image_url=url)
+    events.publish(gid, "item", name=name)
+    return beat
 
 
 def generate_images_for_game(gid: str) -> None:
@@ -160,6 +166,7 @@ def generate_images_for_game(gid: str) -> None:
                         "body_side_url": storage._persist(gid, result.get("body_side_url"), f"char-{c['id']}-side"),
                     }
                     repo.set_character_images(conn, c["id"], **urls)
+                events.publish(gid, "portrait", char_id=c["id"])
             else:
                 with db.get_conn() as conn:   # relink: the render already happened
                     if not repo.get_game(conn, gid):
@@ -195,3 +202,4 @@ def generate_scene_image(gid: str, scene_id: str) -> None:
             return         # game wiped while rendering: never re-create its media folder
         url = storage._persist(gid, result.get("image_url"), f"scene-{scene_id}")
         repo.set_scene_image(conn, scene_id, url)
+    events.publish(gid, "scene", scene_id=scene_id)
