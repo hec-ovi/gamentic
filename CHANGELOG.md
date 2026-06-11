@@ -4,6 +4,11 @@ Notable changes to gamentic, newest first. No version numbers yet: this moves fa
 
 ## 2026-06-11
 
+### The scaffold regression, killed at the root (live find by the owner)
+- At deep context the model regressed into printing its turn as the worked example's shape - a "(think: ...)" block, a "tools: { ... }" object written as text, a "Prose:" label, even screenplay lines from characters that were never spawned - and called no real tools at all, so the prose moved while the world froze.
+- Three causes, all fixed: "reason silently" was physically impossible with hybrid thinking disabled, so narrator reasoning now runs in the model's real thinking channel (on by default, separated from prose by llama.cpp); the worked example itself was a printable template, so it was rewritten to contain no printable format; and scaffold stop sequences now halt a regressing generation at its first marker, letting the resolve pass voice the turn cleanly.
+- The display nets were generalized too (reasoning spans strip wherever they start, balanced across lines and nested parentheses; written-out tool blocks die whole), with regression tests pinning the exact raw bytes from the live database. Existing stories were retro-scrubbed clean.
+
 ### Inference goes pluggable (owner direction: the engine is ours, the inference is nobody's)
 - Each modality now sits behind a provider interface resolved at call time: text (any OpenAI-compatible endpoint), audio (local Maya1, OpenAI TTS, ElevenLabs, fal), image (local ComfyUI templates, OpenAI gpt-image, Google nano banana, fal). Dialects are tiny JSON translators, no SDKs; capability flags (references, seed, emotion mode) make the engine degrade deterministically instead of breaking.
 - Character voice identity moved into the engine: the designed voice is composed from the sheet and stored with the character, then resolved per provider deterministically. Switching audio providers re-resolves every voice exactly once; a character never speaks in two voices. The voice service's registry is no longer used and holds no game state.
@@ -15,7 +20,7 @@ Notable changes to gamentic, newest first. No version numbers yet: this moves fa
 - Side-by-side scripted runs (same arc, same code) showed the 26B holds what the 12B could not: no cast impersonation inside narration, state staying in sync with the prose across scene moves, dialogue from the whole cast with richer emotion coverage.
 
 ### What the live runs taught the brain (fixes from real play, both models)
-- The hybrid model likes to print its reasoning line: a leading "(think: ...)" span is now stripped from narration, never shown. A NARRATOR_THINKING knob can instead route that reasoning into the model's real thinking channel, off by default pending A/B.
+- The hybrid model likes to print its reasoning line: a leading "(think: ...)" span is now stripped from narration, never shown. A NARRATOR_THINKING knob can instead route that reasoning into the model's real thinking channel (later made the default; see the scaffold entry above).
 - The narrator generation now carries stop sequences for every present character's name, so screenplay-style impersonation ("Vane: ...") halts mid-generation instead of reaching the screen. A line that is nothing but a code-shaped call is scrubbed whatever its name (a hallucinated tool once leaked as prose).
 - Failed tool calls get a second chance and a voice: a call that failed only because of ordering inside the same reply (a disposition set before its own spawn) is retried once and lands; whatever stays invalid is reported to the narrator next turn ("fix the call, not the story") instead of vanishing silently.
 - A turn is a beat, not a chapter: at most two characters speak per turn and each acts once, so quest unlocks, scene changes and new voices land as moments instead of pile-ups. Both dials are player-facing per-game settings now (voices per turn, acts per voice), next to the story-memory ones.
