@@ -73,7 +73,7 @@ def test_core_always_carries_the_transition_protocol_and_worked_turn(client, fak
     gid = client.post("/games", json=WORLD).json()["game_id"]
     client.post(f"/games/{gid}/action", json={"action": "I look."})
     sys = _last(fake_llm)["system"]
-    assert "Reason about the state transition (silently)" in sys
+    assert "Reason about the state transition (silently, in your thinking)" in sys
     assert "the NEXT state" in sys
     assert "A worked turn" in sys and "NEVER printed" in sys
     # the stale claim is gone: the goal is seeded at creation, never "starts with NO goal"
