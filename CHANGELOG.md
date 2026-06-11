@@ -4,6 +4,12 @@ Notable changes to gamentic, newest first. No version numbers yet: this moves fa
 
 ## 2026-06-11
 
+### Inference goes pluggable (owner direction: the engine is ours, the inference is nobody's)
+- Each modality now sits behind a provider interface resolved at call time: text (any OpenAI-compatible endpoint), audio (local Maya1, OpenAI TTS, ElevenLabs, fal), image (local ComfyUI templates, OpenAI gpt-image, Google nano banana, fal). Dialects are tiny JSON translators, no SDKs; capability flags (references, seed, emotion mode) make the engine degrade deterministically instead of breaking.
+- Character voice identity moved into the engine: the designed voice is composed from the sheet and stored with the character, then resolved per provider deterministically. Switching audio providers re-resolves every voice exactly once; a character never speaks in two voices. The voice service's registry is no longer used and holds no game state.
+- A one-file admin panel at /admin (optional ADMIN_TOKEN gate): pick providers, paste keys (masked, write-only, server-side), press TEST per modality, save; the next call uses it, no restart. POST /audio/speak is the key-safe passthrough for cloud audio.
+- Honest testing line: local paths are the live-tested defaults; cloud dialects are pinned by contract tests against published schemas and await live verification by anyone holding a key. The README explains the whole abstraction.
+
 ### The model swap: Gemma 4 26B-A4B mixture-of-experts
 - The text model is now the heretic finetune of Gemma 4 26B-A4B (Q4_K_M, ~16.8 GB): 26B of knowledge, ~4B active per token. Measured on the box: ~900-1000 tok/s prefill and ~55 tok/s decode, against the 12B's ~600 and ~24. A full scripted adventure ran 49 turns with zero timeouts where the 12B lost three; deep-context turns dropped from 60-300s to 20-60s.
 - Side-by-side scripted runs (same arc, same code) showed the 26B holds what the 12B could not: no cast impersonation inside narration, state staying in sync with the prose across scene moves, dialogue from the whole cast with richer emotion coverage.

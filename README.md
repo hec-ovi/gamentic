@@ -49,6 +49,47 @@ The world is an explicit state machine and the narrator is the engine that advan
 
 **Voice** (optional) is Maya1-3B as GGUF on llama.cpp Vulkan, decoded to 24 kHz audio through the SNAC codec on CPU. Each character gets a designed voice composed from their sheet (gender, age, pitch, tone, accent) and stored in a registry, so one character is always one voice. Lines carry inline emotion tags (`[whisper]`, `[laugh]`, `[angry]`, ...) and a streaming endpoint delivers first audio in about 0.3s.
 
+## Bring your own inference
+
+Gamentic's brain is comfortable; its inference is nobody's. Each modality sits behind a
+small interface, and what stands behind it is config, not code:
+
+```
+engine (all game logic: prompts, memory, identity, pacing)
+   |
+provider layer (one interface per modality + tiny dialect translators)
+   |
+text          audio                image
+local llama.cpp   local Maya1 renderer   local ComfyUI + templates   <- shipping defaults
+OpenAI-compatible OpenAI / ElevenLabs    OpenAI gpt-image / Google
+endpoints / fal   / fal (incl. Maya1)    nano banana / fal
+```
+
+What stays with the game no matter the provider: character voice identity (each
+character's designed voice lives in the game database, so switching providers can never
+fracture a voice mid-story), emotion semantics (a tone is rendered as inline tags,
+as an instructions field, or quietly dropped, depending on what the provider can do),
+image identity policy (seed-based on ComfyUI, reference-based on cloud models), and
+every prompt. The provider only ever sees the most primitive request its kind allows:
+text in, completion out; text plus voice in, audio out; prompt plus references in,
+image out.
+
+Two ways to configure it:
+
+- **Experts**: environment variables, three per modality.
+  `TEXT_PROVIDER/_BASE_URL/_API_KEY/_MODEL`, same for `AUDIO_*` and `IMAGE_*`.
+  Defaults run the local stack untouched. Point `TEXT_BASE_URL` at any
+  OpenAI-compatible endpoint with a key and the narrator runs on it.
+- **Everyone else**: open `/admin` on the orchestrator: pick a provider per modality,
+  paste a key, press TEST, save. Changes apply on the next call, no restart. Keys stay
+  on the server and never reach the browser. Set `ADMIN_TOKEN` to gate the panel.
+
+Honesty about testing: the local paths (llama.cpp, Maya1, ComfyUI) are the live-tested
+defaults this project runs on. The cloud dialects (OpenAI, Google, ElevenLabs, fal) are
+implemented against their published schemas and pinned by contract tests, but have not
+been verified against the paid live services. If you hold a key, the TEST button is the
+verification, and reports are welcome.
+
 ## Run it
 
 Requires Docker (with GPU access for the model and the image service) and local model files on disk.
