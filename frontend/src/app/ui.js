@@ -116,6 +116,20 @@ export function render() {
   if (state.view === "creator") scrollCreator();
 }
 
+// A scroll pinned before an <img> finishes loading lands above it: the image
+// grows the container AFTER the pin (live: a whisper look's picture stayed
+// below the fold). Every scrollToBottom arms one-shot load repins on the
+// images still loading inside that container.
+function repinWhenImagesLoad(selector) {
+  const el = root.querySelector(selector);
+  if (!el) return;
+  el.querySelectorAll("img").forEach((im) => {
+    if (im.complete || im.dataset.repin) return;
+    im.dataset.repin = "1";
+    im.addEventListener("load", () => scrollToBottom(selector), { once: true });
+  });
+}
+
 // ---------------------------------------------------------------------------
 // event DELEGATION: five listeners on the root, attached once per root. The
 // morph preserves nodes across renders, so per-element listeners would both
@@ -430,6 +444,7 @@ export function scrollToBottom(selector) {
     const e = root.querySelector(selector);
     if (e) e.scrollTop = e.scrollHeight;
   });
+  repinWhenImagesLoad(selector);
 }
 
 export function scrollStory() {

@@ -1047,15 +1047,17 @@ test("image-beat captions clamp in the chat flow but the lightbox shows the full
   await u.keyboard("{Escape}");
 });
 
-test("expanding ANY game image shows its description, not just the picture", async () => {
+test("clicking the scene art opens the scene inspect sheet, like the title (owner)", async () => {
   const u = user();
   server.use(http.get(`${API}/games/:id/state`, () => HttpResponse.json(IMAGED())));
   await gotoPlay(u);
-  // the scene art card expands with "name - description"
+  // the whole figure (image, frame, caption plate) routes to inspect-scene -
+  // the title's behavior: big art plus the description, spoiler-safe
   await u.click(document.querySelector("#storyStream .prose-art img"));
-  const box = document.querySelector(".lightbox-overlay");
-  expect(box.querySelector(".lightbox-caption").textContent).toBe("The Last Breath - d");
-  await u.keyboard("{Escape}");
+  expect(document.querySelector(".lightbox-overlay")).toBeFalsy(); // not the bare lightbox
+  const sheet = document.querySelector(".inspect-modal, .modal-shell");
+  expect(sheet).toBeTruthy();
+  expect(sheet.textContent).toContain("The Last Breath");
 });
 
 test("the autoplay split persists narrator and character voices independently", async () => {
@@ -1227,13 +1229,23 @@ test("anchoring: the scene image does NOT move when new narration arrives", asyn
 
 test("clicking a story image opens the lightbox; Escape closes it", async () => {
   const u = user();
-  server.use(http.get(`${API}/games/:id/state`, () => HttpResponse.json(IMAGED())));
+  server.use(
+    http.get(`${API}/games/:id/state`, () => HttpResponse.json(IMAGED())),
+    http.get(`${API}/games/:id/beats`, ({ request }) =>
+      new URL(request.url).searchParams.has("since")
+        ? HttpResponse.json({ beats: [] })
+        : HttpResponse.json({
+            beats: [makeBeat({ id: "img1", kind: "image", speaker: "narrator", text: "A look.", image_url: "/media/g-test/shot.png" })],
+          }),
+    ),
+  );
   await gotoPlay(u);
-  const img = document.querySelector('#storyStream .prose-art img');
+  // a BEAT image lightboxes directly (the scene art routes to its inspect sheet instead)
+  const img = document.querySelector('.beat-image[data-beat-id="img1"] img');
   await u.click(img);
   const box = document.querySelector(".lightbox-overlay");
   expect(box).toBeTruthy();
-  expect(box.querySelector("img").getAttribute("src")).toBe("/media/g/scene.png");
+  expect(box.querySelector("img").getAttribute("src")).toBe(img.getAttribute("src"));
   await u.keyboard("{Escape}");
   expect(document.querySelector(".lightbox-overlay")).toBeNull();
   // click-outside also closes

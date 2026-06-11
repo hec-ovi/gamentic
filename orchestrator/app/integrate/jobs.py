@@ -36,9 +36,18 @@ def generate_view_snapshot(gid: str, focus: str | None = None,
         loc = repo.get_player(conn, gid)["location"]
         if focus:
             fc = image_prompts._focus_character(conn, gid, focus)
+            if not fc and private_with:
+                # a PRIVATE look is always a study of that character, whatever the
+                # focus words say (live: "any picture of you and your brother?" named
+                # nobody, so the render went out with no identity reference and came
+                # back a stranger)
+                fc = repo.get_character(conn, private_with)
             chars = [fc] if fc else []
+        elif private_with:
+            chars = [repo.get_character(conn, private_with)]
         else:
             chars = list(repo.present_characters(conn, gid, loc))[:3]
+        chars = [c for c in chars if c]
         refs = [u for u in (_reference_url(c["body_front_url"]) for c in chars) if u]
     if context:
         prompt = image_prompts._agentic_prompt(context, fallback=prompt)   # LLM call outside the DB conn

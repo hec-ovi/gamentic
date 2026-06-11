@@ -277,3 +277,66 @@ def offer_action(conn, gid, args, actor):
         return _invalid(f"offer_action: no character '{who}'")
     ok = repo.offer_action(conn, ch["id"], label, settings.CHAR_ACTION_CAP)
     return _result("state") if ok else _invalid(f"offer_action: {ch['name']} already has {settings.CHAR_ACTION_CAP} actions")
+
+# ---------- the character's OWN memory (self-tools; whispers have no narrator) ----------
+# A private exchange never runs a narrator pass, so confessions made there were never
+# recorded anywhere (live 2026-06-11: a whispered life story - the slums, a brother lost
+# to the sweeps - left the profile's past, traits and moments untouched). These three act
+# on the SPEAKER only: a character writes their own memory, never anyone else's.
+
+SHARE_PAST = {"type": "function", "function": {
+    "name": "share_past",
+    "description": "You just told or showed them a real piece of YOUR past. Record that piece "
+                   "(one short sentence) so it becomes part of what they know of you. Only "
+                   "genuine self-revelation, never small talk.",
+    "parameters": {"type": "object", "properties": {
+        "piece": {"type": "string", "description": "The piece of your past, one short sentence."},
+    }, "required": ["piece"]}}}
+
+
+@tool(SHARE_PAST)
+def share_past(conn, gid, args, actor):
+    if not actor:
+        return _invalid("share_past: a character's own tool")
+    fact = repo.add_origin_fact(conn, actor["id"], args.get("piece", ""), settings.CHAR_TRAIT_CAP)
+    if not fact:
+        return _result("state")  # duplicate or full: silent
+    return _result("state", f"You learn of {actor['name']}'s past: {fact}.")
+
+
+MARK_MOMENT = {"type": "function", "function": {
+    "name": "mark_moment",
+    "description": "A true turning point just happened between YOU and the one you are with "
+                   "(a secret confided, a bond formed, a promise, a betrayal). Record it as "
+                   "one short past-tense line; it becomes one of your lasting memories of them.",
+    "parameters": {"type": "object", "properties": {
+        "event": {"type": "string", "description": "The pivotal event, one short line."},
+    }, "required": ["event"]}}}
+
+
+@tool(MARK_MOMENT)
+def mark_moment(conn, gid, args, actor):
+    if not actor:
+        return _invalid("mark_moment: a character's own tool")
+    repo.add_moment(conn, actor["id"], args.get("event", ""))
+    return _result("state")  # silent: the moment itself was just lived
+
+
+ADMIT_TRAIT = {"type": "function", "function": {
+    "name": "admit_trait",
+    "description": "What you just said or did REVEALED a lasting personality trait of yours "
+                   "(2-4 vivid words, e.g. 'distrusts authority', 'fiercely loyal'). Record it; "
+                   "it becomes part of how they see you. Only when truly shown, never invented.",
+    "parameters": {"type": "object", "properties": {
+        "trait": {"type": "string", "description": "The trait, 2-4 words."},
+    }, "required": ["trait"]}}}
+
+
+@tool(ADMIT_TRAIT)
+def admit_trait(conn, gid, args, actor):
+    if not actor:
+        return _invalid("admit_trait: a character's own tool")
+    trait = repo.add_trait(conn, actor["id"], args.get("trait", ""), settings.CHAR_TRAIT_CAP)
+    if not trait:
+        return _result("state")  # duplicate or full: silent
+    return _result("state", f"Trait unlocked: {actor['name']} - {trait}.")

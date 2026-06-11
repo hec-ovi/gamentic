@@ -313,16 +313,25 @@ def character_profile(conn, gid: str, cid: str) -> dict | None:
     c = get_character(conn, cid)
     if not c or c["game_id"] != gid:
         return None
-    # memories: ONLY images whose own description names this character (they are a main
-    # part of that moment). Location-based attribution gave every bystander the same
-    # gallery, which read as nonsense (live-found).
+    # memories: images of moments this character is truly part of. Two rules, both
+    # live-found: (1) a PRIVATE image belongs to its private_with character and to no
+    # one else - whatever the caption says (a whispered look at Layla once landed in
+    # Rust's gallery); (2) public images match the character's name as WHOLE WORDS -
+    # plain substring matching handed Rust every caption containing "trust" or
+    # "rusted". (Location-based attribution died earlier for the same reason: every
+    # bystander got the same gallery.)
     mem_rows = conn.execute(
         "SELECT * FROM beats WHERE game_id=? AND kind='image' AND image_url IS NOT NULL "
         "ORDER BY turn_index DESC LIMIT 60", (gid,)).fetchall()
-    name_low = (c["name"] or "").lower()
+    tokens = [t for t in re.split(r"[^a-z0-9]+", (c["name"] or "").lower()) if len(t) >= 3]
+    name_re = re.compile(r"\b(?:%s)\b" % "|".join(map(re.escape, tokens))) if tokens else None
+
+    def _is_theirs(b) -> bool:
+        if b["private_with"]:
+            return b["private_with"] == c["id"]
+        return bool(name_re and name_re.search((b["text"] or "").lower()))
     memories = [{"image_url": b["image_url"], "caption": b["text"], "turn_index": b["turn_index"]}
-                for b in mem_rows
-                if name_low and name_low in (b["text"] or "").lower()][:8]
+                for b in mem_rows if _is_theirs(b)][:8]
     memories.reverse()
     return {
         "id": c["id"], "name": c["name"], "description": c["description"],

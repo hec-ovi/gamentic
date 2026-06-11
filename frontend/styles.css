@@ -1072,7 +1072,10 @@ figure.prose-art.art-loading { cursor: default; }
 /* per-message voice on whispered replies, same state machine as the story
    (inline-grid keeps the icon perfectly centered, like the story buttons) */
 .pm-line .speak-btn { position: relative; display: inline-grid; place-items: center; margin-left: 0.45rem; vertical-align: middle; flex: 0 0 auto; }
-.pm-line { display: flex; align-items: center; gap: 0.1rem; }
+/* names and speak buttons align to the TOP of multi-line whispers (owner: the
+   name floated mid-bubble beside long confessions) */
+.pm-line { display: flex; align-items: flex-start; gap: 0.1rem; }
+.pm-line > b { margin-top: 0.05rem; }
 .pm-line .pm-text { flex: 1; min-width: 0; }
 .absence-line { margin: 0; padding: 0.55rem 0.75rem; border: 1px dashed var(--line-soft);
   font-size: 0.86rem; font-style: italic; color: var(--ink-muted); }

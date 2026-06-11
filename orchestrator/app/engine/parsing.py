@@ -63,10 +63,27 @@ def clean_prose(text: str) -> str:
 _CLOSE_TAG = re.compile(r"\[/\w+\]\s*")
 
 
+# Character-path brace lines only: square-bracket lines are the say/do/emotion
+# vocabulary itself and must survive (_JSON_LINE would eat '[say]...[/say]' whole).
+_BRACE_LINE = re.compile(r"^\s*\{.*\}\s*,?\s*$")
+
+
+# Comment furniture and half-written calls (live 2026-06-11, the same reply that
+# proved the memory tools: the dialogue ended "...stone now.\n*/\n[admit_trait" - the
+# model both CALLED admit_trait for real and started writing it as text before the
+# parser cut it). A line of pure comment glyphs dies; a trailing unclosed [word
+# fragment at the very end of a segment dies with it.
+_COMMENT_LINE = re.compile(r"^\s*(?:/\*|\*/|//+)\s*$")
+_DANGLING_CALL = re.compile(r"\n?\s*\[[a-z_]+\s*$", re.I)
+
+
 def _clean_segment(text: str) -> str:
     text = strip_markup(text)
     text = _PSEUDO_TOOL.sub("", text)
-    text = "\n".join(ln for ln in text.splitlines() if not _TOOL_CALL.match(ln))
+    text = "\n".join(ln for ln in text.splitlines()
+                     if not _TOOL_CALL.match(ln) and not _BRACE_LINE.match(ln)
+                     and not _COMMENT_LINE.match(ln))
+    text = _DANGLING_CALL.sub("", text)
     text = _CLOSE_TAG.sub("", text)
     text = _TAG_DEBRIS.sub("", text)
     return text.strip()
@@ -314,3 +331,39 @@ def parse_character_output(text: str) -> list[tuple[str, str, str]]:
         if content:
             segs.append((kind, content, emotion))
     return segs
+
+# The character's memory marks, written as text. Live (2026-06-11, first night of the
+# self-memory tools): the 26B character agents narrate their tool use instead of
+# emitting calls - a whispered life story arrived with {piece: "..."} and {trait:
+# "haunted by silence"} printed INSIDE a [do] block, and no real calls at all. Same
+# lesson as the say/do tags themselves: parse the intent, never demand the protocol.
+# Both channels work - a real tool call and a brace-mark in prose land identically.
+_MEMORY_MARK = re.compile(
+    r"\{\s*(piece|trait|event)\s*:\s*\"?([^\"{}]+?)\"?\s*\}", re.I)
+_MEMORY_TOOL = {"piece": "share_past", "trait": "admit_trait", "event": "mark_moment"}
+
+
+def extract_memory_marks(text: str) -> tuple[str, list[tuple[str, dict]]]:
+    """(clean_text, [(tool_name, args), ...]): lift every brace-mark out of a character
+    segment and hand back the matching self-tool applications. The marks never reach
+    the display text."""
+    marks: list[tuple[str, dict]] = []
+
+    def _take(m):
+        key, value = m.group(1).lower(), m.group(2).strip()
+        if value:
+            arg = {"share_past": "piece", "admit_trait": "trait", "mark_moment": "event"}
+            tool = _MEMORY_TOOL[key]
+            marks.append((tool, {arg[tool]: value}))
+        return ""
+    cleaned = _MEMORY_MARK.sub(_take, text or "")
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    return cleaned.strip(), marks
+
+def parse_character_output_with_marks(text: str):
+    """(segments, memory_marks): the marks are lifted from the RAW reply first - they
+    can sit anywhere, including as full brace-lines that the segment cleaner would
+    otherwise eat - then the remainder parses exactly as before."""
+    cleaned, marks = extract_memory_marks(text or "")
+    return parse_character_output(cleaned), marks
+

@@ -170,7 +170,7 @@ def _character_reply(conn, gid, ch, emit, private_with=None):
         tok = (creply.usage or {}).get("prompt_tokens", 0) or 0
         if tok:
             repo.set_character_context(conn, ch["id"], tok)
-        segs = parsing.parse_character_output(creply.content)
+        segs, marks = parsing.parse_character_output_with_marks(creply.content)
         if segs and creply.finish_reason == "length":
             k, t, e = segs[-1]
             segs[-1] = (k, parsing.trim_to_sentence(t), e)   # never show a mid-word cut
@@ -185,6 +185,18 @@ def _character_reply(conn, gid, ch, emit, private_with=None):
         emit(ch["id"], ch["name"], "dialogue" if kind == "say" else "action", txt,
              private_with=private_with, emotion=emotion)
     reactions = []
+    # memory marks written as text count exactly like real calls (live: the 26B
+    # narrates its tool use - '{piece: "..."}' inside a [do] - instead of calling;
+    # same lesson as the say/do tags: parse the intent, never demand the protocol)
+    seen_marks = set()
+    for name, args in marks:
+        key = (name, json.dumps(args, sort_keys=True))
+        if key in seen_marks:
+            continue
+        seen_marks.add(key)
+        out = tools.apply_tool(conn, gid, name, args, actor=ch)
+        if out["kind"] == "state" and out["text"]:
+            emit("system", None, "system", out["text"], private_with=private_with)
     for tc in creply.tool_calls:
         out = tools.apply_tool(conn, gid, tc.name, tc.arguments, actor=ch)
         if out["kind"] == "state" and out["text"]:

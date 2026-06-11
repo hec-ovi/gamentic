@@ -17,6 +17,9 @@ export function maybeOpenLightbox(e) {
   }
   if (!img) return;
   if (e.target.closest && e.target.closest("button")) return; // item-slot buttons keep their own click
+  // a figure that carries its own action (the scene art opens the inspect
+  // sheet) outranks the raw lightbox; the sheet's image lightboxes from there
+  if (e.target.closest && e.target.closest("figure[data-act]")) return;
   const src = img.getAttribute("src") || "";
   if (!src.startsWith("/")) return; // only our same-origin game media
   e.preventDefault();

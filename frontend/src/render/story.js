@@ -70,7 +70,10 @@ export function sceneArtCard(s) {
   const name = scene.name || "";
   if (scene.imageUrl) {
     const caption = [name, scene.description].filter(Boolean).join(" - ");
-    return `<figure class="prose-art">
+    // the whole figure opens the scene's inspect sheet (the title's behavior -
+    // big art + description; its image lightboxes from there). Owner: clicking
+    // the art should do exactly what clicking the title does.
+    return `<figure class="prose-art" data-act="inspect-scene" role="button" tabindex="0" aria-label="What this place is">
               ${cardCorners()}
               ${artImg({ url: scene.imageUrl, alt: name, caption })}
               ${name ? `<figcaption>${escapeHtml(name)}</figcaption>` : ""}

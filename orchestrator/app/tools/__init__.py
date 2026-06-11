@@ -45,7 +45,8 @@ SHOW_IMAGE_TOOL = SCHEMAS["show_image"]
 
 # Tools a CHARACTER agent may call to act on others. Their speech is the message content;
 # these are for doing things to another character or to the player.
-CHARACTER_TOOLS = [combat.CHARACTER_ATTACK, items.CHARACTER_GIVE]
+CHARACTER_TOOLS = [combat.CHARACTER_ATTACK, items.CHARACTER_GIVE,
+                   characters.SHARE_PAST, characters.MARK_MOMENT, characters.ADMIT_TRAIT]
 
 
 def narrator_tools(adjudicating: bool, images: bool = False) -> list:

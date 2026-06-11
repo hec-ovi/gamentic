@@ -55,19 +55,23 @@ def create_game(sheet: WorldSheet, background_tasks: BackgroundTasks):
     # origins first: fast text calls, and the narrator's first turns deserve real pasts;
     # the slow image renders queue behind them
     background_tasks.add_task(creator.enrich_origins, gid)
+    # Render order (owner decision, renders run one at a time through the gate):
+    # PORTRAITS FIRST - they are the identity references every later person-render
+    # conditions on (a look rendered before the portraits exist comes back a
+    # stranger); then the quick item cards; scene art last, delivered by SSE the
+    # moment it lands.
     if settings.IMAGE_ENABLED:                               # images are optional
         background_tasks.add_task(integrate.generate_images_for_game, gid)  # character portraits
-        background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)  # scene art
     if settings.IMAGE_ENABLED and settings.IMAGE_ITEMS:
-        # seeded possessions get their unlock card NOW: cards otherwise render only on
-        # the action route's new-item diff, and a turn-0 item is never "new" there
-        # (live 2026-06-11: 'Neural Interface Deck' sat as initials until a turn was
-        # played, and no turn had been played)
+        # seeded possessions get their unlock card at creation: cards otherwise render
+        # only on the action route's new-item diff, and a turn-0 item is never "new"
         with db.get_conn() as conn:
             seeded = [v["name"] for v in repo.visible_item_index(conn, gid).values()
                       if not v.get("image_url")]
         for name in seeded[: settings.IMAGE_MAX_ITEMS_PER_TURN]:
             background_tasks.add_task(integrate.generate_item_image, gid, name)
+    if settings.IMAGE_ENABLED:
+        background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)  # scene art
     return {"game_id": gid}
 
 
@@ -574,9 +578,10 @@ def create_finalize(body: dict, background_tasks: BackgroundTasks):
     except ValueError as e:
         raise HTTPException(409, str(e))
     background_tasks.add_task(creator.enrich_origins, gid)   # thin backstories get real ones
+    # same render order as POST /games: portraits (identity refs) first, then item
+    # cards, scene art last (SSE delivers it whenever it lands)
     if settings.IMAGE_ENABLED:
         background_tasks.add_task(integrate.generate_images_for_game, gid)   # character portraits
-        background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)  # opening-scene art
     if settings.IMAGE_ENABLED and settings.IMAGE_ITEMS:
         # seeded possessions get their unlock card NOW: cards otherwise render only on
         # the action route's new-item diff, and a turn-0 item is never "new" there
@@ -587,4 +592,6 @@ def create_finalize(body: dict, background_tasks: BackgroundTasks):
                       if not v.get("image_url")]
         for name in seeded[: settings.IMAGE_MAX_ITEMS_PER_TURN]:
             background_tasks.add_task(integrate.generate_item_image, gid, name)
+    if settings.IMAGE_ENABLED:
+        background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)  # opening-scene art
     return {"game_id": gid}
