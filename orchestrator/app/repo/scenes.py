@@ -1,5 +1,6 @@
 """Scenes (the main card): rows, movement + the draft layer, exits, scene items, offers."""
 import json
+import re
 
 from .. import db
 from . import clock, games, items, players
@@ -20,9 +21,50 @@ def get_scene(conn, gid: str, name: str):
         (gid, norm_name(name))).fetchone()
 
 
+_APPROACH_WORDS = {"path", "road", "trail", "gate", "door", "doors", "entrance",
+                   "stair", "stairs", "steps", "bridge", "edge", "mouth", "foot",
+                   "base", "outside", "approach", "outskirts"}
+
+
+def snap_scene_name(conn, gid: str, name: str) -> str:
+    """The narrator drifts on scene names ('the expedition camp' for 'The Expedition
+    Camp, Qeshara Valley'); taken literally, a drifted move minted a PHANTOM duplicate
+    scene with no one in it and the give bounced 'not here' (live showcase 2026-06-11).
+    Items got article-blind matching for exactly this; scenes snap here: an exact
+    article-blind match always snaps, and a name of two or more meaningful tokens that
+    is a token-subset of ONE existing scene (or vice versa) snaps to it. One-token
+    names never subset-snap ('the gallery' must not collapse into 'the lower gallery
+    entrance')."""
+    def toks(s_):
+        return set(re.findall(r"[a-z0-9]+", items.item_key(s_)))   # 'Camp,' == 'camp'
+    want = toks(name)
+    if not want:
+        return name
+    exact, subset = None, []
+    for r in conn.execute("SELECT name FROM scenes WHERE game_id=?", (gid,)).fetchall():
+        have = toks(r["name"])
+        if have == want:
+            exact = r["name"]
+            break
+        if min(len(want), len(have)) >= 2 and (want <= have or have <= want):
+            # the extra tokens decide: a regional qualifier ("..., Qeshara Valley")
+            # is the same place said longer, but an approach/part word names a
+            # DIFFERENT place ("the Bell Tower path" is not "the Bell Tower" - live
+            # showcase 2026-06-11: the tower snapped into its own path and the Great
+            # Bell landed on the hillside)
+            if (want ^ have) & _APPROACH_WORDS:
+                continue
+            subset.append(r["name"])
+    if exact:
+        return exact
+    if len(subset) == 1:
+        return subset[0]
+    return name
+
+
 def get_or_create_scene(conn, gid: str, name: str, description: str = ""):
     from ..constants import SCENE_STATUS_DEFAULT
-    name = norm_name(name)
+    name = norm_name(snap_scene_name(conn, gid, norm_name(name)))
     sc = get_scene(conn, gid, name)
     if sc:
         return sc
@@ -80,7 +122,10 @@ def _ensure_exit(conn, gid: str, scene_name: str, label: str, target: str) -> No
 
 
 def set_location(conn, gid: str, location: str) -> None:
-    location = norm_name(location)
+    # snap BEFORE anything reads it: player_state.location, the followers' update and
+    # the scene row must all agree on the canonical name (presence checks compare the
+    # raw strings)
+    location = norm_name(snap_scene_name(conn, gid, norm_name(location)))
     prev = players.get_player(conn, gid)["location"]
     moved = bool(prev) and norm_name(prev).lower() != location.lower()
     now = games.get_game(conn, gid)["time_minutes"] or 0

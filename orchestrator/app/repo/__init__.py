@@ -52,6 +52,7 @@ from .scenes import (  # noqa: F401
     absorb_scene_item_into_character, add_exit, add_scene_item, current_scene,
     get_or_create_scene, get_scene, get_scene_by_id, offer_scene_action,
     reveal_scene_item, scene_available_actions, scene_is_established, set_location,
+    snap_scene_name,
     set_scene_background, set_scene_description, set_scene_draft, set_scene_image,
     set_scene_status, take_scene_item,
 )

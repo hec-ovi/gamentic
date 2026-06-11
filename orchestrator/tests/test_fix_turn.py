@@ -335,3 +335,34 @@ def test_following_companions_and_far_mentions_trigger_no_note(client, fake_llm)
     client.post(f"/games/{gid}/action", json={"action": "I wait."})
     blob = "".join(str(m) for m in fake_llm.narrator_calls()[-1]["messages"])
     assert "set_following('Basir'" not in blob   # he truly came along
+
+
+def test_stacked_move_and_say_addresses_people_at_the_destination(client, fake_llm):
+    """The canonical composer turn '[do] go to the table, [say] hi' must route the say
+    to the room being walked INTO (live showcase: it bounced 'not here' pre-move)."""
+    gid = _new(client, chars=[{"name": "Sigrid", "persona": "the hearth-wife"}],
+               start="the docks")
+    fake_llm.narrator = _nar(T("move_location", location="the square"),
+                             content="You walk up alone.")
+    client.post(f"/games/{gid}/action", json={"action": "I walk to the square."})
+    # Sigrid stayed at the docks; now walk BACK and address her in one stacked turn
+    fake_llm.narrator = _nar(content="The docks creak under your boots.")
+    d = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "do", "text": "go to back to the docks"},
+        {"type": "say", "text": "Sigrid, a word.", "target": "Sigrid"}]}).json()
+    assert d["state"]["player"]["location"] == "the docks"
+    assert not any("is not here" in b["text"] for b in d["beats"] if b["kind"] == "system")
+
+
+def test_striking_a_visible_object_is_not_combat(client, fake_llm):
+    """Live showcase: 'strike the Great Bell' bounced 'no sign of the Great Bell'
+    while the bell hung in plain sight; object strikes fall through to the narrator."""
+    gid = _new(client)
+    fake_llm.narrator = _nar(T("place_item", target="scene", name="the Great Bell", fixed=True),
+                             content="The bell hangs in the dark.")
+    client.post(f"/games/{gid}/action", json={"action": "I enter the tower."})
+    fake_llm.narrator = _nar(content="The note rolls down the fjord like weather.")
+    d = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "attack", "target": "the Great Bell", "text": "one clean strike"}]}).json()
+    assert not any("no sign of" in b["text"] for b in d["beats"] if b["kind"] == "system")
+    assert any(b["kind"] == "narration" for b in d["beats"])

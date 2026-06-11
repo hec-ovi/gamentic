@@ -342,3 +342,27 @@ def test_markup_guard_never_unwraps_a_think_span():
     _, t = parsing._scrub_narration(
         "<think>plan: <div>panel</div> escalate</think>The fog rolls in.")
     assert t == "The fog rolls in."
+
+
+def test_bare_tool_label_lines_die_in_any_spelling():
+    """Live showcase 2026-06-11: a narration ended in a stranded 'call_tools:' line -
+    the snake_case label dodged the '\\ntools:' stop and the brace-block rule."""
+    from app.engine import parsing
+    for label in ("call_tools:", "tools:", "Tools:", "tool calls:", "Tool_Calls:"):
+        cleaned = parsing.strip_reasoning(f"The fire crackles low.\n\n{label}")
+        assert cleaned.strip() == "The fire crackles low.", label
+    # a colon that ends a real sentence lead-in survives
+    kept = parsing.strip_reasoning("He counted what they had:")
+    assert kept.strip() == "He counted what they had:"
+
+
+def test_separator_only_lines_are_never_prose():
+    """Live showcase 2026-06-11: a narration beat was the literal string '---'."""
+    from app.engine import parsing
+    assert parsing.clean_prose("---") == ""
+    assert parsing.clean_prose("The bell tolls.\n---\nNo one answers.") == \
+        "The bell tolls.\nNo one answers."
+    # the real pipeline (turn.py, both narrator and resolve) runs clean_prose FIRST,
+    # so an all-separator reply reaches _scrub_narration as "" and the resolve pass fires
+    emotion, text = parsing._scrub_narration(parsing.clean_prose("---"))
+    assert text == ""

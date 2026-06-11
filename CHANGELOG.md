@@ -4,6 +4,13 @@ Notable changes to gamentic, newest first. No version numbers yet: this moves fa
 
 ## 2026-06-11
 
+### The showcase plays found five more (each fixed under a live audience of two demo stories)
+- A bare "call_tools:" label line survived the scaffold strips (snake_case dodged every net); any spelling of a stranded tool-label line dies now, as do markdown separator lines, so a beat can never be the literal string "---".
+- Scene names got the article-blind treatment items already had, with a twist: "the expedition camp" snaps to "The Expedition Camp, Qeshara Valley" instead of minting a phantom empty camp, but approach words never collapse ("the Bell Tower path" is not "the Bell Tower" - the Great Bell briefly hung on a hillside to prove it).
+- The movement router now runs FIRST in the turn, so the canonical composer stack "[do] go to the table, [say] hi" addresses the room being walked into instead of bouncing "not here".
+- Striking an OBJECT is not combat: "strike the Great Bell" was read as an attack on a missing character and bounced while the bell hung in plain sight; attacks naming a visible item now fall through to the narrator as plain action.
+- place_item learned what give_item always knew: delivering something the player holds MOVES it (a gifted glass float had left a twin in the pack), and a failed placement can never vanish the item.
+
 ### The exigent audit pays off (a wipe, 40 played turns, every narrator/character pair read)
 - A full end-to-end audit on a fresh adventure (plus a 24-agent static review of the code) confirmed the scaffold fixes hold under fire - zero think-spans, tool syntax, scaffold labels or narrator-voiced dialogue across 191 stored beats - and surfaced a new top defect: the narrator narrates travel without ever calling move_location, and one missed move corrupts everything downstream (scene descriptions overwritten, items pinned to the wrong room, characters "witnessing" scenes the player had left).
 - Movement is now law, not hope: a do-text naming a revealed exit moves the player in the ENGINE before the narrator speaks, the narrator prompt gets a movement-first rule for free-text journeys, and a turn that walks a stayed character along in prose feeds the discrepancy back to the narrator next turn (set_following them or write them out). A death turn now always ends lost no matter what the model says, and the lethal blow is the storyteller's to stage: damage to the player from the narrator is uncapped, while no one can one-shot a character (DAMAGE_CAP, client amounts schema-bounded and clamped at the seam).

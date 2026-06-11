@@ -20,6 +20,10 @@ _TOOL_NAMES = sorted({t["function"]["name"] for t in tools.NARRATOR_TOOLS + tool
                      | {"reject_attempt", "submit_segments", "save_world"})
 _TOOL_CALL = re.compile(r"^\s*(?:%s)(?:\([^()]*\)|\s*\{[^{}]*\})\s*(?:#.*)?$" % "|".join(_TOOL_NAMES))
 _JSON_LINE = re.compile(r"^\s*[\[{].*[\]}]\s*,?\s*$")
+# A separator-only line ("---", "***"): markdown furniture, never prose. Left alone it
+# can BE the whole narration beat (live showcase 2026-06-11: a turn's narration was the
+# literal string "---", which counted as prose and kept the resolve pass from firing).
+_MD_RULE = re.compile(r"^\s*[-*_]{3,}\s*$")
 _FENCE = re.compile(r"```.*?(?:```|$)", re.S)
 
 
@@ -48,7 +52,7 @@ def clean_prose(text: str) -> str:
     text = _FENCE.sub("", text or "")
     lines = [ln for ln in text.splitlines()
              if not _TOOL_CALL.match(ln) and not _JSON_LINE.match(ln)
-             and not _CODE_LINE.match(ln)]
+             and not _CODE_LINE.match(ln) and not _MD_RULE.match(ln)]
     text = _PSEUDO_TOOL.sub("", "\n".join(lines))
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
@@ -191,8 +195,13 @@ def _strip_think(text: str) -> str:
 # tools (live, turn 53: a "tools: { set_scene_status: ... }" object block and a
 # "Prose:" label, none of it real calls). The block dies whole, braces balanced
 # across lines; the label is lifted and its line's content kept.
-_TOOLS_OPEN = re.compile(r"^\s*tools?\s*:\s*\{", re.I)
+_TOOLS_OPEN = re.compile(r"^\s*\w*tools?\s*:\s*\{", re.I)
 _PROSE_LABEL = re.compile(r"^\s*prose\s*:\s*", re.I)
+# A BARE tool-ish label line ("tools:", "call_tools:", "Tool calls:") with nothing after
+# it: the model announcing calls it never writes (live showcase 2026-06-11: a beautiful
+# narration ended in a stranded "call_tools:" line - the snake_case variant dodged both
+# the "\ntools:" stop and the brace-opened block rule above).
+_TOOLS_BARE = re.compile(r"^\s*[\w ]{0,12}tools?(?:[ _]?calls?)?\s*:\s*$", re.I)
 
 
 def _strip_scaffold(text: str) -> str:
@@ -203,6 +212,8 @@ def _strip_scaffold(text: str) -> str:
             continue
         if depth > 0:
             depth = max(0, depth + ln.count("{") - ln.count("}"))
+            continue
+        if _TOOLS_BARE.match(ln):
             continue
         out.append(_PROSE_LABEL.sub("", ln))
     return "\n".join(out)

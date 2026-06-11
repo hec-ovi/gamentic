@@ -359,3 +359,73 @@ def test_narrator_damage_to_the_player_is_uncapped_but_characters_are_protected(
     d = client.post(f"/games/{gid}/action", json={"action": "I wake swinging."}).json()
     mara = next(c for c in d["state"]["characters"] if c["name"] == "Mara")
     assert mara["life"] == 10 - settings.DAMAGE_CAP            # capped, not one-shot
+
+
+# ---------- scene-name drift snaps to the canonical scene ----------
+
+def test_drifted_move_snaps_to_the_existing_scene(client, fake_llm, world):
+    """Live showcase: a return exit targeted 'the expedition camp' while the scene was
+    'The Expedition Camp, Qeshara Valley' - the move minted a phantom empty camp and a
+    give bounced 'not here' beside the characters' real location."""
+    world = dict(world, start_location="The Expedition Camp, Qeshara Valley")
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(T("move_location", location="the excavation pit"),
+                             content="Down you go.")
+    client.post(f"/games/{gid}/action", json={"action": "I climb down."})
+    fake_llm.narrator = _nar(T("move_location", location="the expedition camp"),
+                             content="Back into the lantern glow.")
+    d = client.post(f"/games/{gid}/action", json={"action": "I climb back up."}).json()
+    assert d["state"]["player"]["location"] == "The Expedition Camp, Qeshara Valley"
+    assert d["state"]["scene"]["name"] == "The Expedition Camp, Qeshara Valley"
+    # and Mara (who never moved) is present again - no phantom twin camp
+    assert any(c["name"] == "Mara" and c["present"] for c in d["state"]["characters"])
+
+
+def test_one_token_scene_names_never_subset_snap(client, fake_llm, world):
+    world = dict(world, start_location="the lower gallery entrance")
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(T("move_location", location="the gallery"),
+                             content="A different place entirely.")
+    d = client.post(f"/games/{gid}/action", json={"action": "I wander."}).json()
+    assert d["state"]["player"]["location"] == "the gallery"   # its own scene, no snap
+
+
+def test_approach_named_scenes_never_snap_into_their_destination(client, fake_llm, world):
+    """'the Bell Tower path' and 'the Bell Tower' are different places (live showcase:
+    the tower snapped into its own path and the Great Bell landed on the hillside)."""
+    world = dict(world, start_location="the Bell Tower path")
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(T("move_location", location="the Bell Tower"),
+                             content="You step inside the tower at last.")
+    d = client.post(f"/games/{gid}/action", json={"action": "I go inside."}).json()
+    assert d["state"]["player"]["location"] == "the Bell Tower"   # its own scene
+
+
+def test_place_item_moves_a_pack_item_instead_of_minting(client, fake_llm, world):
+    """Live showcase: a gift delivered via place_item left a twin in the player's pack."""
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(T("add_item", name="green glass float"))
+    client.post(f"/games/{gid}/action", json={"action": "I take out the float."})
+    fake_llm.narrator = _nar(T("place_item", target="Mara", name="green glass float"),
+                             content="She cups it in both hands.")
+    d = client.post(f"/games/{gid}/action", json={"action": "I hand it to Mara."}).json()
+    assert _state(client, gid)["player"]["inventory"] == []            # moved, not copied
+    assert any(i["name"] == "green glass float" for i in _mara(client, gid)["inventory"])
+
+
+def test_place_item_to_a_bad_or_full_target_never_vanishes_the_pack_item(client, fake_llm, world):
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(T("add_item", name="green glass float"))
+    client.post(f"/games/{gid}/action", json={"action": "I take out the float."})
+    fake_llm.narrator = _nar(T("place_item", target="Nobody Real", name="green glass float"))
+    client.post(f"/games/{gid}/action", json={"action": "I hold it out."})
+    inv = _state(client, gid)["player"]["inventory"]
+    assert [i["name"] for i in inv] == ["green glass float"]   # unknown target: still mine
+    # fill Mara's three slots, then a place onto her bounces AND restores the float
+    fake_llm.narrator = _nar(T("place_item", target="Mara", name="knife"),
+                             T("place_item", target="Mara", name="rope"),
+                             T("place_item", target="Mara", name="lamp"),
+                             T("place_item", target="Mara", name="green glass float"))
+    client.post(f"/games/{gid}/action", json={"action": "I load her up."})
+    inv = _state(client, gid)["player"]["inventory"]
+    assert [i["name"] for i in inv] == ["green glass float"]   # full target: restored

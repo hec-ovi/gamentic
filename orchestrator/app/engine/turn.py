@@ -313,6 +313,33 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             emit("player", None, "action",
                  (echo_text if not whispers else "") or action_text or "...")
 
+        # Deterministic movement router FIRST: an explicit step through a REVEALED exit
+        # moves the player before anything else resolves, so a stacked composer turn like
+        # "[do] go to the table, [say] hi" (the canonical owner example) addresses people
+        # at the DESTINATION, not where the player stood when typing (live showcase
+        # 2026-06-11: a move+say stack bounced 'not here' against the room being walked
+        # into). It also runs before the narrator call, so the arrival rides the
+        # NEW/RETURNING machinery (the audit's worst finding: traveling prose, no move).
+        # Only public 'do' texts (or the raw typed text) can move; one move per turn;
+        # movement language that names no revealed exit changes nothing.
+        state_notes: list[str] = []
+        moved_key = None
+        if not continue_story:
+            move_texts = ([(s.get("text") or "") for s in public
+                           if (s.get("type") or "do").lower() == "do"]
+                          if public else [action_text])
+            ex = _match_exit(move_texts,
+                             repo.db.loads(repo.current_scene(conn, gid)["exits"], []))
+            if ex and (ex.get("target") or "").strip():
+                margs = {"location": ex["target"]}
+                out = tools.apply_tool(conn, gid, "move_location", margs, actor=None)
+                if out["kind"] == "state":
+                    if out["text"]:
+                        state_notes.append(out["text"])   # 'You move to X.', in receipt order
+                    # pre-seed the dedup key: the narrator restating the same move in its
+                    # reply must not land a second receipt
+                    moved_key = ("move_location", json.dumps(margs, sort_keys=True, default=str))
+
         # Impossible attempts are rejected deterministically with a friendly in-world beat,
         # BEFORE anything is applied, and the narrator is told they failed (so its prose
         # cannot claim a transfer or a hit that state forbids).
@@ -335,6 +362,16 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                         failures.append(why)
                         emit("system", None, "system", why)
                 continue
+            if d["tool"] == "attack":
+                # striking an OBJECT is not combat: a bell, a door, a jar (live
+                # showcase 2026-06-11: "strike the Great Bell" was read as an attack,
+                # found no character called that, and bounced "no sign of the Great
+                # Bell" while the bell hung in plain sight). A target that matches a
+                # visible item falls through to the narrator as plain action text.
+                kt_probe, _ = repo.resolve_target(conn, gid, d["args"].get("target") or "")
+                key = repo.item_key(d["args"].get("target") or "")
+                if kt_probe is None and key and key in repo.visible_item_index(conn, gid):
+                    continue
             why = _why_impossible(conn, gid, d)
             if why:
                 failures.append(why)
@@ -356,34 +393,6 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             pending.append({"d": d, "family": family, "line": line,
                             "tid": "player" if kind_t == "player" else (row["id"] if row else None),
                             "handled": False, "rejected": False})
-
-        # Deterministic movement router: an explicit step through a REVEALED exit moves
-        # the player HERE, before the narrator call, so the narrator narrates the ARRIVAL
-        # under the NEW/RETURNING machinery instead of staying behind (live audit
-        # 2026-06-11, the worst finding: move_location fired once in 40 turns; four
-        # explicit movements - including a literal exit-button click - produced traveling
-        # prose but no move, so describe_scene overwrote the scene being left, items
-        # pinned to it, and witness stamps kept 'present' characters hearing things the
-        # player had fictionally walked away from). Only public 'do' texts (or the raw
-        # typed text) can move; one move per turn; movement language that names no
-        # revealed exit changes nothing - discovery stays the narrator's.
-        state_notes: list[str] = []
-        moved_key = None
-        if not continue_story:
-            move_texts = ([(s.get("text") or "") for s in public
-                           if (s.get("type") or "do").lower() == "do"]
-                          if public else [action_text])
-            ex = _match_exit(move_texts,
-                             repo.db.loads(repo.current_scene(conn, gid)["exits"], []))
-            if ex and (ex.get("target") or "").strip():
-                margs = {"location": ex["target"]}
-                out = tools.apply_tool(conn, gid, "move_location", margs, actor=None)
-                if out["kind"] == "state":
-                    if out["text"]:
-                        state_notes.append(out["text"])   # 'You move to X.', in receipt order
-                    # pre-seed the dedup key: the narrator restating the same move in its
-                    # reply must not land a second receipt
-                    moved_key = ("move_location", json.dumps(margs, sort_keys=True, default=str))
 
         narrator_action = CONTINUE_IMPULSE if continue_story else action_text
         if failures:

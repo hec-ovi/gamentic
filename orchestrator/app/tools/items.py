@@ -88,9 +88,25 @@ def place_item(conn, gid, args, actor):
     fixed = bool(args.get("fixed", False))
     if not nm:
         return _invalid("place_item: no name")
+    # Placing something the PLAYER already holds MOVES it out of the pack (mirror of
+    # add_item-as-take; live showcase 2026-06-11: the narrator delivered a gift with
+    # place_item, so the girl received the glass float while the player's pack kept a
+    # twin). The pull happens only on a path that actually lands the item, and a full
+    # destination puts it straight back - a failed placement must never vanish the item.
+    def _pack_pull():
+        nonlocal nm, desc
+        if repo.player_has_item(conn, gid, nm):
+            pulled = repo.remove_item(conn, gid, nm)
+            if pulled:
+                nm, desc = pulled["name"], pulled.get("description") or desc
+                return pulled
+        return None
     if target.lower() in _SCENE_WORDS:
+        pulled = _pack_pull()
         res = repo.add_scene_item(conn, gid, nm, desc, hidden, settings.SCENE_INVENTORY_CAP, fixed)
         if res == "full":
+            if pulled:
+                repo.add_item(conn, gid, pulled["name"], pulled.get("description", ""))
             return _invalid(f"place_item: scene is full ({settings.SCENE_INVENTORY_CAP})")
         if res == "exists":
             return _result("state")  # already here, silent
@@ -101,8 +117,11 @@ def place_item(conn, gid, args, actor):
     kt, row = repo.resolve_target(conn, gid, target)
     if kt != "character" or not row:
         return _invalid(f"place_item: unknown target '{target}'")
+    pulled = _pack_pull()
     res = repo.character_add_item(conn, row["id"], nm, desc, hidden, cap=settings.CHAR_INVENTORY_CAP)
     if res == "full":
+        if pulled:
+            repo.add_item(conn, gid, pulled["name"], pulled.get("description", ""))
         return _invalid(f"place_item: {row['name']} can carry no more")
     return _result("state", None if hidden else f"{row['name']} now has {nm}.")
 
