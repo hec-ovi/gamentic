@@ -112,36 +112,65 @@ def _extract_emotion(text: str) -> tuple[str, str]:
 _PROSE_TAG = re.compile(r"[\[<]/?(?:%s|pause)[\]>]\s*" % "|".join(EMOTIONS), re.I)
 
 
-# The 26B prints the worked example's reasoning line aloud (live: 12 of 20 narration
-# beats opened with "(think: ...)"). The span is stripped from the head of any LINE
-# (the model also thinks mid-prose between paragraphs); a think-paren that never closes
-# takes its whole line with it. Narration-only: clean_prose stays generic.
-_THINK_SPAN = re.compile(r"\s*\(\s*think\b[^()]*\)\s*", re.I)
-_THINK_OPEN = re.compile(r"\s*\(\s*think\b", re.I)
+# The model prints the worked example's reasoning aloud (live: 12 of 20 narration beats
+# opened with "(think: ...)"; later, turn 53 carried a multi-line think with a NESTED
+# parenthetical inside, plus a mid-line opener). The span is stripped wherever it starts,
+# parens balanced across lines; a think that never closes is reasoning to the end of the
+# text and takes it along. Narration-only: clean_prose stays generic.
+_THINK_OPEN = re.compile(r"\(\s*think\b", re.I)
 
 
 def _strip_think(text: str) -> str:
-    out = []
-    for ln in text.splitlines():
-        had = bool(ln.strip())
-        while True:
-            m = _THINK_SPAN.match(ln)
-            if m:
-                ln = ln[m.end():]
-                continue
-            if _THINK_OPEN.match(ln):
-                ln = ""   # opened but never closed: the whole line is reasoning
+    out, i = [], 0
+    while True:
+        m = _THINK_OPEN.search(text, i)
+        if not m:
+            out.append(text[i:])
             break
-        if ln.strip() or not had:   # a line stripped to nothing is dropped whole
-            out.append(ln)
+        out.append(text[i:m.start()])
+        depth, j = 0, m.start()
+        while j < len(text):
+            if text[j] == "(":
+                depth += 1
+            elif text[j] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        if j >= len(text):     # never closed: everything after is reasoning
+            break
+        i = j + 1
+    cleaned = "".join(out)
+    lines = [re.sub(r" {2,}", " ", ln).strip() for ln in cleaned.splitlines()]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines))
+
+
+# The model sometimes writes the worked example's SHAPE as text instead of calling
+# tools (live, turn 53: a "tools: { set_scene_status: ... }" object block and a
+# "Prose:" label, none of it real calls). The block dies whole, braces balanced
+# across lines; the label is lifted and its line's content kept.
+_TOOLS_OPEN = re.compile(r"^\s*tools?\s*:\s*\{", re.I)
+_PROSE_LABEL = re.compile(r"^\s*prose\s*:\s*", re.I)
+
+
+def _strip_scaffold(text: str) -> str:
+    out, depth = [], 0
+    for ln in text.splitlines():
+        if depth == 0 and _TOOLS_OPEN.match(ln):
+            depth = max(0, ln.count("{") - ln.count("}"))
+            continue
+        if depth > 0:
+            depth = max(0, depth + ln.count("{") - ln.count("}"))
+            continue
+        out.append(_PROSE_LABEL.sub("", ln))
     return "\n".join(out)
 
 
 def _scrub_narration(text: str) -> tuple[str, str]:
-    """(emotion, clean_text) for narration prose: a leading think-span is stripped first,
-    then a leading known tag is lifted as the beat's tone (mapped to its renderable
-    value); every emotion tag is scrubbed."""
-    text = _strip_think(text or "")
+    """(emotion, clean_text) for narration prose: think-spans and example-scaffold
+    blocks are stripped first, then a leading known tag is lifted as the beat's tone
+    (mapped to its renderable value); every emotion tag is scrubbed."""
+    text = _strip_scaffold(_strip_think(text or ""))
     emotion = ""
     m = _EMOTION_TAG.match(text)
     if m and m.group(1).lower() in EMOTIONS:

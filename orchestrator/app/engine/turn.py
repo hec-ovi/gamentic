@@ -296,11 +296,14 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         history_limit = repo.effective_history_beats(game_row)
         turn_voices = repo.effective_turn_voices(game_row)
         turn_acts = repo.effective_turn_acts(game_row)
-        # Impersonation stop-sequences: the model faked cast dialogue inside narration as
-        # screenplay lines (live: 'Vane: "Movement. Now."'). Generation halts at any
-        # present character's name-colon line start (full name, plus the bare first name
-        # for multi-word names); trim_to_sentence/clean_prose handle the tail as usual.
-        stops: list[str] = []
+        # Scaffold stop-sequences FIRST: at deep context the model can regress into
+        # writing the worked example's SHAPE as text instead of calling tools (live,
+        # turn 53: '(think: ...' then 'tools: {...}' then 'Prose:'). Halting at the
+        # scaffold's first marker leaves empty/short prose, and the resolve pass then
+        # voices the turn cleanly. Then impersonation stops: the model faked cast
+        # dialogue as screenplay lines (live: 'Vane: "Movement. Now."'); generation
+        # halts at any present character's name-colon (full name + bare first name).
+        stops: list[str] = ["(think:", "\ntools:", "\nTools:", "\nProse:"]
         for c in repo.present_characters(conn, gid, repo.get_player(conn, gid)["location"]):
             if not c["alive"]:
                 continue
@@ -312,7 +315,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                 s = f"\n{cand}:"
                 if s not in stops:
                     stops.append(s)
-        stops = stops[:8]   # llama.cpp accepts a list; keep it bounded
+        stops = stops[:12]  # llama.cpp accepts a list; keep it bounded
         messages = prompts.build_narrator_messages(conn, gid, narrator_action, history_limit,
                                                    settings.LORE_BUDGET,
                                                    attempts=[p["line"] for p in pending],

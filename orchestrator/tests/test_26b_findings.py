@@ -41,8 +41,9 @@ def test_mid_prose_think_line_is_stripped():
     assert t == "The street hums under the rain.\n\nA courier rounds the corner."
 
 
-def test_unclosed_think_paren_drops_the_whole_line():
-    _, t = parsing._scrub_narration("(think: he is scared and the\nThe dark stirs.")
+def test_unclosed_think_consumes_to_the_end():
+    # an unclosed think is reasoning to the end of the text and takes it along
+    _, t = parsing._scrub_narration("The dark stirs.\n(think: he is scared and the")
     assert t == "The dark stirs."
 
 
@@ -62,7 +63,8 @@ def test_narrator_call_receives_present_character_stop_list(client, fake_llm, wo
     gid = client.post("/games", json=world).json()["game_id"]
     client.post(f"/games/{gid}/action", json={"action": "I scan the room."})
     nar = fake_llm.narrator_calls()[0]
-    assert nar["stop"] == ["\nVane Korr:", "\nVane:", "\nMara:"]
+    assert nar["stop"] == ["(think:", "\ntools:", "\nTools:", "\nProse:",
+                           "\nVane Korr:", "\nVane:", "\nMara:"]
     # every non-narrator call (interpreter and friends) runs unconstrained
     others = [c for c in fake_llm.calls if "cue_character" not in c["names"]]
     assert all(c["stop"] is None for c in others)
@@ -76,7 +78,7 @@ def test_character_calls_receive_no_stop(client, fake_llm, world):
     assert chars and all(c["stop"] is None for c in chars)
 
 
-def test_stop_list_dedupes_first_names_and_caps_at_8(client, fake_llm, world):
+def test_stop_list_dedupes_first_names_and_caps_at_12(client, fake_llm, world):
     world["characters"] = [
         {"name": "Vane Korr", "persona": "p"},
         {"name": "Vane Solo", "persona": "p"},   # shares the first word: deduped
@@ -87,7 +89,8 @@ def test_stop_list_dedupes_first_names_and_caps_at_8(client, fake_llm, world):
     gid = client.post("/games", json=world).json()["game_id"]
     client.post(f"/games/{gid}/action", json={"action": "I wait."})
     stop = fake_llm.narrator_calls()[0]["stop"]
-    assert len(stop) == 8
+    assert len(stop) == 12                       # 4 scaffold stops + capped cast stops
+    assert stop[:4] == ["(think:", "\ntools:", "\nTools:", "\nProse:"]
     assert stop.count("\nVane:") == 1
     assert "\nJuno Hale:" in stop and "\nJuno:" not in stop
 

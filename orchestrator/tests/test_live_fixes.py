@@ -50,3 +50,59 @@ def test_two_snapshots_same_turn_keep_distinct_files(client, fake_llm, world,
     b1 = integrate.generate_view_snapshot(gid)
     b2 = integrate.generate_view_snapshot(gid)
     assert b1["image_url"] != b2["image_url"]   # live: both pointed at one view-t7.png
+
+
+# ---------- the turn-53 scaffold regression (exact raw bytes from the live DB) ----------
+
+TURN53 = ('(think: state = The Meeting Warehouse, dangerous, Player, The Scout, and The '
+          'Buyer are present. The player attempts to grab "the person they trust" (Silas '
+          'is elsewhere, so this must be The Scout) and flee. Next state: chaos.)\n'
+          '\n'
+          'tools: {\n'
+          '  set_scene_status: "dangerous",\n'
+          '  set_disposition: ["The Buyer", "neutral"],\n'
+          '  set_relation: {name: "The Buyer", relation: "dangerous client"},\n'
+          '  cue_character: ["The Buyer", "The Scout"]\n'
+          '}\n'
+          '\n'
+          "Prose: The Buyer doesn't move. He stands there, a pillar of charcoal wool.")
+
+
+def test_example_scaffold_never_reaches_the_screen(client, fake_llm, world):
+    gid = client.post("/games", json=world).json()["game_id"]
+    fake_llm.narrator = _nar(content=TURN53)
+    d = client.post(f"/games/{gid}/action", json={"action": "I make my demand."}).json()
+    nar = [b for b in d["beats"] if b["kind"] == "narration"]
+    assert nar, "the prose part must survive"
+    assert nar[0]["text"] == "The Buyer doesn't move. He stands there, a pillar of charcoal wool."
+    for b in d["beats"]:
+        t = b["text"] or ""
+        assert "(think" not in t and "tools:" not in t and "Prose:" not in t
+
+
+def test_think_with_nested_parens_strips_whole(client, fake_llm, world):
+    from app.engine import parsing
+    _, txt = parsing._scrub_narration(
+        "(think: a plan (with a nested aside) that goes on)\nThe rain keeps falling.")
+    assert txt == "The rain keeps falling."
+
+
+def test_midline_think_strips(client, fake_llm, world):
+    from app.engine import parsing
+    _, txt = parsing._scrub_narration(
+        "a cold, mechanical promise of violence. (think: state = breach) The doors buckle.")
+    assert txt == "a cold, mechanical promise of violence. The doors buckle."
+
+
+def test_unclosed_think_takes_the_tail(client, fake_llm, world):
+    from app.engine import parsing
+    _, txt = parsing._scrub_narration(
+        "The fog rolls in.\n(think: an aside (nested) that never closes and rambles on")
+    assert txt == "The fog rolls in."
+
+
+def test_scaffold_stops_lead_the_narrator_stop_list(client, fake_llm, world):
+    gid = client.post("/games", json=world).json()["game_id"]
+    client.post(f"/games/{gid}/action", json={"action": "I look around."})
+    call = fake_llm.narrator_calls()[-1]
+    assert call["stop"][:4] == ["(think:", "\ntools:", "\nTools:", "\nProse:"]
