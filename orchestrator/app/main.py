@@ -56,6 +56,16 @@ def create_game(sheet: WorldSheet, background_tasks: BackgroundTasks):
     if settings.IMAGE_ENABLED:                               # images are optional
         background_tasks.add_task(integrate.generate_images_for_game, gid)  # character portraits
         background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)  # scene art
+    if settings.IMAGE_ENABLED and settings.IMAGE_ITEMS:
+        # seeded possessions get their unlock card NOW: cards otherwise render only on
+        # the action route's new-item diff, and a turn-0 item is never "new" there
+        # (live 2026-06-11: 'Neural Interface Deck' sat as initials until a turn was
+        # played, and no turn had been played)
+        with db.get_conn() as conn:
+            seeded = [v["name"] for v in repo.visible_item_index(conn, gid).values()
+                      if not v.get("image_url")]
+        for name in seeded[: settings.IMAGE_MAX_ITEMS_PER_TURN]:
+            background_tasks.add_task(integrate.generate_item_image, gid, name)
     return {"game_id": gid}
 
 
@@ -534,4 +544,14 @@ def create_finalize(body: dict, background_tasks: BackgroundTasks):
     if settings.IMAGE_ENABLED:
         background_tasks.add_task(integrate.generate_images_for_game, gid)   # character portraits
         background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)  # opening-scene art
+    if settings.IMAGE_ENABLED and settings.IMAGE_ITEMS:
+        # seeded possessions get their unlock card NOW: cards otherwise render only on
+        # the action route's new-item diff, and a turn-0 item is never "new" there
+        # (live 2026-06-11: 'Neural Interface Deck' sat as initials until a turn was
+        # played, and no turn had been played)
+        with db.get_conn() as conn:
+            seeded = [v["name"] for v in repo.visible_item_index(conn, gid).values()
+                      if not v.get("image_url")]
+        for name in seeded[: settings.IMAGE_MAX_ITEMS_PER_TURN]:
+            background_tasks.add_task(integrate.generate_item_image, gid, name)
     return {"game_id": gid}

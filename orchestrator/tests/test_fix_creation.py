@@ -168,3 +168,21 @@ def test_finalize_prompt_keeps_player_secrets_out_of_the_public_opening():
     text = prompts.render("finalize.system.md")
     assert "The `opening_scenario` is PUBLIC" in text
     assert "must never be named in it" in text
+
+
+def test_creation_schedules_unlock_cards_for_seeded_items(client, fake_llm, monkeypatch):
+    # live 2026-06-11: a creation-seeded item showed initials forever; cards only
+    # rendered on the action route's new-item diff and turn-0 items are never "new"
+    from app import integrate
+    from app.config import settings as cfg
+    calls = []
+    monkeypatch.setattr(cfg, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(cfg, "IMAGE_ITEMS", True)
+    monkeypatch.setattr(integrate, "generate_images_for_game", lambda gid: None)
+    monkeypatch.setattr(integrate, "generate_scene_image", lambda gid, sid: None)
+    monkeypatch.setattr(integrate, "generate_item_image",
+                        lambda gid, name: calls.append(name))
+    world = _finalize_world(
+        player_items=[{"name": "Neural Interface Deck", "description": "a cracked deck"}])
+    client.post("/games", json=world).json()
+    assert "Neural Interface Deck" in calls

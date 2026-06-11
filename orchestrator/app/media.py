@@ -10,6 +10,7 @@ on any failure these return empty/None and the game stays fully playable text-on
 Gated by IMAGE_ENABLED / VOICE_ENABLED.
 """
 import base64
+import threading
 
 import httpx
 
@@ -62,6 +63,14 @@ def delete_character_voice(char_id: str) -> None:
 
 # ---------- image ----------
 
+# ONE render at a time, orchestrator-wide (owner decision, 2026-06-11): background
+# tasks already serialize within a request and ComfyUI queues internally, but two
+# requests (a creation and a turn, two games) could still overlap renders. The gate
+# makes "submit, wait, next" a guarantee instead of an accident, whatever provider
+# is active.
+_RENDER_GATE = threading.Lock()
+
+
 def _provider() -> image_providers.ImageProvider:
     return image_providers.get_provider(providers.resolve("image"))
 
@@ -71,7 +80,8 @@ def generate_character_images(descriptor: str, style: str = "", seed: int | None
     if not settings.IMAGE_ENABLED or not descriptor.strip():
         return None
     try:
-        return _provider().character_set(descriptor, style, seed=seed)
+        with _RENDER_GATE:
+            return _provider().character_set(descriptor, style, seed=seed)
     except Exception:
         return None
 
@@ -105,8 +115,9 @@ def generate_scene_image(prompt: str, seed: int | None = None,
     if not settings.IMAGE_ENABLED or not prompt.strip():
         return None
     try:
-        return _provider().generate(
-            prompt, (width or settings.IMAGE_SCENE_W, height or settings.IMAGE_SCENE_H),
-            seed=seed, references=references)
+        with _RENDER_GATE:
+            return _provider().generate(
+                prompt, (width or settings.IMAGE_SCENE_W, height or settings.IMAGE_SCENE_H),
+                seed=seed, references=references)
     except Exception:
         return None

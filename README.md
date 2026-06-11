@@ -6,6 +6,15 @@ A self-hosted AI dungeon RPG you play in the browser. An AI narrator and a cast 
 
 ![status](https://img.shields.io/badge/status-work%20in%20progress-orange) ![local](https://img.shields.io/badge/runs-100%25%20local-success) ![model](https://img.shields.io/badge/LLM-Gemma%2026B%20MoE%20(llama.cpp%2FVulkan)-blue) ![api](https://img.shields.io/badge/backend-FastAPI%20%2B%20SQLite-009688) ![license](https://img.shields.io/badge/license-MIT-green)
 
+## In motion
+
+| | |
+|---|---|
+| ![Main menu](media/main-menu.gif) **Boot to menu.** | ![Adventures](media/adventure-selection.gif) **Your adventures, enter or forge a new world.** |
+| ![Joining a game](media/game-lobby.gif) **Into the story: scene art, prose, the cast assembling.** | ![Look](media/look-image.gif) **"Look at" is a real action; every look earns an image, click any image to expand it.** |
+| ![Item drop](media/item-drop.gif) **New items land in the story with their own generated card.** | ![Event expand](media/event-expand.gif) **Tap any event for what it means and what you might do next.** |
+| ![Whisper](media/whisper-look.gif) **The private channel: whisper with one character, study them quietly, keep secrets the room never hears.** | |
+
 ## The game
 
 - Explore scenes, search for hidden things, find ways out. Talk to characters: each one is its own agent with its own voice, agenda and secrets, and they can act on you and on each other, not just talk.
