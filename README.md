@@ -54,8 +54,8 @@ The world is an explicit state machine and the narrator is the engine that advan
 Requires Docker (with GPU access for the model and the image service) and local model files on disk.
 
 ```bash
-cp infra/.env.example infra/.env   # then set MODELS_DIR and the model file paths
-docker compose up -d --build       # from the repo root; the stack lives in infra/
+cp .env.example .env           # then set MODELS_DIR and the model file paths
+docker compose up -d --build   # from the repo root
 ```
 
 | Service | URL | Tech stack |
