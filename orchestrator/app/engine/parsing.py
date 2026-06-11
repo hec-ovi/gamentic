@@ -339,24 +339,40 @@ def parse_character_output(text: str) -> list[tuple[str, str, str]]:
 # lesson as the say/do tags themselves: parse the intent, never demand the protocol.
 # Both channels work - a real tool call and a brace-mark in prose land identically.
 _MEMORY_MARK = re.compile(
-    r"\{\s*(piece|trait|event)\s*:\s*\"?([^\"{}]+?)\"?\s*\}", re.I)
-_MEMORY_TOOL = {"piece": "share_past", "trait": "admit_trait", "event": "mark_moment"}
+    r"\{\s*(piece|trait|event|share_past|admit_trait|mark_moment)\s*:\s*\"?([^\"{}]+?)\"?\s*\}", re.I)
+_MEMORY_TOOL = {"piece": "share_past", "trait": "admit_trait", "event": "mark_moment",
+                "share_past": "share_past", "admit_trait": "admit_trait",
+                "mark_moment": "mark_moment"}
+_MEMORY_ARG = {"share_past": "piece", "admit_trait": "trait", "mark_moment": "event"}
+# Live (2026-06-11 evening, the gift turn): the same calls also arrive as BRACKET text -
+# '...her trust in them.[admit_trait, burdened by the past.' - tool name first, comma or
+# colon, payload running to the next bracket or the end of the reply, usually never
+# terminated, sometimes chained mid-sentence. A bare '[mark_moment' (no payload) is the
+# half-written twin of a real call: strip it, apply nothing.
+_MEMORY_BRACKET = re.compile(
+    r"\[\s*(share_past|admit_trait|mark_moment)\b\s*[,:(]?\s*([^\[\]]*)\]?", re.I)
+
+
+def _mark_value(raw: str) -> str:
+    value = (raw or "").strip().strip('"“”').rstrip(")").strip()
+    if value.endswith(".") and not value.endswith(".."):
+        value = value[:-1].rstrip()
+    return value
 
 
 def extract_memory_marks(text: str) -> tuple[str, list[tuple[str, dict]]]:
-    """(clean_text, [(tool_name, args), ...]): lift every brace-mark out of a character
-    segment and hand back the matching self-tool applications. The marks never reach
-    the display text."""
+    """(clean_text, [(tool_name, args), ...]): lift every memory mark - brace or
+    bracket form - out of a character segment and hand back the matching self-tool
+    applications. The marks never reach the display text."""
     marks: list[tuple[str, dict]] = []
 
     def _take(m):
-        key, value = m.group(1).lower(), m.group(2).strip()
+        tool, value = _MEMORY_TOOL[m.group(1).lower()], _mark_value(m.group(2))
         if value:
-            arg = {"share_past": "piece", "admit_trait": "trait", "mark_moment": "event"}
-            tool = _MEMORY_TOOL[key]
-            marks.append((tool, {arg[tool]: value}))
+            marks.append((tool, {_MEMORY_ARG[tool]: value}))
         return ""
     cleaned = _MEMORY_MARK.sub(_take, text or "")
+    cleaned = _MEMORY_BRACKET.sub(_take, cleaned)
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     return cleaned.strip(), marks
 

@@ -353,24 +353,33 @@ def character_profile(conn, gid: str, cid: str) -> dict | None:
 # ---------- offered actions (the player's buttons toward a character) ----------
 
 def offer_action(conn, cid: str, label: str, cap_total: int) -> bool:
-    """Add a narrator-offered contextual action to a character, within the total-action cap."""
+    """Add a narrator-offered contextual action to a character. One contextual slot is
+    always available even when the disposition base set fills the cap (live: every
+    3-button disposition refused every offer, so the history-driven buttons the
+    narrator prompt demands could never appear) - the offer displaces the last base
+    action at serialization instead."""
     from .. import constants
     c = get_character(conn, cid)
-    base = len(constants.ACTIONS_BY_DISPOSITION.get(c["disposition"], []))
+    base = constants.ACTIONS_BY_DISPOSITION.get(c["disposition"], [])
     offers = db.loads(c["offers"], [])
-    if base + len(offers) >= cap_total:
+    if any(o["label"].lower() == label.lower() for o in offers) or \
+       any(lbl.lower() == label.lower() for lbl, _ in base):
+        return True   # already a button (offered or base): nothing to add
+    if len(offers) >= max(cap_total - len(base), 1):
         return False
-    if any(o["label"].lower() == label.lower() for o in offers):
-        return True
     offers.append({"id": _id(), "label": label})
     conn.execute("UPDATE characters SET offers=? WHERE id=?", (json.dumps(offers), cid))
     return True
 
 
 def available_actions(conn, c, cap_total: int) -> list[dict]:
-    """The player's action buttons for a character: disposition base set + narrator offers, capped."""
+    """The player's action buttons for a character: disposition base set + narrator
+    offers, capped. Offers keep their seat: when the set overflows the cap, the
+    LAST base actions give way (Talk always survives), never the contextual offers."""
     from .. import constants
     base = [{"id": f"b{i}", "label": lbl, "type": typ}
             for i, (lbl, typ) in enumerate(constants.ACTIONS_BY_DISPOSITION.get(c["disposition"], []))]
-    offers = [{"id": o["id"], "label": o["label"], "type": "offer"} for o in db.loads(c["offers"], [])]
-    return (base + offers)[:cap_total]
+    offers = [{"id": o["id"], "label": o["label"], "type": "offer"} for o in db.loads(c["offers"], [])
+              if not any(b["label"].lower() == o["label"].lower() for b in base)]
+    keep = max(cap_total - len(offers), 1)
+    return (base[:keep] + offers)[:cap_total]

@@ -72,4 +72,4 @@ Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> `adap
 
 ## Tests
 
-`npm test` (vitest, jsdom): 186 tests in 10 files. Component tests mount the real `app.js` via `init()`, drive it with `@testing-library/user-event`, and intercept the orchestrator with MSW at the network layer (`test/setup.js` holds the default handlers + per-test poller teardown, `test/fixtures.js` the wire-shaped builders). `test/theme.lint.test.js` enforces the theme contract.
+`npm test` (vitest, jsdom): 10 test files (the count grows with every change; the suite output is the truth). Component tests mount the real `app.js` via `init()`, drive it with `@testing-library/user-event`, and intercept the orchestrator with MSW at the network layer (`test/setup.js` holds the default handlers + per-test poller teardown, `test/fixtures.js` the wire-shaped builders). `test/theme.lint.test.js` enforces the theme contract.

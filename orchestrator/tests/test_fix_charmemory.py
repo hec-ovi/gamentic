@@ -161,6 +161,57 @@ def test_unknown_brace_lines_still_die_in_character_segments(client, fake_llm):
     assert not any("{mood" in b["text"] for b in d["beats"])
 
 
+def test_bracket_toolname_marks_apply_like_real_calls_and_never_display(client, fake_llm):
+    """Live (the gift turn, 2026-06-11 evening): the character wrote her memory calls as
+    bracket text - '...cloak.[share_past, The compass was a gift of shared burdens.' and
+    '...moving.[mark_moment, The gift deepened her trust.[admit_trait, burdened by the
+    past.' - tool name first, comma payload, never terminated, chained mid-sentence.
+    The content was lost AND the raw marks leaked into the visible prose."""
+    gid = client.post("/games", json=_world()).json()["game_id"]
+    fake_llm.character_replies["Layla"] = llm.LLMReply(content=(
+        '[say]"You shouldn\'t have."[/say]'
+        '[do]She tucks the compass away.[share_past, The compass was a gift of shared burdens.[/do]'
+        '[do]She turns to the arch.[mark_moment, The gift deepened her trust.[admit_trait, burdened by the past.[/do]'))
+    d = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "whisper", "text": "Take it.", "target": "Layla"}]}).json()
+    prof = _profile(client, gid, "Layla")
+    assert any("shared burdens" in o["text"] for o in prof["origin"])
+    assert any("deepened her trust" in m["text"] for m in prof["moments"])
+    assert any("burdened by the past" in t["text"] for t in prof["traits"])
+    for b in d["beats"]:               # the marks never reach the display text
+        assert "share_past" not in b["text"] and "mark_moment" not in b["text"]
+        assert "admit_trait" not in b["text"]
+    assert any("You learn of Layla's past" in b["text"] for b in d["beats"]
+               if b["kind"] == "system" and b["private_with"])
+
+
+def test_bare_and_closed_bracket_marks_strip_clean(client, fake_llm):
+    """A bare '[mark_moment' mid-prose (the half-written twin of a real call) strips
+    without applying anything; a closed '[admit_trait: x]' applies like a real call."""
+    gid = client.post("/games", json=_world()).json()["game_id"]
+    fake_llm.character_replies["Layla"] = llm.LLMReply(content=(
+        '[do]She pulls her cloak tighter, as if shielding herself from a chill.[mark_moment[/do]'
+        '[say]"Enough questions."[/say][admit_trait: quietly defiant]'))
+    d = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "whisper", "text": "And then?", "target": "Layla"}]}).json()
+    prof = _profile(client, gid, "Layla")
+    assert any("quietly defiant" in t["text"] for t in prof["traits"])
+    act = next(b for b in d["beats"] if b["kind"] == "action" and b["speaker_name"] == "Layla")
+    assert act["text"].endswith("from a chill.")
+    assert not any("mark_moment" in b["text"] or "admit_trait" in b["text"] for b in d["beats"])
+
+
+def test_brace_marks_with_toolname_keys_apply_too():
+    """{share_past: "..."} - the brace form keyed by the TOOL name instead of
+    piece/trait/event - lands on the same tools."""
+    from app.engine import parsing
+    cleaned, marks = parsing.extract_memory_marks(
+        'She nods. {share_past: "Ran the high passes alone"} {mark_moment: a quiet pact}')
+    assert ("share_past", {"piece": "Ran the high passes alone"}) in marks
+    assert ("mark_moment", {"event": "a quiet pact"}) in marks
+    assert cleaned == "She nods."
+
+
 def test_comment_debris_and_dangling_call_fragments_die(client, fake_llm):
     """Live (the very reply that proved the memory tools): the dialogue ended
     '...stone now.\\n*/\\n[admit_trait' - a real call AND its half-written text twin."""

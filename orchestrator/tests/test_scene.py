@@ -54,6 +54,60 @@ def test_add_exit_and_cap_and_deadend(client, fake_llm):
     assert {e["target"] for e in exits} == {"street", "backroom", "cellar"}
 
 
+def test_a_scene_overfull_in_the_db_never_pushes_the_wire_past_the_cap(client, fake_llm):
+    """The auto return-exit dodges add_exit's cap (a full scene entered from a NEW
+    direction stores a 4th exit); the WIRE stays at the cap, and the way back - always
+    appended last - keeps its seat over the narrator exit it displaces (typed movement
+    still reaches everything in the DB)."""
+    import json as _json
+    from app import db
+    gid = _new(client)
+    fake_llm.narrator = _nar(
+        T("add_exit", label="the street", target="street"),
+        T("add_exit", label="back room", target="backroom"),
+        T("add_exit", label="cellar stairs", target="cellar"),
+    )
+    client.post(f"/games/{gid}/action", json={"action": "I look for a way out."})
+    with db.get_conn() as conn:
+        sc = conn.execute("SELECT id, exits FROM scenes WHERE game_id=? AND name='bar'", (gid,)).fetchone()
+        exits = _json.loads(sc["exits"])
+        exits.append({"id": "x4", "label": "back to the garden", "target": "garden"})
+        conn.execute("UPDATE scenes SET exits=? WHERE id=?", (_json.dumps(exits), sc["id"]))
+    exits = _state(client, gid)["scene"]["exits"]
+    assert len(exits) == 3
+    assert exits[-1]["target"] == "garden"          # the return exit survives the slice
+    assert [e["target"] for e in exits[:2]] == ["street", "backroom"]
+
+
+def test_offered_action_displaces_the_last_base_button_on_a_full_set(client, fake_llm):
+    """Live (the verification run): friendly/neutral/hostile base sets fill all 3 slots,
+    so offer_action refused every history-driven offer the narrator prompt demands.
+    One contextual slot is always available now; the offer displaces the last base
+    action and Talk always survives."""
+    gid = _new(client, [{"name": "Mara", "persona": "a wary scout"}])   # neutral: 3 base
+    mara = next(c for c in _state(client, gid)["characters"] if c["name"] == "Mara")
+    assert [a["label"] for a in mara["available_actions"]] == ["Talk", "Give...", "Provoke"]
+    fake_llm.narrator = _nar(T("offer_action", name="Mara", label="Ask about the scar"))
+    client.post(f"/games/{gid}/action", json={"action": "I notice her scar."})
+    mara = next(c for c in _state(client, gid)["characters"] if c["name"] == "Mara")
+    labels = [a["label"] for a in mara["available_actions"]]
+    assert labels == ["Talk", "Give...", "Ask about the scar"]   # offer in, Provoke out
+    fake_llm.narrator = _nar(T("offer_action", name="Mara", label="Buy her a drink"))
+    client.post(f"/games/{gid}/action", json={"action": "I wave the bottle."})
+    mara = next(c for c in _state(client, gid)["characters"] if c["name"] == "Mara")
+    assert len(mara["available_actions"]) == 3                   # second offer refused
+    assert "Buy her a drink" not in [a["label"] for a in mara["available_actions"]]
+
+
+def test_an_offer_matching_a_base_button_is_a_quiet_yes(client, fake_llm):
+    gid = _new(client, [{"name": "Mara", "persona": "a wary scout"}])
+    fake_llm.narrator = _nar(T("offer_action", name="Mara", label="Provoke"))
+    client.post(f"/games/{gid}/action", json={"action": "I needle her."})
+    mara = next(c for c in _state(client, gid)["characters"] if c["name"] == "Mara")
+    labels = [a["label"] for a in mara["available_actions"]]
+    assert labels == ["Talk", "Give...", "Provoke"]              # no duplicate button
+
+
 def test_hidden_item_reveal_and_take(client, fake_llm):
     gid = _new(client)
     fake_llm.narrator = _nar(T("place_item", target="scene", name="brass key",

@@ -25,11 +25,18 @@ def game_state(conn, gid: str) -> dict:
         for c in characters.get_characters(conn, gid)
     ]
     sc = scenes.current_scene(conn, gid)
+    # The wire contract caps exits at SCENE_EXIT_CAP; the auto return-exit (appended
+    # last on every move, uncapped in the DB) can push a revisited scene past it. When
+    # overflowing, the LAST exit keeps its seat (it is the way back) over the cap-1
+    # narrator exits before it; the full list stays in the DB for typed movement.
+    exits = db.loads(sc["exits"], [])
+    if len(exits) > settings.SCENE_EXIT_CAP:
+        exits = exits[: settings.SCENE_EXIT_CAP - 1] + [exits[-1]]
     scene = {
         "id": sc["id"], "name": sc["name"], "description": sc["description"],
         "background": (sc["background"] or "") if "background" in sc.keys() else "",
         "status": sc["status"], "image_url": sc["image_url"],
-        "exits": db.loads(sc["exits"], []),
+        "exits": exits,
         "items": items.visible_items(sc["items"]),
         "available_actions": scenes.scene_available_actions(conn, sc, settings.SCENE_ACTION_CAP),
     }

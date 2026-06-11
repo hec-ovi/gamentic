@@ -51,6 +51,10 @@ export const defaultHandlers = [
 
 export const server = setupServer(...defaultHandlers);
 
+// jsdom ships createObjectURL but not revokeObjectURL; the export download helper
+// revokes its blob URL in a delayed timer that otherwise explodes after the test.
+if (typeof URL.revokeObjectURL !== "function") URL.revokeObjectURL = () => {};
+
 beforeAll(() => server.listen({ onUnhandledRequest: "bypass" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());

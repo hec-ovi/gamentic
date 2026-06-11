@@ -23,8 +23,13 @@ def _strip_quoted(s: str) -> str:
 
 def _place_text(sc) -> str:
     """The art subject for a scene: its NAME (the concrete place) leading its description,
-    quoted spans stripped. Description alone can be world-level prose; the name anchors it."""
+    quoted spans stripped. Description alone can be world-level prose; the name anchors it.
+    Mid-game scenes often arrive with an empty description and the visual truth in
+    `background` (live: 'vault interior' alone rendered a literal treasure vault while
+    the magma cathedral sat unused in background) - fall back to it."""
     desc = _strip_quoted(sc["description"])
+    if not desc and "background" in sc.keys():
+        desc = _clip(_strip_quoted(sc["background"]), 40)
     name = (sc["name"] or "").strip()
     if not desc:
         return name

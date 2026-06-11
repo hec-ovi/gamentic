@@ -147,6 +147,23 @@ def test_scene_prompt_anchors_on_the_place_not_the_cosmology(client, fake_llm, m
     assert integrate.NO_TEXT_GUARD in p
 
 
+def test_scene_prompt_falls_back_to_background_when_description_is_empty():
+    """Live-found (the verification run): a mid-game scene arrived with an empty
+    description and the visual truth in `background` ('a cathedral of cooling magma...');
+    the prompt was the bare name and 'vault interior' rendered a literal treasure vault.
+    The prompt must fall back to the background when the description is empty."""
+    from app import integrate
+    sc = {"name": "vault interior", "description": "",
+          "background": "The inner chamber is a cathedral of cooling magma and carved "
+                        "obsidian. Great pillars of basalt rise like frozen giants.",
+          "status": "tense"}
+    p = integrate.scene_prompt(sc, "painterly fantasy")
+    assert "cathedral of cooling magma" in p
+    assert p.startswith("vault interior. ")
+    sc_no_bg = {"name": "vault interior", "description": "", "status": "tense"}
+    assert integrate.scene_prompt(sc_no_bg, "x").startswith("vault interior")   # no key, no crash
+
+
 def test_persist_falls_back_when_download_fails(client, fake_llm, monkeypatch, tmp_path):
     """If the image bytes can't be fetched, we fall back to the image-api URL (still works)."""
     from app.config import settings
