@@ -4,7 +4,7 @@ import { sameLocation } from "../adapters.js";
 import { icon } from "../icons.js";
 import { escapeHtml, holoFx, initials, stripWrappingQuotes, titleCase } from "./common.js";
 import { playerSpeech, speakBtn } from "./story.js";
-import { charActionBtn, contextMeter, renderComposer, renderStack, renderViewPending, slotGrid } from "./widgets.js";
+import { artImg, charActionBtn, contextMeter, dispositionBadges, hpBar, narratingDots, renderComposer, renderStack, renderViewPending, secHead, slotGrid, traitLi, veilWrap } from "./widgets.js";
 
 // A character can be CONSULTED even when absent or dead: the profile stays
 // readable everywhere; only the INTERACTIVE parts (whisper composer, action
@@ -40,7 +40,7 @@ export function renderProfile(s, g) {
 
   let body;
   if (pf.loading && !d) {
-    body = `<div class="narrating profile-loading"><span class="dot"></span><span class="dot"></span><span class="dot"></span><em>remembering ${escapeHtml(name)}...</em></div>`;
+    body = narratingDots(`remembering ${name}...`, "profile-loading");
   } else if (!d) {
     body = `<p class="modal-body">${escapeHtml(pf.error || "No trace of them remains.")}</p>`;
   } else {
@@ -75,7 +75,7 @@ export function profileBody(s, g, d) {
   const tab = pf.tab || "profile";
   const artCaption = [d.name, d.description].filter(Boolean).join(" - ");
   const art = d.bodyUrl || d.faceUrl
-    ? `<img class="profile-art" data-art="${escapeHtml(d.bodyUrl || d.faceUrl)}" src="${escapeHtml(d.bodyUrl || d.faceUrl)}" alt="${escapeHtml(d.name)}" data-caption="${escapeHtml(artCaption)}" />`
+    ? artImg({ url: d.bodyUrl || d.faceUrl, alt: d.name, caption: artCaption, cls: "profile-art" })
     : `<div class="profile-art fallback" role="img" aria-label="${escapeHtml(d.name)}"><span class="col-initial">${escapeHtml(initials(d.name))}</span></div>`;
 
   const tabBar = `
@@ -119,7 +119,7 @@ export function renderProfilePane(s, g) {
 export function profileStatusPane(s, d, locked = false) {
   const hp =
     d.life != null && d.maxLife
-      ? `<div class="char-hp" title="${d.life}/${d.maxLife}"><div class="hp-track"><div class="hp-fill" style="width:${Math.max(0, Math.min(100, (d.life / d.maxLife) * 100))}%"></div></div></div>`
+      ? hpBar(d.life, d.maxLife, { cls: "char-hp", title: `${d.life}/${d.maxLife}` })
       : "";
   // the character's own agent memory lives in state (not the profile endpoint)
   const presence = profilePresence(s, d);
@@ -127,14 +127,9 @@ export function profileStatusPane(s, d, locked = false) {
   const sparse = !d.traits.length && d.moments.length < 3;
   const origin = d.origin.length
     ? `<section class="profile-sec">
-         <h4 class="profile-sec-head">${icon("scroll")}<span>Their past</span></h4>
+         ${secHead("h4", "profile-sec-head", "scroll", "Their past")}
          <ul class="trait-list origin-list">
-           ${d.origin
-             .map(
-               (o) =>
-                 `<li class="trait origin"><span class="trait-text">${escapeHtml(o.text)}</span>${o.learned ? `<span class="trait-stamp">learned: ${escapeHtml(o.learned)}</span>` : ""}</li>`,
-             )
-             .join("")}
+           ${d.origin.map((o) => traitLi(o.text, "learned:", o.learned, "origin")).join("")}
          </ul>
        </section>`
     : "";
@@ -142,8 +137,7 @@ export function profileStatusPane(s, d, locked = false) {
     <div class="profile-id">
       <p class="ins-tags">
         ${d.gender ? `<span class="ins-tag">${escapeHtml(d.gender)}</span>` : ""}
-        ${d.relation ? `<span class="relation-badge">${escapeHtml(d.relation)}</span>` : ""}
-        <span class="disp-badge disp-${escapeHtml(d.disposition)}">${escapeHtml(d.disposition)}</span>
+        ${dispositionBadges(d)}
         ${d.following ? `<span class="ins-tag">following you</span>` : ""}
         ${!d.alive ? `<span class="ins-tag">fallen</span>` : ""}
       </p>
@@ -167,7 +161,7 @@ function actionsSection(d, stateChar, locked, presence) {
   if (!presence.present) {
     return `
       <section class="profile-sec">
-        <h4 class="profile-sec-head">${icon("zap")}<span>Actions</span></h4>
+        ${secHead("h4", "profile-sec-head", "zap", "Actions")}
         <p class="absence-line">${escapeHtml(absenceLine(d, stateChar, presence.alive))}</p>
       </section>`;
   }
@@ -175,7 +169,7 @@ function actionsSection(d, stateChar, locked, presence) {
   if (!actions.length) return "";
   return `
     <section class="profile-sec">
-      <h4 class="profile-sec-head">${icon("zap")}<span>Actions</span></h4>
+      ${secHead("h4", "profile-sec-head", "zap", "Actions")}
       <div class="char-actions profile-actions">
         ${actions.map((a) => charActionBtn(a, stateChar, locked)).join("")}
       </div>
@@ -187,12 +181,7 @@ export function profileTraitsPane(d) {
   if (!d.traits.length) return GROW_NOTE;
   return `
     <ul class="trait-list">
-      ${d.traits
-        .map(
-          (t) =>
-            `<li class="trait"><span class="trait-text">${escapeHtml(t.text)}</span>${t.unlocked ? `<span class="trait-stamp">unlocked: ${escapeHtml(t.unlocked)}</span>` : ""}</li>`,
-        )
-        .join("")}
+      ${d.traits.map((t) => traitLi(t.text, "unlocked:", t.unlocked)).join("")}
     </ul>`;
 }
 
@@ -208,12 +197,12 @@ export function profileMemoryPane(d) {
   }
   const memories = ready.length
     ? `<section class="profile-sec">
-         <h4 class="profile-sec-head">${icon("eye")}<span>Memories</span></h4>
+         ${secHead("h4", "profile-sec-head", "eye", "Memories")}
          <div class="memory-strip">
            ${ready
              .map(
                (m) =>
-                 `<figure class="memory"><img src="${escapeHtml(m.imageUrl)}" alt="${escapeHtml(m.caption || "A remembered moment")}" loading="lazy" />${m.caption ? `<figcaption>${escapeHtml(m.caption)}</figcaption>` : ""}</figure>`,
+                 `<figure class="memory">${artImg({ url: m.imageUrl, alt: m.caption || "A remembered moment", caption: m.caption })}${m.caption ? `<figcaption>${escapeHtml(m.caption)}</figcaption>` : ""}</figure>`,
              )
              .join("")}
          </div>
@@ -221,7 +210,7 @@ export function profileMemoryPane(d) {
     : "";
   const moments = d.moments.length
     ? `<section class="profile-sec">
-         <h4 class="profile-sec-head">${icon("scroll")}<span>Moments</span></h4>
+         ${secHead("h4", "profile-sec-head", "scroll", "Moments")}
          <ul class="moment-timeline">
            ${d.moments
              .map(
@@ -254,10 +243,7 @@ export function renderWhisperChannel(s, g, d, locked) {
   const thread = beats.length
     ? beats
         .slice(-40)
-        .map((b) => {
-          const html = renderPmBeat(b);
-          return veiled && veiled.has(b.id) ? `<div class="veil-wrap veiled">${html}</div>` : html;
-        })
+        .map((b) => veilWrap(renderPmBeat(b), Boolean(veiled && veiled.has(b.id))))
         .join("")
     : `<p class="pm-empty muted">${
         presence.present ? `Say something only ${escapeHtml(name)} will hear.` : "Nothing has passed between you in private."
@@ -266,7 +252,7 @@ export function renderWhisperChannel(s, g, d, locked) {
   // visible processing feedback: a whisper turn shows its thinking right here
   const thinking =
     locked && presence.present
-      ? `<div class="narrating pm-thinking" role="status" aria-live="polite"><span class="dot"></span><span class="dot"></span><span class="dot"></span><em>${escapeHtml(name)} considers...</em></div>`
+      ? narratingDots(`${name} considers...`, "pm-thinking")
       : "";
 
   // a private study's guaranteed image lands HERE, in the thread (item K)
@@ -292,7 +278,7 @@ export function renderWhisperChannel(s, g, d, locked) {
 
   return `
     <section class="profile-sec whisper-sec">
-      <h4 class="profile-sec-head">${icon("mic")}<span>Whisper</span></h4>
+      ${secHead("h4", "profile-sec-head", "mic", "Whisper")}
       ${presence.present ? `<p class="pm-hint">Only ${escapeHtml(name)} will ever know this.</p>` : ""}
       <div class="pm-thread" id="pmThread">${thread}${pendingLook}${thinking}</div>
       ${channel}
@@ -308,7 +294,7 @@ export function renderPmBeat(beat) {
     if (!beat.imageUrl) return "";
     return `<div class="pm-line pm-image" data-beat-id="${escapeHtml(beat.id)}">
               <figure>
-                <img data-art="${escapeHtml(beat.imageUrl)}" src="${escapeHtml(beat.imageUrl)}" alt="${escapeHtml(beat.text || "A glimpse")}" loading="lazy" />
+                ${artImg({ url: beat.imageUrl, alt: beat.text || "A glimpse" })}
                 ${beat.text ? `<figcaption>${escapeHtml(beat.text)}</figcaption>` : ""}
               </figure>
             </div>`;

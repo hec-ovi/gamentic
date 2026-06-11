@@ -2,11 +2,11 @@
 
 import { presentCharacters } from "../adapters.js";
 import { icon } from "../icons.js";
-import { escapeHtml, help, holoFx, initials, titleCase } from "./common.js";
+import { cardCorners, escapeHtml, help, holoFx, initials, titleCase } from "./common.js";
 import { renderInspectModal } from "./inspect.js";
 import { renderProfile } from "./profile.js";
 import { renderStory } from "./story.js";
-import { contextMeter, exitBtn, renderComposer, renderStack, renderViewPending, sceneActionBtn, sceneItemSlot, slotGrid } from "./widgets.js";
+import { artImg, artLoading, avatarOrInitials, contextMeter, dispositionBadges, exitBtn, hpBar, iconBtn, modalShell, narratingDots, renderComposer, renderStack, renderViewPending, sceneActionBtn, sceneItemSlot, slotGrid } from "./widgets.js";
 
 export { renderViewPending };
 
@@ -68,16 +68,15 @@ export function renderGiveModal(s, give, locked) {
         )
         .join("")}</div>`
     : `<p class="modal-body">You have nothing to give.</p>`;
-  return `
-    <div class="modal-overlay" data-act="cancel-give">
-      <div class="holo-modal give-modal" data-act="noop" role="dialog" aria-modal="true">
-        <span class="card-corner tr"></span><span class="card-corner bl"></span>
-        <h3 class="modal-title give"><span class="ic">${icon("gem")}</span><span>Give to ${escapeHtml(give.name)}</span></h3>
-        ${items.length ? `<p class="modal-body">Choose an item to hand over.</p>` : ""}
-        ${body}
-        <div class="modal-actions"><button class="holo-btn" data-act="cancel-give" ${dis}>Cancel</button></div>
-      </div>
-    </div>`;
+  return modalShell({
+    overlayAct: "cancel-give",
+    cls: "give-modal",
+    ariaLabel: `Give to ${give.name}`,
+    header: `<h3 class="modal-title give"><span class="ic">${icon("gem")}</span><span>Give to ${escapeHtml(give.name)}</span></h3>`,
+    body: `${items.length ? `<p class="modal-body">Choose an item to hand over.</p>` : ""}
+        ${body}`,
+    actions: `<button class="holo-btn" data-act="cancel-give" ${dis}>Cancel</button>`,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -97,17 +96,16 @@ export function renderPlayDeck(s, locked, g = {}) {
   const items = (scene && scene.items) || [];
   const actions = (scene && scene.actions) || [];
   const exits = (scene && scene.exits) || [];
-  const pct = p.maxLife ? Math.max(0, Math.min(100, (p.life / p.maxLife) * 100)) : 0;
   void g;
 
   return `
     <header class="play-deck">
       <div class="deck-nav">
-        <button class="holo-icon" data-act="go-library" aria-label="Library" title="Library" ${dis}>${icon("chevronLeft")}</button>
+        ${iconBtn({ act: "go-library", icon: "chevronLeft", label: "Library", disabled: locked })}
       </div>
 
       <div class="deck-scene">
-        <span class="card-corner tr"></span><span class="card-corner bl"></span>
+        ${cardCorners()}
         <div class="scene-id">
           ${mood ? `<span class="mood-badge mood-${escapeHtml(mood)}">${escapeHtml(mood)}</span>` : ""}
           ${s.time ? `<span class="time-chip" title="Story time, not yours">${icon("clock")}<span>${escapeHtml(s.time.label)}</span></span>` : ""}
@@ -143,7 +141,7 @@ export function renderPlayDeck(s, locked, g = {}) {
         <div class="vital-row">
           <div class="hud-life" data-hud-life>
             ${icon("heart")}
-            <div class="life-track"><div class="life-fill" style="width:${pct}%"></div></div>
+            ${hpBar(p.life, p.maxLife, { variant: "player" })}
             <span class="hud-num" data-hud-num="life">${p.life}/${p.maxLife}</span>
           </div>
           <div class="hud-points">${icon("star")}<span class="hud-num" data-hud-num="points">${p.points}</span></div>
@@ -154,7 +152,7 @@ export function renderPlayDeck(s, locked, g = {}) {
       </div>
 
       <div class="deck-nav">
-        <button class="holo-icon" data-act="open-settings" aria-label="Menu" title="Menu / settings">${icon("settings")}</button>
+        ${iconBtn({ act: "open-settings", icon: "settings", label: "Menu", title: "Menu / settings" })}
       </div>
     </header>`;
 }
@@ -188,9 +186,7 @@ export function renderCharColumn(c, s, locked, g = {}) {
   void g;
   const hp =
     c.life != null && c.maxLife
-      ? `<div class="char-hp" title="${c.life}/${c.maxLife}">
-           <div class="hp-track"><div class="hp-fill" style="width:${Math.max(0, Math.min(100, (c.life / c.maxLife) * 100))}%"></div></div>
-         </div>`
+      ? hpBar(c.life, c.maxLife, { cls: "char-hp", title: `${c.life}/${c.maxLife}` })
       : "";
   return `
     <article class="char-col${c.alive ? "" : " dead"}" data-char-id="${escapeHtml(c.id)}" style="--speaker:${escapeHtml(c.color)}">
@@ -198,8 +194,7 @@ export function renderCharColumn(c, s, locked, g = {}) {
         ${bodyArt(c, s)}
         <div class="col-grad" aria-hidden="true"></div>
         <span class="col-badges">
-          ${c.relation ? `<span class="relation-badge">${escapeHtml(c.relation)}</span>` : ""}
-          <span class="disp-badge disp-${escapeHtml(c.disposition)}">${escapeHtml(c.disposition)}</span>
+          ${dispositionBadges(c)}
         </span>
         <div class="col-plate">
           <span class="char-name">${escapeHtml(c.name)}${c.following ? ` <span class="follow-tag" title="Following you">${icon("compass")}</span>` : ""}</span>
@@ -221,12 +216,10 @@ export function renderCharColumn(c, s, locked, g = {}) {
 export function bodyArt(c, s) {
   if (c.bodyUrl) {
     const caption = [c.name, c.description].filter(Boolean).join(" - ");
-    return `<img class="col-body" data-art="${escapeHtml(c.bodyUrl)}" src="${escapeHtml(c.bodyUrl)}" alt="${escapeHtml(c.name)}" data-caption="${escapeHtml(caption)}" loading="lazy" />`;
+    return artImg({ url: c.bodyUrl, alt: c.name, caption, cls: "col-body" });
   }
   if (s.imagesEnabled) {
-    return `<div class="col-body art-loading" role="img" aria-label="${escapeHtml(c.name)} (art is being painted)">
-              <span class="art-scan" aria-hidden="true"></span><span class="art-hint">manifesting</span>
-            </div>`;
+    return artLoading("col-body", "manifesting", `${c.name} (art is being painted)`);
   }
   return `<div class="col-body art-off" role="img" aria-label="${escapeHtml(c.name)}">
             <span class="col-initial">${escapeHtml(initials(c.name))}</span>
@@ -234,9 +227,7 @@ export function bodyArt(c, s) {
 }
 
 export function castRow(c) {
-  const avatar = c.faceUrl
-    ? `<img src="${escapeHtml(c.faceUrl)}" alt="${escapeHtml(c.name)}" loading="lazy" />`
-    : `<span class="cast-fallback" style="background:${escapeHtml(c.color)}">${escapeHtml(initials(c.name))}</span>`;
+  const avatar = avatarOrInitials({ url: c.faceUrl, name: c.name, color: c.color, fallbackCls: "cast-fallback" });
   let where;
   if (!c.alive) where = "fallen";
   else if (c.following) where = "with you";
@@ -289,8 +280,5 @@ export function renderActionBar(g, s, locked) {
 }
 
 export function renderNarrating() {
-  return `<div class="narrating" role="status" aria-live="polite">
-            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-            <em>the narrator is thinking...</em>
-          </div>`;
+  return narratingDots("the narrator is thinking...");
 }

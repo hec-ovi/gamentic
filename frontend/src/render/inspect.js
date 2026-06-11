@@ -2,6 +2,7 @@
 
 import { icon } from "../icons.js";
 import { escapeHtml } from "./common.js";
+import { artImg, iconBtn, modalShell, narratingDots } from "./widgets.js";
 
 // ---------------------------------------------------------------------------
 // Tap-to-inspect: every small thing on screen (items, characters, the goal,
@@ -17,7 +18,7 @@ export function renderInspectModal(s, g) {
     <div class="ins-ask">
       ${
         ins.asking
-          ? `<div class="narrating"><span class="dot"></span><span class="dot"></span><span class="dot"></span><em>the narrator considers...</em></div>`
+          ? narratingDots("the narrator considers...")
           : ins.answer != null
             ? `<p class="ins-answer">${escapeHtml(ins.answer)}</p>`
             : ""
@@ -27,19 +28,21 @@ export function renderInspectModal(s, g) {
       </button>
     </div>`;
 
-  return `
-    <div class="modal-overlay" data-act="close-inspect">
-      <div class="holo-modal inspect-modal" data-act="noop" role="dialog" aria-modal="true" aria-label="${escapeHtml(view.title)}">
-        <span class="card-corner tr"></span><span class="card-corner bl"></span>
-        <header class="ins-head">
+  // the inspect modal has its own header shape: an ins-title plus a close
+  // button, and the action row uses ins-actions (not modal-actions), so the
+  // body carries those itself rather than going through modalShell's actions.
+  return modalShell({
+    overlayAct: "close-inspect",
+    cls: "inspect-modal",
+    ariaLabel: view.title,
+    header: `<header class="ins-head">
           <h3 class="ins-title">${escapeHtml(view.title)}</h3>
-          <button type="button" class="holo-icon" data-act="close-inspect" aria-label="Close" title="Close">${icon("x")}</button>
-        </header>
-        ${view.body}
+          ${iconBtn({ act: "close-inspect", icon: "x", label: "Close" })}
+        </header>`,
+    body: `${view.body}
         ${view.actions ? `<div class="ins-actions">${view.actions}</div>` : ""}
-        ${ask}
-      </div>
-    </div>`;
+        ${ask}`,
+  });
 }
 
 export function inspectView(s, g, ins) {
@@ -65,7 +68,7 @@ export function inspectImage(url, alt, caption = "") {
   // `caption` is the thing's description, shown when the image expands.
   const full = [alt, caption].filter(Boolean).join(" - ");
   return url
-    ? `<div class="ins-figure"><img data-art="${escapeHtml(url)}" src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" data-caption="${escapeHtml(full)}" loading="lazy" /></div>`
+    ? `<div class="ins-figure">${artImg({ url, alt, caption: full })}</div>`
     : "";
 }
 

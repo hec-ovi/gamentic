@@ -2,7 +2,8 @@
 
 import { sameLocation } from "../adapters.js";
 import { icon } from "../icons.js";
-import { escapeHtml, initials, stripWrappingQuotes } from "./common.js";
+import { cardCorners, escapeHtml, stripWrappingQuotes } from "./common.js";
+import { artImg, artLoading, avatarOrInitials, veilWrap } from "./widgets.js";
 
 export { sameLocation };
 
@@ -54,7 +55,7 @@ export function renderStory(g) {
   const veiled = g.revealQueue && g.revealQueue.length ? new Set(g.revealQueue) : null;
   const parts = shown.map((b, i) => {
     const html = renderBeat(b, g, i === anchorIdx ? artCard : "");
-    return veiled && veiled.has(b.id) ? `<div class="veil-wrap veiled">${html}</div>` : html;
+    return veilWrap(html, Boolean(veiled && veiled.has(b.id)));
   });
   if (anchorIdx === -1 && artCard) parts.splice(visitStart, 0, artCard);
   return trim + parts.join("");
@@ -70,16 +71,13 @@ export function sceneArtCard(s) {
   if (scene.imageUrl) {
     const caption = [name, scene.description].filter(Boolean).join(" - ");
     return `<figure class="prose-art">
-              <span class="card-corner tr"></span><span class="card-corner bl"></span>
-              <img data-art="${escapeHtml(scene.imageUrl)}" src="${escapeHtml(scene.imageUrl)}" alt="${escapeHtml(name)}" data-caption="${escapeHtml(caption)}" loading="lazy" />
+              ${cardCorners()}
+              ${artImg({ url: scene.imageUrl, alt: name, caption })}
               ${name ? `<figcaption>${escapeHtml(name)}</figcaption>` : ""}
             </figure>`;
   }
   if (s.imagesEnabled) {
-    return `<figure class="prose-art art-loading" role="img" aria-label="Scene art is being painted">
-              <span class="art-scan" aria-hidden="true"></span>
-              <span class="art-hint">visual manifesting...</span>
-            </figure>`;
+    return artLoading("prose-art", "visual manifesting...", "Scene art is being painted", "figure");
   }
   return "";
 }
@@ -111,14 +109,14 @@ export function renderImageBeat(beat) {
   if (!beat.imageUrl) return "";
   if (beat.speaker === "system") {
     return `<figure class="beat-image item-card" data-beat-id="${escapeHtml(beat.id)}">
-              <span class="card-corner tr"></span><span class="card-corner bl"></span>
-              <img data-art="${escapeHtml(beat.imageUrl)}" src="${escapeHtml(beat.imageUrl)}" alt="${escapeHtml(beat.text || "A new item")}" loading="lazy" />
+              ${cardCorners()}
+              ${artImg({ url: beat.imageUrl, alt: beat.text || "A new item" })}
               <figcaption>${icon("gem")}<span>${escapeHtml(beat.text || "New item")}</span></figcaption>
             </figure>`;
   }
   return `<figure class="beat-image" data-beat-id="${escapeHtml(beat.id)}">
-            <span class="card-corner tr"></span><span class="card-corner bl"></span>
-            <img data-art="${escapeHtml(beat.imageUrl)}" src="${escapeHtml(beat.imageUrl)}" alt="${escapeHtml(beat.text || "The scene as it is right now")}" loading="lazy" />
+            ${cardCorners()}
+            ${artImg({ url: beat.imageUrl, alt: beat.text || "The scene as it is right now" })}
             ${beat.text ? `<figcaption>${escapeHtml(beat.text)}</figcaption>` : ""}
           </figure>`;
 }
@@ -183,8 +181,8 @@ export function renderNarration(beat, embed = "") {
     .join("");
   const beatArt = beat.imageUrl
     ? `<figure class="prose-art beat-art">
-         <span class="card-corner tr"></span><span class="card-corner bl"></span>
-         <img data-art="${escapeHtml(beat.imageUrl)}" src="${escapeHtml(beat.imageUrl)}" alt="" loading="lazy" />
+         ${cardCorners()}
+         ${artImg({ url: beat.imageUrl, alt: "" })}
        </figure>`
     : "";
   const playable = beat.voiceId ? speakBtn(beat) : "";
@@ -198,9 +196,13 @@ export function renderDialogue(beat, g) {
   const ch = (g.state.characters || []).find((c) => c.id === beat.speaker);
   const color = (ch && ch.color) || "#f2b84b";
   const name = beat.speakerName || (ch && ch.name) || "Someone";
-  const avatar = ch && ch.faceUrl
-    ? `<img class="bubble-avatar" src="${escapeHtml(ch.faceUrl)}" alt="${escapeHtml(name)}" loading="lazy" />`
-    : `<span class="bubble-avatar fallback" style="background:${escapeHtml(color)}">${escapeHtml(initials(name))}</span>`;
+  const avatar = avatarOrInitials({
+    url: ch && ch.faceUrl,
+    name,
+    color,
+    imgCls: "bubble-avatar",
+    fallbackCls: "bubble-avatar fallback",
+  });
   return `
     <article class="dialogue" data-beat-id="${escapeHtml(beat.id)}" style="--speaker:${escapeHtml(color)}">
       ${avatar}

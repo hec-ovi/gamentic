@@ -2,7 +2,7 @@
 
 import { describeSegment } from "../composer.js";
 import { icon } from "../icons.js";
-import { escapeHtml, initials } from "./common.js";
+import { cardCorners, escapeHtml, initials } from "./common.js";
 
 // Prompt-token usage as a colored meter: green -> amber -> red as it fills.
 // A PERMANENT HUD element ("12k/128k"), not a debug toggle: it renders whenever
@@ -138,4 +138,137 @@ export function exitBtn(e, locked) {
 
 export function charActionBtn(a, c, locked) {
   return `<button type="button" class="chip-btn" data-act="char-action" data-type="${escapeHtml(a.type)}" data-label="${escapeHtml(a.label)}" data-char-id="${escapeHtml(c.id)}" data-char-name="${escapeHtml(c.name)}" ${locked ? "disabled" : ""}>${escapeHtml(a.label)}</button>`;
+}
+
+// ---------------------------------------------------------------------------
+// Shared chrome bits: the thinking dots, the modal shell, the icon button, the
+// little stat pill, the staged-reveal veil. One copy each, used everywhere.
+// ---------------------------------------------------------------------------
+
+// The "...thinking" indicator: three pulsing dots and a label. Always a live
+// region (role=status / aria-live=polite) so a screen reader announces the
+// wait. `cls` carries the per-site flavor class (profile-loading, pm-thinking).
+export function narratingDots(label, cls = "") {
+  return `<div class="narrating${cls ? ` ${cls}` : ""}" role="status" aria-live="polite">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <em>${escapeHtml(label)}</em>
+          </div>`;
+}
+
+// The modal scaffold: a click-to-dismiss overlay wrapping a holo card that
+// swallows its own clicks (data-act="noop"), with the corner accents and a
+// labeled dialog box. Every dialog carries an aria-label. The header defaults
+// to an icon + title h3; pass `header` to supply a custom one (the inspect
+// modal puts a close button up there).
+export function modalShell({ overlayAct, title, titleIcon, header, body, actions, actionsCls = "", cls = "", ariaLabel }) {
+  const head =
+    header != null
+      ? header
+      : `<h3 class="modal-title">${titleIcon ? icon(titleIcon) : ""}<span>${escapeHtml(title)}</span></h3>`;
+  const label = ariaLabel != null ? ariaLabel : title;
+  return `
+    <div class="modal-overlay" data-act="${overlayAct}">
+      <div class="holo-modal${cls ? ` ${cls}` : ""}" data-act="noop" role="dialog" aria-modal="true" aria-label="${escapeHtml(label)}">
+        ${cardCorners()}
+        ${head}
+        ${body}
+        ${actions ? `<div class="modal-actions${actionsCls ? ` ${actionsCls}` : ""}">${actions}</div>` : ""}
+      </div>
+    </div>`;
+}
+
+// A clamped life/hp bar. `variant` picks the class family: "player" -> the deck
+// vitals (life-track/life-fill), "char" -> a character bar (hp-track/hp-fill).
+// `cls` is an optional wrapper class (e.g. "char-hp"); markup is identical to
+// the hand-built versions it replaces.
+export function hpBar(life, maxLife, { variant = "char", cls = "", title = "" } = {}) {
+  const pct = maxLife ? Math.max(0, Math.min(100, (life / maxLife) * 100)) : 0;
+  const track = variant === "player" ? "life-track" : "hp-track";
+  const fill = variant === "player" ? "life-fill" : "hp-fill";
+  const open = cls ? `<div class="${cls}"${title ? ` title="${escapeHtml(title)}"` : ""}>` : "";
+  const close = cls ? "</div>" : "";
+  return `${open}<div class="${track}"><div class="${fill}" style="width:${pct}%"></div></div>${close}`;
+}
+
+// The relation + disposition badge pair worn on a character (the column badges,
+// the profile status sheet). Relation is optional; disposition always shows.
+export function relationBadge(text) {
+  return text ? `<span class="relation-badge">${escapeHtml(text)}</span>` : "";
+}
+
+export function dispBadge(disposition) {
+  return `<span class="disp-badge disp-${escapeHtml(disposition)}">${escapeHtml(disposition)}</span>`;
+}
+
+export function dispositionBadges(c) {
+  return `${relationBadge(c.relation)}
+          ${dispBadge(c.disposition)}`;
+}
+
+// A lightbox-trigger image: data-art arms the global lightbox listener and the
+// card-reveal, data-caption is what shows when it expands, loading=lazy keeps
+// the strip cheap. Every art image goes through here so none of those drift.
+export function artImg({ url, alt = "", caption, cls = "" }) {
+  const clsAttr = cls ? ` class="${cls}"` : "";
+  const cap = caption ? ` data-caption="${escapeHtml(caption)}"` : "";
+  return `<img${clsAttr} data-art="${escapeHtml(url)}" src="${escapeHtml(url)}" alt="${escapeHtml(alt)}"${cap} loading="lazy" />`;
+}
+
+// The staged-reveal wrapper: a beat queued for the typewriter reveal renders
+// veiled until its turn. reveal.js keys off this exact structure.
+export function veilWrap(html, veiled) {
+  return veiled ? `<div class="veil-wrap veiled">${html}</div>` : html;
+}
+
+// img-or-initials: the small portrait used in the cast roster and dialogue
+// bubbles. A real face when we have one, else the initials on a color plate.
+// (col-art / profile-art are a different shape and stay hand-built.)
+export function avatarOrInitials({ url, name, color, imgCls = "", fallbackCls }) {
+  return url
+    ? `<img${imgCls ? ` class="${imgCls}"` : ""} src="${escapeHtml(url)}" alt="${escapeHtml(name)}" loading="lazy" />`
+    : `<span class="${fallbackCls}" style="background:${escapeHtml(color)}">${escapeHtml(initials(name))}</span>`;
+}
+
+// The scan-line "art is being painted" skeleton (the developing-photo look).
+// `cls` is the wrapper's extra class (col-body, prose-art ...), `hint` the
+// caption word, `ariaLabel` what a screen reader hears for the role=img box.
+// `tag` is the wrapper element - a div for a character column, a figure for the
+// scene card (which lives among other prose-art figures).
+export function artLoading(cls, hint, ariaLabel, tag = "div") {
+  return `<${tag} class="${cls} art-loading" role="img" aria-label="${escapeHtml(ariaLabel)}">
+            <span class="art-scan" aria-hidden="true"></span><span class="art-hint">${escapeHtml(hint)}</span>
+          </${tag}>`;
+}
+
+// A small section heading: an icon and a label span. Covers both families -
+// the profile's h4.profile-sec-head and the screens' h3.panel-head - via the
+// tag + class params. (col-head and rail-label are a different shape.)
+export function secHead(tag, cls, iconName, label) {
+  return `<${tag} class="${cls}">${icon(iconName)}<span>${escapeHtml(label)}</span></${tag}>`;
+}
+
+// An icon-only holo-icon button: the aria-label + title pair name it for both
+// assistive tech and a hover tooltip, and type=button keeps it from submitting
+// any form it sits inside. `title` defaults to the label but can differ (a
+// short screen-reader name, a longer tooltip). `data` is a map of extra data-*.
+export function iconBtn({ act, icon: iconName, label, title, cls = "", data = {}, disabled = false }) {
+  const dataAttrs = Object.entries(data)
+    .map(([k, v]) => ` data-${k}="${escapeHtml(v)}"`)
+    .join("");
+  const tip = title != null ? title : label;
+  return `<button type="button" class="holo-icon${cls ? ` ${cls}` : ""}" data-act="${act}"${dataAttrs} aria-label="${escapeHtml(label)}" title="${escapeHtml(tip)}" ${disabled ? "disabled" : ""}>${icon(iconName)}</button>`;
+}
+
+// The backend-link pill: SYSTEM ONLINE when the server answers, LINK LOST when
+// it does not. Lives in the menu header and the library header.
+export function hudStat(online) {
+  return `<span class="hud-stat ${online ? "ok" : "down"}">
+          <span class="stat-dot"></span>${online ? "SYSTEM ONLINE" : "LINK LOST"}
+        </span>`;
+}
+
+// One trait / origin list item: the text, then a "stamp" (unlocked: / learned:)
+// noting when it was revealed. `cls` adds the "origin" flavor for past entries.
+export function traitLi(text, stampWord, when, cls = "") {
+  return `<li class="trait${cls ? ` ${cls}` : ""}"><span class="trait-text">${escapeHtml(text)}</span>${when ? `<span class="trait-stamp">${stampWord} ${escapeHtml(when)}</span>` : ""}</li>`;
 }

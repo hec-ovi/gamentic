@@ -70,6 +70,13 @@ export function holoFrame() {
           </span>`;
 }
 
+// The diagonal corner accents on a holo card / modal / panel: top-right and
+// bottom-left. Pure decoration, so they hide from screen readers (the sibling
+// holoFrame above does the same with its four brackets).
+export function cardCorners() {
+  return `<span class="card-corner tr" aria-hidden="true"></span><span class="card-corner bl" aria-hidden="true"></span>`;
+}
+
 export function initials(name) {
   return String(name || "?")
     .split(/\s+/)

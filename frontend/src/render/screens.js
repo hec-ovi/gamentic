@@ -1,8 +1,8 @@
 // The non-play screens: menu, library (delete/export/import), creator, settings.
 
 import { icon } from "../icons.js";
-import { contextMeter } from "./widgets.js";
-import { escapeHtml, help, holoFrame, holoFx } from "./common.js";
+import { cardCorners, escapeHtml, help, holoFrame, holoFx } from "./common.js";
+import { contextMeter, hudStat, iconBtn, modalShell, narratingDots, secHead } from "./widgets.js";
 
 export function menuNode({ act, icon: ic, label, sub, kind }) {
   return `
@@ -32,9 +32,7 @@ export function renderMenu(state) {
       <header class="menu-top">
         <span class="hud-tag">// MENU</span>
         ${help("menu")}
-        <span class="hud-stat ${online ? "ok" : "down"}">
-          <span class="stat-dot"></span>${online ? "SYSTEM ONLINE" : "LINK LOST"}
-        </span>
+        ${hudStat(online)}
       </header>
 
       <div class="menu-title">
@@ -93,17 +91,15 @@ export function renderLibrary(state) {
     <div class="holo-stage lib-stage" data-stage>
       ${holoFx()}
       <header class="holo-bar">
-        <button class="holo-icon" data-act="go-menu" aria-label="Main menu" title="Main menu">${icon("chevronLeft")}</button>
+        ${iconBtn({ act: "go-menu", icon: "chevronLeft", label: "Main menu" })}
         <span class="hud-tag">// ARCHIVE</span>
         ${help("library")}
-        <span class="hud-stat ${backendOnline ? "ok" : "down"}">
-          <span class="stat-dot"></span>${backendOnline ? "SYSTEM ONLINE" : "LINK LOST"}
-        </span>
+        ${hudStat(backendOnline)}
         <button class="holo-btn lib-import" data-act="import-game" title="Import an exported adventure (template or checkpoint)" ${state.importing ? "disabled" : ""}>
           ${icon("rotate")}<span>${state.importing ? "Importing..." : "Import"}</span>
         </button>
         <input type="file" id="importFile" accept=".json,application/json" hidden aria-label="Adventure export file" />
-        <button class="holo-icon" data-act="open-settings" aria-label="Settings" title="Settings">${icon("settings")}</button>
+        ${iconBtn({ act: "open-settings", icon: "settings", label: "Settings" })}
       </header>
       <main class="lib-main">${body}</main>
       ${state.confirm ? renderConfirm(state.confirm) : ""}
@@ -114,7 +110,7 @@ export function renderLibrary(state) {
 export function renderGameCard(game) {
   return `
     <article class="holo-card" data-game-id="${escapeHtml(game.id)}">
-      <span class="card-corner tr"></span><span class="card-corner bl"></span>
+      ${cardCorners()}
       <span class="card-status">${escapeHtml(game.status || "active")}</span>
       <h3 class="card-title">${escapeHtml(game.title)}</h3>
       <p class="card-meta">${escapeHtml(game.created_at || "")}</p>
@@ -122,14 +118,8 @@ export function renderGameCard(game) {
         <button class="holo-btn" data-act="continue-game" data-game-id="${escapeHtml(game.id)}">
           ${icon("play")}<span>Enter</span>
         </button>
-        <button class="holo-icon" data-act="ask-export" data-game-id="${escapeHtml(game.id)}"
-                data-game-title="${escapeHtml(game.title)}" aria-label="Export adventure" title="Export">
-          ${icon("send")}
-        </button>
-        <button class="holo-icon danger" data-act="ask-delete" data-game-id="${escapeHtml(game.id)}"
-                data-game-title="${escapeHtml(game.title)}" aria-label="Delete adventure" title="Delete">
-          ${icon("trash")}
-        </button>
+        ${iconBtn({ act: "ask-export", icon: "send", label: "Export adventure", title: "Export", data: { "game-id": game.id, "game-title": game.title } })}
+        ${iconBtn({ act: "ask-delete", icon: "trash", label: "Delete adventure", title: "Delete", cls: "danger", data: { "game-id": game.id, "game-title": game.title } })}
       </div>
     </article>`;
 }
@@ -137,38 +127,34 @@ export function renderGameCard(game) {
 // Export choice: one adventure, two flavors. Template = the world as designed
 // (a fresh start anyone can import); checkpoint = the full save, this moment.
 export function renderExportChoice(ex) {
-  return `
-    <div class="modal-overlay" data-act="cancel-export">
-      <div class="holo-modal" data-act="noop" role="dialog" aria-modal="true">
-        <span class="card-corner tr"></span><span class="card-corner bl"></span>
-        <h3 class="modal-title">${icon("send")}<span>Export "${escapeHtml(ex.title)}"</span></h3>
-        <p class="modal-body">Share the adventure as a fresh start, or save this exact moment as a full checkpoint. Either downloads a file the library can import.</p>
-        <div class="modal-actions export-actions">
-          <button class="holo-btn" data-act="export-game" data-kind="template" data-game-id="${escapeHtml(ex.gameId)}" data-game-title="${escapeHtml(ex.title)}">
-            ${icon("sparkles")}<span>Share as adventure</span>
-          </button>
-          <button class="holo-btn" data-act="export-game" data-kind="checkpoint" data-game-id="${escapeHtml(ex.gameId)}" data-game-title="${escapeHtml(ex.title)}">
-            ${icon("scroll")}<span>Save this moment</span>
-          </button>
-          <button class="holo-btn" data-act="cancel-export">Cancel</button>
-        </div>
-      </div>
-    </div>`;
+  return modalShell({
+    overlayAct: "cancel-export",
+    title: `Export "${ex.title}"`,
+    titleIcon: "send",
+    ariaLabel: `Export "${ex.title}"`,
+    body: `<p class="modal-body">Share the adventure as a fresh start, or save this exact moment as a full checkpoint. Either downloads a file the library can import.</p>`,
+    actionsCls: "export-actions",
+    actions: `
+      <button class="holo-btn" data-act="export-game" data-kind="template" data-game-id="${escapeHtml(ex.gameId)}" data-game-title="${escapeHtml(ex.title)}">
+        ${icon("sparkles")}<span>Share as adventure</span>
+      </button>
+      <button class="holo-btn" data-act="export-game" data-kind="checkpoint" data-game-id="${escapeHtml(ex.gameId)}" data-game-title="${escapeHtml(ex.title)}">
+        ${icon("scroll")}<span>Save this moment</span>
+      </button>
+      <button class="holo-btn" data-act="cancel-export">Cancel</button>`,
+  });
 }
 
 export function renderConfirm(c) {
-  return `
-    <div class="modal-overlay" data-act="cancel-delete">
-      <div class="holo-modal" data-act="noop" role="dialog" aria-modal="true">
-        <span class="card-corner tr"></span><span class="card-corner bl"></span>
-        <h3 class="modal-title">${icon("trash")}<span>Delete adventure?</span></h3>
-        <p class="modal-body">"${escapeHtml(c.title)}" will be wiped: characters, scenes, quests, and history. This cannot be undone.</p>
-        <div class="modal-actions">
-          <button class="holo-btn" data-act="cancel-delete">Cancel</button>
-          <button class="holo-btn danger" data-act="confirm-delete" data-game-id="${escapeHtml(c.gameId)}">${icon("trash")}<span>Delete</span></button>
-        </div>
-      </div>
-    </div>`;
+  return modalShell({
+    overlayAct: "cancel-delete",
+    title: "Delete adventure?",
+    titleIcon: "trash",
+    body: `<p class="modal-body">"${escapeHtml(c.title)}" will be wiped: characters, scenes, quests, and history. This cannot be undone.</p>`,
+    actions: `
+      <button class="holo-btn" data-act="cancel-delete">Cancel</button>
+      <button class="holo-btn danger" data-act="confirm-delete" data-game-id="${escapeHtml(c.gameId)}">${icon("trash")}<span>Delete</span></button>`,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -188,7 +174,7 @@ export function renderCreator(state) {
     .join("");
   const thinking = c.busy
     ? `<div class="forge-msg from-builder thinking"><span class="forge-who">World-builder</span>
-         <div class="narrating"><span class="dot"></span><span class="dot"></span><span class="dot"></span><em>shaping the world...</em></div>
+         ${narratingDots("shaping the world...")}
        </div>`
     : "";
   const restored = c.restored
@@ -199,7 +185,7 @@ export function renderCreator(state) {
     <div class="holo-stage forge-stage" data-stage>
       ${holoFx()}
       <header class="holo-bar">
-        <button class="holo-icon" data-act="go-library" aria-label="Back" title="Back to archive">${icon("chevronLeft")}</button>
+        ${iconBtn({ act: "go-library", icon: "chevronLeft", label: "Back", title: "Back to archive" })}
         <span class="hud-tag">// FORGE</span>
         ${help("creator")}
         <button class="holo-btn forge-restart" data-act="creator-restart" title="Discard this conversation and start a new world" ${c.busy ? "disabled" : ""}>
@@ -277,14 +263,14 @@ export function renderSettings(state) {
     <div class="holo-stage set-stage" data-stage>
       ${holoFx()}
       <header class="holo-bar">
-        <button class="holo-icon" data-act="close-settings" aria-label="Back" title="Back">${icon("chevronLeft")}</button>
+        ${iconBtn({ act: "close-settings", icon: "chevronLeft", label: "Back" })}
         <span class="hud-tag">// SYSTEM</span>
         ${help("settings")}
       </header>
       <main class="set-main">
         <section class="holo-panel">
-          <span class="card-corner tr"></span><span class="card-corner bl"></span>
-          <h3 class="panel-head">${icon("mic")}<span>Audio</span></h3>
+          ${cardCorners()}
+          ${secHead("h3", "panel-head", "mic", "Audio")}
 
           <label class="set-row">
             <span class="set-label">Voice<small>Narration & character speech</small></span>
@@ -314,8 +300,8 @@ export function renderSettings(state) {
         ${state.active && state.active.state ? renderMemorySettings(state.active) : ""}
 
         <section class="holo-panel danger-zone">
-          <span class="card-corner tr"></span><span class="card-corner bl"></span>
-          <h3 class="panel-head">${icon("flame")}<span>Danger</span></h3>
+          ${cardCorners()}
+          ${secHead("h3", "panel-head", "flame", "Danger")}
           <div class="set-row">
             <span class="set-label">Wipe all memory<small>Every adventure, its history, characters and images. No undo.</small></span>
             <button type="button" class="holo-btn danger" data-act="ask-wipe">${icon("trash")}<span>Wipe all memory</span></button>
@@ -331,21 +317,18 @@ export function renderSettings(state) {
 // The wipe-all double confirm: the first click ARMS the button, the second
 // erases. There is no undo, so the dialog says exactly what it deletes.
 export function renderWipeConfirm(w) {
-  return `
-    <div class="modal-overlay" data-act="cancel-wipe">
-      <div class="holo-modal" data-act="noop" role="dialog" aria-modal="true" aria-label="Wipe all memory?">
-        <span class="card-corner tr"></span><span class="card-corner bl"></span>
-        <h3 class="modal-title">${icon("flame")}<span>Wipe all memory?</span></h3>
-        <p class="modal-body">This deletes EVERY adventure, its history, characters and images. There is no undo.</p>
-        ${w.stage > 1 ? `<p class="modal-body wipe-armed">Last chance. Click once more and it is all gone.</p>` : ""}
-        <div class="modal-actions">
-          <button class="holo-btn" data-act="cancel-wipe" ${w.busy ? "disabled" : ""}>Cancel</button>
-          <button class="holo-btn danger" data-act="confirm-wipe" ${w.busy ? "disabled" : ""}>
-            ${icon("trash")}<span>${w.busy ? "Erasing..." : w.stage > 1 ? "Yes, erase everything" : "Erase everything"}</span>
-          </button>
-        </div>
-      </div>
-    </div>`;
+  return modalShell({
+    overlayAct: "cancel-wipe",
+    title: "Wipe all memory?",
+    titleIcon: "flame",
+    body: `<p class="modal-body">This deletes EVERY adventure, its history, characters and images. There is no undo.</p>
+        ${w.stage > 1 ? `<p class="modal-body wipe-armed">Last chance. Click once more and it is all gone.</p>` : ""}`,
+    actions: `
+      <button class="holo-btn" data-act="cancel-wipe" ${w.busy ? "disabled" : ""}>Cancel</button>
+      <button class="holo-btn danger" data-act="confirm-wipe" ${w.busy ? "disabled" : ""}>
+        ${icon("trash")}<span>${w.busy ? "Erasing..." : w.stage > 1 ? "Yes, erase everything" : "Erase everything"}</span>
+      </button>`,
+  });
 }
 
 // Story memory (PATCH /games/{id}/settings): how the narrator remembers. The
@@ -364,8 +347,8 @@ function renderMemorySettings(g) {
     </label>`;
   return `
     <section class="holo-panel memory-settings">
-      <span class="card-corner tr"></span><span class="card-corner bl"></span>
-      <h3 class="panel-head">${icon("gauge")}<span>Story memory</span></h3>
+      ${cardCorners()}
+      ${secHead("h3", "panel-head", "gauge", "Story memory")}
       <p class="set-note">The narrator re-reads the recent story word for word and automatically compresses everything older into a recap, so the story is never lost. 0 returns a control to its default.</p>
       ${memRow("history_beats", st.historyBeats, "Memory depth", "How much recent story rides verbatim (8-400). Deeper = richer continuity, slower turns.", 8, 400, 4)}
       ${memRow("summary_every", st.summaryEvery, "Auto-summarize every N turns", "How often older chapters fold into the recap (2-50).", 2, 50, 1)}
@@ -395,8 +378,8 @@ export function renderGameSettings(g) {
 
   return `
     <section class="holo-panel game-settings">
-      <span class="card-corner tr"></span><span class="card-corner bl"></span>
-      <h3 class="panel-head">${icon("sigil")}<span>This adventure</span></h3>
+      ${cardCorners()}
+      ${secHead("h3", "panel-head", "sigil", "This adventure")}
 
       <fieldset class="set-group" data-group="difficulty">
         <legend class="set-legend">Difficulty</legend>
