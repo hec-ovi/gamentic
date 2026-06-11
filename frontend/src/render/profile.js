@@ -33,10 +33,10 @@ export function absenceLine(d, stateChar, alive) {
 // ---------------------------------------------------------------------------
 export function renderProfile(s, g) {
   const pf = g.profile; // { charId, name, mode, stack, loading, data, error }
-  const c = (s.characters || []).find((x) => x.id === pf.charId) || { id: pf.charId, name: pf.name, color: "#2fe6ff" };
+  const c = (s.characters || []).find((x) => x.id === pf.charId) || { id: pf.charId, name: pf.name, color: "var(--accent)" };
   const d = pf.data;
   const name = (d && d.name) || c.name || pf.name;
-  const color = (d && d.color) || c.color || "#2fe6ff";
+  const color = (d && d.color) || c.color || "var(--accent)";
 
   let body;
   if (pf.loading && !d) {

@@ -131,14 +131,14 @@ export function renderActionBeat(beat, g) {
     return renderPlayerAction(beat);
   }
   const ch = (g.state.characters || []).find((c) => c.id === beat.speaker);
-  const color = (ch && ch.color) || "#a79fb3";
+  const color = (ch && ch.color) || "var(--speaker-unknown)";
   const name = beat.speakerName || (ch && ch.name) || "";
   return `<p class="char-deed" data-beat-id="${escapeHtml(beat.id)}" style="--speaker:${escapeHtml(color)}">
             ${name ? `<b>${escapeHtml(name)}</b> ` : ""}${escapeHtml(beat.text)}
           </p>`;
 }
 
-export const PLAYER_COLOR = "#2fe6ff";
+export const PLAYER_COLOR = "var(--speaker-player)";
 
 // Detect a player SPEECH echo. The wire gives player echoes as kind "action"
 // with texts like `you say "..." to Vex` or `you whisper to Mara: "..."`;
@@ -194,7 +194,7 @@ export function renderNarration(beat, embed = "") {
 // DIALOGUE = a distinct named bubble with the character's identity.
 export function renderDialogue(beat, g) {
   const ch = (g.state.characters || []).find((c) => c.id === beat.speaker);
-  const color = (ch && ch.color) || "#f2b84b";
+  const color = (ch && ch.color) || "var(--gold)";
   const name = beat.speakerName || (ch && ch.name) || "Someone";
   const avatar = avatarOrInitials({
     url: ch && ch.faceUrl,

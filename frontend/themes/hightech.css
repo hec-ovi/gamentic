@@ -1,0 +1,102 @@
+/* ============================================================================
+   GAMENTIC THEME: HIGH TECH (the ice-cyan holo HUD)
+
+   This file is ONLY design tokens. The structural stylesheet (styles.css)
+   consumes them and carries no raw colors, fonts or chamfer sizes of its own
+   (a lint test enforces it). A new theme - medieval, noir, parchment - is a
+   copy of this file with different values, loaded in its place (or scoped
+   under its own [data-theme="..."] on <html> for runtime switching).
+
+   The alpha variants throughout styles.css derive via color-mix(token,
+   transparent), so changing a token here re-tints every glow, line and
+   gradient that was built from it.
+   ========================================================================== */
+:root,
+[data-theme="hightech"] {
+  color-scheme: dark;
+
+  /* ---- accent & glow (the holo cyan pair) ---- */
+  --accent: #2fe6ff;
+  --accent-2: #1b9fff;
+  --highlight: #ffffff;
+
+  /* ---- ink ---- */
+  --ink: #dff3ff; /* UI text */
+  --ink-muted: #6f93ad; /* secondary UI text */
+  --ink-prose: #e7e0d2; /* THE reading surface: narration & narrator asides */
+  --ink-inverse: #100f13; /* dark ink on speaker-colored chips */
+
+  /* ---- lines (derived from the accent; override per theme if needed) ---- */
+  --line: color-mix(in srgb, var(--accent) 30%, transparent);
+  --line-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+
+  /* ---- feedback colors + their hand-tuned dim borders ---- */
+  --gold: #f2b84b; /* reward, whisper, traits */
+  --gold-border: #5a4a1e;
+  --danger: #d95f7b;
+  --danger-border: #5a2e3a;
+  --danger-soft: #ff9bb0; /* light end of the hp/life gradients */
+  --danger-ink: #ffd6df; /* text on danger buttons */
+  --success: #91c96b;
+  --success-border: #3a5a2e;
+  --item: #45d2b1; /* item accents (unlock cards, chips) */
+  --item-border: #1e5a4a;
+
+  /* ---- surfaces: the navy ramp ---- */
+  --surface-page: #05080f; /* the void behind everything */
+  --surface-page-2: #070e1a; /* inputs, wells, panel floors */
+  --surface-edge: #02040a; /* page radial rim */
+  --surface-well: #0a1424; /* sunken tracks + the page radial glow */
+  --surface-panel: #102034; /* raised panel gradient top */
+  --surface-hover: #1a3656; /* hover gradient top */
+  --surface-hover-2: #0a1628; /* hover gradient floor */
+  --surface-modal: #14263c; /* modal gradient top */
+  --surface-modal-2: #09101c; /* modal gradient floor */
+  --surface-scene: #12243a; /* the deck's scene identity wing */
+  --surface-scene-2: #08101e;
+  --surface-story: #0c1420; /* the story column */
+  --surface-story-2: #070c16;
+  --surface-thread: #050a12; /* the whisper thread well */
+  --surface-craft: #0c1a2e; /* the forging-takeover radial */
+  --surface-scrim: #02060e; /* modal / lightbox overlays */
+  --surface-scrim-2: #04070d;
+  --shadow-tint: #000000; /* what shadows are made of */
+
+  /* ---- the reading chrome (bubbles, badges, toasts): a softer plum set ---- */
+  --card: #1d1a22;
+  --card-2: #242029;
+  --card-line: #322c3b;
+  --card-ink: #ece7f1;
+  --card-ink-dim: #a79fb3;
+  --card-ink-faint: #6f6878;
+  --body-glow: #1a1722; /* the body's own radial top */
+
+  /* ---- speaker identity fallbacks (when the backend assigns no color) ---- */
+  --speaker-player: var(--accent);
+  --speaker-unknown: #a79fb3;
+  --speaker-1: #45d2b1;
+  --speaker-2: #f2b84b;
+  --speaker-3: #d95f7b;
+  --speaker-4: #91c96b;
+  --speaker-5: #a98bff;
+  --speaker-6: #e05d39;
+
+  /* ---- typography ---- */
+  --font-display: "Eurostile", "Bahnschrift", "DIN Alternate", "Segoe UI", system-ui, sans-serif;
+  --font-prose: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* ---- shape ---- */
+  /* chamfer factor: every clip-path corner cut is calc(var(--chamfer) * Npx).
+     A theme that wants clean rectangles (medieval) sets this to 0 and leans
+     on the radii instead. */
+  --chamfer: 1;
+  --radius: 14px;
+  --radius-sm: 8px;
+
+  /* ---- effects & motion ---- */
+  --shadow: 0 10px 30px color-mix(in srgb, var(--shadow-tint) 45%, transparent);
+  --fx-scan-opacity: 0.5; /* the scanline layer; 0 turns it off */
+  --ease-rise: cubic-bezier(0.2, 0.9, 0.2, 1);
+  --ease-pop: cubic-bezier(0.2, 1.4, 0.5, 1);
+}

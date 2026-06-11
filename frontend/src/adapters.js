@@ -14,7 +14,17 @@
 //  - media URLs are RELATIVE; preserve them verbatim for the same-origin proxy.
 //  - beats are keyed off `kind` (narration | dialogue | action | system).
 
-const PALETTE = ["#45d2b1", "#f2b84b", "#d95f7b", "#91c96b", "#a98bff", "#e05d39"];
+// Fallback identity colors when the backend assigns none. CSS var REFERENCES,
+// not hexes: they flow into inline style="--speaker:..." and resolve against
+// the loaded theme (themes/<theme>.css), so a theme can re-palette the cast.
+const PALETTE = [
+  "var(--speaker-1)",
+  "var(--speaker-2)",
+  "var(--speaker-3)",
+  "var(--speaker-4)",
+  "var(--speaker-5)",
+  "var(--speaker-6)",
+];
 
 const SCENE_ITEM_SLOTS = 6;
 const CHAR_ITEM_SLOTS = 3;
