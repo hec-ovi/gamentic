@@ -11,7 +11,8 @@ Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> `adap
 | Where | What lives there |
 |---|---|
 | `index.html` | Document shell, favicon, the CSS/JS entrypoints. Nothing else. |
-| `styles.css` | The whole visual system: prose narration, dialogue bubbles, the deck, character columns, the profile screen, animations, scrollbars. |
+| `styles.css` | STRUCTURE only: layout, shape, motion. No color literals (lint-enforced); every design value is a token. |
+| `themes/hightech.css` | The design tokens: colors, fonts, chamfer factor, eases. A new theme = one file like this. |
 | `src/app.js` | The BOOT facade: `init()` (exported for tests) + auto-init. The controller lives in `src/app/`. |
 | `src/app/ctx.js` | The ONE in-memory state, the voice engine, the api client and root element, shared as live bindings. |
 | `src/app/ui.js` | `render()` (full or scoped re-bind), `bind()`, the `[data-act]` action dispatcher, the partial busy-lock gate. |
@@ -60,10 +61,13 @@ Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> `adap
 | Trait receipts (celebration tone) | `render.js` (systemTone "trait") | `test/render.test.js` |
 | Transition notices + HUD flashes | `transitions.js`, `app.js` (applyTransitions) | `test/transitions.test.js` |
 | Voice playback (speak-not-stream, FIFO, autoplay split) | `voice.js`, `app.js` (autoplayFor, reveal pipeline) | `test/voice.test.js`, `test/play.component.test.js` |
+| Theme tokens + the no-literal contract | `themes/hightech.css`, `styles.css` | `test/theme.lint.test.js` |
+| Turn pacing selects (voices per turn / acts per voice) | `render/screens.js` (pacingSelect), `app/settingsctl.js` (NUMERIC_GAME_SETTINGS) | `test/play.component.test.js`, `test/render.test.js` |
+| Private look from the profile (whisper mode:"look"; thread placeholder) | `composer.js` (buildSegment), `app/composerctl.js`, `render/profile.js` | `test/play.component.test.js` |
 | Settings (audio split; per-game difficulty/voice; wipe-all danger zone) | `render.js` (renderSettings, renderGameSettings, renderWipeConfirm), `app.js` (updateSetting, patchGameSettings, wipeEverything) | `test/render.test.js`, `test/play.component.test.js` |
 | Lightbox + image retry | `app.js` (maybeOpenLightbox, retryFailedImage) | `test/play.component.test.js` |
 | Backend wire calls | `api.js` | `test/api.test.js` |
 
 ## Tests
 
-`npm test` (vitest, jsdom). Component tests mount the real `app.js` via `init()`, drive it with `@testing-library/user-event`, and intercept the orchestrator with MSW at the network layer (`test/setup.js` holds the default handlers, `test/fixtures.js` the wire-shaped builders).
+`npm test` (vitest, jsdom): 178 tests in 10 files. Component tests mount the real `app.js` via `init()`, drive it with `@testing-library/user-event`, and intercept the orchestrator with MSW at the network layer (`test/setup.js` holds the default handlers + per-test poller teardown, `test/fixtures.js` the wire-shaped builders). `test/theme.lint.test.js` enforces the theme contract.
