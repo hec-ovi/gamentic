@@ -4,7 +4,7 @@
 import { mapProfile } from "../adapters.js";
 import { renderProfilePane } from "../render.js";
 import { api, root, state } from "./ctx.js";
-import { bind, focusComposer, render, scrollToBottom } from "./ui.js";
+import { focusComposer, render, scrollToBottom } from "./ui.js";
 
 // ---------------------------------------------------------------------------
 // the full-screen character profile (+ the private whisper channel inside it)
@@ -31,8 +31,7 @@ export function switchProfileTab(tab) {
   g.profile.tab = tab;
   const pane = root.querySelector(".profile-pane");
   if (!pane) return render(); // pane not on screen (still loading): full render
-  pane.innerHTML = renderProfilePane(g.state, g);
-  bind(pane); // only the fresh subtree: nothing else double-binds
+  pane.innerHTML = renderProfilePane(g.state, g); // events are delegated; no re-wire needed
   root.querySelectorAll(".profile-tab").forEach((t) => {
     const on = t.dataset.tab === tab;
     t.classList.toggle("active", on);

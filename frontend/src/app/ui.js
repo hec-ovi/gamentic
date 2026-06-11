@@ -1,6 +1,8 @@
-// The render/bind cycle and the action dispatcher: state in, DOM out, events
-// wired on [data-act] markup.
+// The render cycle and the action dispatcher: state in, DOM morphed, events
+// DELEGATED on [data-act] markup (five listeners on the root, attached once;
+// re-renders never re-wire anything).
 
+import { Idiomorph } from "../../vendor/idiomorph.esm.js";
 import { renderApp } from "../render.js";
 import { executeComposer, executePrivate, setComposerMode, stackSegment, unstackSegment } from "./composerctl.js";
 import { beginAdventure, clearCreatorSession, enterCreator, resetCreator, sendCreatorMessage } from "./creatorctl.js";
@@ -17,14 +19,11 @@ import { continueStory, stopLateWatch, takeTurn } from "./turns.js";
 // render + event binding
 // ---------------------------------------------------------------------------
 
-// Inner scroll surfaces (besides the story, which has its own pin-to-bottom
-// rule) whose position must SURVIVE a full rebuild - a re-render must never
-// read as a "refresh".
-const KEEP_SCROLL = [".char-column", ".set-main", ".profile-main"];
-
-// In-progress typed input must SURVIVE a full rebuild too: background renders
-// (a late image beat landing, the art poll, a profile refetch) fire exactly in
-// the post-turn typing window and would otherwise erase a half-typed line.
+// In-progress typed input must SURVIVE a full rebuild: background renders (a
+// late image beat landing, the art poll, a profile refetch) fire exactly in
+// the post-turn typing window. The morph preserves the composer nodes and a
+// callback shields their children; this snapshot is the belt-and-braces for
+// the plain-value inputs (the creator line) the morph can still clear.
 const KEEP_INPUT = ["#cmpInput", "#pmInput"];
 
 function snapshotInputs() {
@@ -77,123 +76,140 @@ function placeCaretAtEnd(el) {
 }
 
 export function render() {
+  delegate();
   closeTagger();
-  // chat scroll rule: keep the reader's place across rebuilds; pin to the
-  // bottom only when they were already reading at the bottom.
+  // chat scroll rule: pin to the bottom only when the reader was already
+  // there (the morph keeps every preserved node's scroll position itself).
   const story = root.querySelector("#storyStream");
   const stick = !story || storyNearBottom(story);
-  const prevTop = story ? story.scrollTop : 0;
-  const kept = KEEP_SCROLL.map((sel) => {
-    const el = root.querySelector(sel);
-    return el && el.scrollTop ? [sel, el.scrollTop] : null;
-  }).filter(Boolean);
   const keptInputs = snapshotInputs();
   root.dataset.view = state.view;
-  root.innerHTML = renderApp(state);
-  bind();
-  restoreInputs(keptInputs);
-  kept.forEach(([sel, top]) => {
-    const el = root.querySelector(sel);
-    if (el) el.scrollTop = top;
+  // MORPH, don't rebuild: idiomorph diffs the real DOM against the fresh
+  // HTML and patches in place, so unchanged nodes keep their identity -
+  // focus, caret, scroll positions and mid-flight animations all survive a
+  // background render structurally instead of via hand-rolled restores.
+  Idiomorph.morph(root, renderApp(state), {
+    morphStyle: "innerHTML",
+    // NO ignoreActiveValue: state is the single source of truth for control
+    // values (the wish line syncs per keystroke, radios re-check from the
+    // PATCH echo); skipping the active element would let a mid-save render's
+    // native radio-group unchecking stick. Free-typed surfaces are protected
+    // separately (the composer callback below + the input snapshot).
+    callbacks: {
+      // the composer contenteditables always RENDER empty; their live
+      // children ARE the draft - a morph must never remove them
+      beforeNodeRemoved: (node) => {
+        const parent = node.parentNode;
+        return !(parent && parent.nodeType === 1 && parent.closest && parent.closest(".composer-input"));
+      },
+    },
   });
+  restoreInputs(keptInputs);
   if (state.view === "play") {
-    const fresh = root.querySelector("#storyStream");
-    if (fresh) {
-      if (stick) scrollStory();
-      else fresh.scrollTop = prevTop;
-    }
+    if (stick) scrollStory();
     // the whisper thread pins itself to the newest line
     if (state.active && state.active.profile) scrollToBottom("#pmThread");
     markArtReveals(state.active);
-    applySpeakStates(); // the rebuild wiped the speak-button states
+    applySpeakStates(); // the morph syncs class attributes, wiping the states
   }
   if (state.view === "creator") scrollCreator();
 }
 
-// Wire events on freshly-built markup. `scope` defaults to the whole app (a
-// full render); an in-place patch (e.g. a profile tab switch) passes just the
-// replaced subtree so existing elements never collect duplicate listeners.
-export function bind(scope = root) {
-  scope.querySelectorAll("[data-act]").forEach((el) => {
-    el.addEventListener("click", (e) => {
-      // "noop" wrappers (modal bodies over a clickable backdrop) must only stop
-      // the bubble - preventDefault here would cancel form submits bubbling up
-      // from buttons inside the modal.
-      if (el.dataset.act === "noop") {
-        e.stopPropagation();
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation(); // keep nested data-act (e.g. modal buttons over a backdrop) from double-firing
-      onAction(el.dataset.act, el);
-    });
-  });
+// ---------------------------------------------------------------------------
+// event DELEGATION: five listeners on the root, attached once per root. The
+// morph preserves nodes across renders, so per-element listeners would both
+// leak and double-fire; delegation makes wiring independent of rendering
+// (an in-place pane patch needs no re-bind either).
+// ---------------------------------------------------------------------------
 
-  scope.querySelector('[data-form="action"]')?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    executeComposer();
-  });
-  scope.querySelector('[data-form="private"]')?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    executePrivate();
-  });
-  // Enter in a composer line = submit its form (the contenteditable line is
-  // single-line; newlines have no meaning in a segment)
-  scope.querySelectorAll(".composer-input").forEach((el) => {
-    el.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter") return;
-      e.preventDefault();
-      const form = el.closest("form");
-      if (!form) return;
-      if (typeof form.requestSubmit === "function") form.requestSubmit();
-      else form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
-  });
-  // a click on the story instant-finishes the staged reveal
-  scope.querySelector("#storyStream")?.addEventListener("click", () => {
+let delegatedRoot = null;
+
+export function delegate() {
+  if (!root || delegatedRoot === root) return;
+  delegatedRoot = root;
+  root.addEventListener("click", onRootClick);
+  root.addEventListener("submit", onRootSubmit);
+  root.addEventListener("keydown", onRootKeydown);
+  root.addEventListener("change", onRootChange);
+  root.addEventListener("input", onRootInput);
+}
+
+function onRootClick(e) {
+  const help = e.target.closest && e.target.closest("[data-help]");
+  if (help) {
+    e.stopPropagation(); // the popover's own document-level dismiss must not see this click
+    showHelp(help);
+    return;
+  }
+  const el = e.target.closest && e.target.closest("[data-act]");
+  // a click on the story PROSE instant-finishes the staged reveal (a click on
+  // a control inside the story - speak button, receipt - keeps its meaning)
+  if (!el && e.target.closest && e.target.closest("#storyStream")) {
     const g = state.active;
     if (g && g.revealing) g.skipReveal = true;
-  });
-  scope.querySelector('[data-form="creator"]')?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const input = e.currentTarget.querySelector('[name="creatorText"]');
+    return;
+  }
+  if (!el) return;
+  // "noop" wrappers (modal bodies over a clickable backdrop): the innermost
+  // match wins, so stopping here shields the overlay's act. No preventDefault:
+  // form submits from buttons inside the modal must still work.
+  if (el.dataset.act === "noop") return;
+  e.preventDefault();
+  onAction(el.dataset.act, el);
+}
+
+function onRootSubmit(e) {
+  const form = e.target.closest && e.target.closest("[data-form]");
+  if (!form) return;
+  e.preventDefault();
+  const kind = form.dataset.form;
+  if (kind === "action") executeComposer();
+  else if (kind === "private") executePrivate();
+  else if (kind === "creator") {
+    const input = form.querySelector('[name="creatorText"]');
     sendCreatorMessage(input.value);
     input.value = "";
-  });
+  }
+}
 
-  scope.querySelectorAll("[data-setting]").forEach((el) => {
-    const evt = el.type === "range" ? "input" : "change";
-    el.addEventListener(evt, () => updateSetting(el));
-  });
+// Enter in a composer line = submit its form (the contenteditable line is
+// single-line; newlines have no meaning in a segment)
+function onRootKeydown(e) {
+  if (e.key !== "Enter") return;
+  const input = e.target.closest && e.target.closest(".composer-input");
+  if (!input) return;
+  e.preventDefault();
+  const form = input.closest("form");
+  if (!form) return;
+  if (typeof form.requestSubmit === "function") form.requestSubmit();
+  else form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+}
 
-  // per-adventure settings (difficulty / narrator voice) -> PATCH /settings
-  scope.querySelectorAll("[data-game-setting]").forEach((el) => {
-    el.addEventListener("change", () => patchGameSettings(el.dataset.gameSetting, el.value));
-  });
-
+function onRootChange(e) {
+  const t = e.target;
+  if (!t || !t.matches) return;
+  if (t.matches("[data-setting]")) {
+    if (t.type !== "range") updateSetting(t); // ranges live-update on input
+    return;
+  }
+  // per-adventure settings (difficulty / voice / pacing) -> PATCH /settings
+  if (t.matches("[data-game-setting]")) return patchGameSettings(t.dataset.gameSetting, t.value);
   // the story-memory numeric controls validate their range client-side
-  scope.querySelectorAll("[data-mem-setting]").forEach((el) => {
-    el.addEventListener("change", () => applyMemorySetting(el));
-  });
-
-  // the wish line survives re-renders via state (it is not a form of its own)
-  scope.querySelector("#wishInput")?.addEventListener("input", (e) => {
-    if (state.active) state.active.wish = e.target.value;
-  });
-
+  if (t.matches("[data-mem-setting]")) return applyMemorySetting(t);
   // library import: file picker -> POST /games/import
-  scope.querySelector("#importFile")?.addEventListener("change", (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = "";
+  if (t.id === "importFile") {
+    const file = t.files && t.files[0];
+    t.value = "";
     importGameFile(file);
-  });
+  }
+}
 
-  scope.querySelectorAll("[data-help]").forEach((el) => {
-    el.addEventListener("click", (e) => {
-      e.stopPropagation();
-      showHelp(el);
-    });
-  });
+function onRootInput(e) {
+  const t = e.target;
+  if (!t || !t.matches) return;
+  if (t.matches('[data-setting][type="range"]')) return updateSetting(t);
+  // the wish line survives re-renders via state (it is not a form of its own)
+  if (t.id === "wishInput" && state.active) state.active.wish = t.value;
 }
 
 export function onAction(act, el) {

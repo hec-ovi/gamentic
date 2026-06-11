@@ -1,6 +1,6 @@
 # Frontend index
 
-Resolver-style map of the UI layer: find the thing you want to change, go straight to the file that owns it. Vanilla ES modules, no build step; one in-memory state, one `render()` that rebuilds the DOM, event handlers that mutate state and re-render.
+Resolver-style map of the UI layer: find the thing you want to change, go straight to the file that owns it. Vanilla ES modules, no build step; one in-memory state, one `render()` that MORPHS the DOM (vendored idiomorph: unchanged nodes keep focus, caret, scroll, animations), delegated event handlers that mutate state and re-render.
 
 ## The flow of one turn
 
@@ -13,9 +13,10 @@ Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> `adap
 | `index.html` | Document shell, favicon, the CSS/JS entrypoints. Nothing else. |
 | `styles.css` | STRUCTURE only: layout, shape, motion. No color literals (lint-enforced); every design value is a token. |
 | `themes/hightech.css` | The design tokens: colors, fonts, chamfer factor, eases. A new theme = one file like this. |
+| `vendor/idiomorph.esm.js` | Vendored DOM-morphing lib (0BSD, v0.7.4): render() patches the real DOM in place instead of rebuilding it. |
 | `src/app.js` | The BOOT facade: `init()` (exported for tests) + auto-init. The controller lives in `src/app/`. |
 | `src/app/ctx.js` | The ONE in-memory state, the voice engine, the api client and root element, shared as live bindings. |
-| `src/app/ui.js` | `render()` (full or scoped re-bind), `bind()`, the `[data-act]` action dispatcher, the partial busy-lock gate. |
+| `src/app/ui.js` | `render()` (DOM morph via idiomorph), `delegate()` (five root listeners, wired once), the `[data-act]` action dispatcher, the partial busy-lock gate. |
 | `src/app/turns.js` | The turn loop: action/continue, the optimistic echo + failure restore, the wish, the late-image-beat watch. |
 | `src/app/reveal.js` | The staged reveal: typewriter, veils, voice pacing, follow-scroll, the new-image affordances. |
 | `src/app/game.js` | Library, open/resume, delete, wipe-all, export/import, late-art /state polling. |

@@ -30,6 +30,11 @@ Notable changes to gamentic, newest first. No version numbers yet: this moves fa
 - The visual system split into theme tokens and structure: themes/hightech.css holds every design decision (colors, fonts, a single chamfer factor for the sci-fi corner cuts, eases) and styles.css consumes tokens only, lint-enforced down to the JS layer (character fallback colors ride tokens too). Verified pixel-identical in a real browser against the pre-refactor build; a future medieval theme is now a one-file job. No new theme yet, by design.
 - 178 tests across 10 files, was 163: pacing round-trips, the never-expiring hint on a fake clock, failure restores, the theme contract.
 
+### Frontend (round 3.4: the render becomes a morph)
+- render() no longer rebuilds the DOM with innerHTML: it morphs the real DOM against the fresh HTML (vendored idiomorph, one 0BSD-licensed file, still no build step). Unchanged nodes keep their identity, so focus, caret, scroll positions and mid-flight animations survive background re-renders structurally; the hand-rolled scroll bookkeeping is gone and the typed-input snapshot demoted to a belt-and-braces for plain inputs.
+- Events went with it: per-element re-binding after every render is replaced by five delegated listeners on the root, attached once. An in-place pane patch needs no re-wire, and preserved nodes can never double-fire.
+- Verified live against the running stack, not just in jsdom: typed text and composer focus survive profile open/close renders in a real browser, a full narrator turn (echo, reveal, prose, art) plays correctly under morphing, zero console errors. 179 tests.
+
 ## 2026-06-10
 
 ### Characters with their own memory (late batch; owner direction: whole context per character)

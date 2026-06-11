@@ -1495,3 +1495,19 @@ test("story memory: below-minimum values mark invalid and never PATCH (all three
   }
   expect(patches).toEqual([]);
 });
+
+test("delegated noop shield: clicks inside a modal body never reach the overlay's dismiss; the backdrop still closes", async () => {
+  const u = user();
+  await mountApp();
+  await u.click(await screen.findByRole("button", { name: /enter your saved worlds/i }));
+  await screen.findByText("Test Adventure");
+  await u.click(screen.getAllByRole("button", { name: /delete adventure/i })[0]);
+  const modal = await screen.findByRole("dialog", { name: /delete adventure/i });
+  // a click on the modal's own body (the noop wrapper) must not dismiss it
+  await u.click(within(modal).getByText(/will be wiped/i));
+  expect(screen.getByRole("dialog", { name: /delete adventure/i })).toBeTruthy();
+  // the backdrop click cancels
+  await u.click(document.querySelector(".modal-overlay"));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: /delete adventure/i })).toBeNull());
+  expect(screen.getByText("Test Adventure")).toBeTruthy(); // nothing was deleted
+});
