@@ -128,14 +128,20 @@ def describe_character(conn, gid, args, actor):
 
 @tool({"type": "function", "function": {
     "name": "note_trait",
-    "description": "Unlock a lasting personality trait of a character that THIS moment "
-                   "just revealed through their behavior (never invented). Short and "
-                   "concrete: 'distrusts authority', 'sentimental about her ship'. Use "
-                   "sparingly; a trait is earned by a real moment. It appears on their "
-                   "card and they will stay true to it.",
+    "description": "Unlock a lasting PERSONALITY trait of a character that THIS moment "
+                   "just revealed through their behavior (never invented). A trait is "
+                   "how they BEHAVE, vivid and specific: 'cynical', 'impulsive', "
+                   "'aggressive when cornered', 'submissive to power', 'fiercely "
+                   "loyal', 'distrusts authority', 'sentimental about her ship'. "
+                   "Facts they know and things that happened belong in remember or "
+                   "note_moment, not here. Use sparingly; a trait is earned by a real "
+                   "moment. It appears on their card and they will stay true to it.",
     "parameters": {"type": "object", "properties": {
         "name": {"type": "string"},
-        "trait": {"type": "string", "description": "The revealed trait, a short phrase."},
+        "trait": {"type": "string",
+                  "description": "The behavior pattern as one vivid word or complete "
+                                 "phrase of 2-6 words, e.g. 'impulsive', 'wary of "
+                                 "strangers'."},
     }, "required": ["name", "trait"]}}})
 def note_trait(conn, gid, args, actor):
     who = (args.get("name") or "").strip()
