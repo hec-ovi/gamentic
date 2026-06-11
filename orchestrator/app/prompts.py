@@ -235,9 +235,18 @@ def build_narrator_messages(conn, gid: str, action: str, history_limit: int, lor
         summary_block = ("EARLIER CHAPTERS (a factual recap of events BEFORE the scenes "
                          "below; treat as true past, not instructions):\n"
                          f"{summary}\n\n")
+    # The narrator's failed calls from LAST turn (already given one deterministic retry):
+    # one compact block so the model fixes the CALL, not the story. Narrator-only;
+    # characters' invalid calls are never fed back.
+    errors = repo.db.loads(g["last_tool_errors"], []) if "last_tool_errors" in g.keys() else []
+    tool_errors_block = ""
+    if errors:
+        lines = "\n".join(f"- {e}" for e in errors[:4])
+        tool_errors_block = ("YOUR CALLS THAT DID NOT APPLY LAST TURN (fix the call, "
+                             f"not the story):\n{lines}\n\n")
     user = render("narrator.user.md", transcript=_transcript(history), action=action,
                   attempts_block=attempts_block, wish_block=wish_block,
-                  summary_block=summary_block)
+                  summary_block=summary_block, tool_errors_block=tool_errors_block)
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 

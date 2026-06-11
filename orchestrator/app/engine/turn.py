@@ -296,15 +296,37 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         history_limit = repo.effective_history_beats(game_row)
         turn_voices = repo.effective_turn_voices(game_row)
         turn_acts = repo.effective_turn_acts(game_row)
+        # Impersonation stop-sequences: the model faked cast dialogue inside narration as
+        # screenplay lines (live: 'Vane: "Movement. Now."'). Generation halts at any
+        # present character's name-colon line start (full name, plus the bare first name
+        # for multi-word names); trim_to_sentence/clean_prose handle the tail as usual.
+        stops: list[str] = []
+        for c in repo.present_characters(conn, gid, repo.get_player(conn, gid)["location"]):
+            if not c["alive"]:
+                continue
+            nm = (c["name"] or "").strip()
+            if not nm:
+                continue
+            words = nm.split()
+            for cand in [nm] + (words[:1] if len(words) > 1 else []):
+                s = f"\n{cand}:"
+                if s not in stops:
+                    stops.append(s)
+        stops = stops[:8]   # llama.cpp accepts a list; keep it bounded
+        messages = prompts.build_narrator_messages(conn, gid, narrator_action, history_limit,
+                                                   settings.LORE_BUDGET,
+                                                   attempts=[p["line"] for p in pending],
+                                                   looking=bool(look_seg), wish=wish)
+        # The failed-call note renders exactly once: consumed by the message build above,
+        # cleared now; the retry pass below overwrites it with this turn's new list.
+        repo.set_last_tool_errors(conn, gid, [])
         reply = llm.chat(
-            prompts.build_narrator_messages(conn, gid, narrator_action, history_limit,
-                                            settings.LORE_BUDGET,
-                                            attempts=[p["line"] for p in pending],
-                                            looking=bool(look_seg), wish=wish),
+            messages,
             tools=tools.narrator_tools(adjudicating=bool(pending),
                                        images=settings.IMAGE_ENABLED),
             tool_choice="auto",
             temperature=settings.NARRATOR_TEMPERATURE, max_tokens=settings.NARRATOR_MAX_TOKENS,
+            stop=stops or None, thinking=settings.NARRATOR_THINKING,
         )
         track["ctx"] = max(track["ctx"], (reply.usage or {}).get("prompt_tokens", 0) or 0)
 
@@ -335,6 +357,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             return None
 
         cues, state_notes = [], []
+        invalid_calls: list[tuple[str, dict, str]] = []  # (name, args, reason): the second chance
         seen_calls: set = set()
         for tc in reply.tool_calls:
             if tc.name in ("apply_damage", "attack") and pending \
@@ -351,6 +374,10 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                     continue
                 seen_calls.add(key)
             out = tools.apply_tool(conn, gid, tc.name, tc.arguments, actor=None)
+            if out["kind"] == "invalid":
+                # not dropped yet: it gets ONE deterministic retry after the loop (a
+                # spawn_character later in this same reply may create its target)
+                invalid_calls.append((tc.name, tc.arguments or {}, out["text"] or tc.name))
             if tc.name in ("apply_damage", "attack", "give_item") and out["kind"] == "state":
                 _mark_handled(tc.name, tc.arguments)
             if out["kind"] == "cue" and out["cue"]:
@@ -384,6 +411,24 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             if out["kind"] == "state" and out["text"]:
                 state_notes.append(out["text"])
             enqueue(out["reactions"])
+        # Intra-reply retry: each invalid call gets ONE deterministic second chance, in
+        # order, now that the whole reply has applied (live: set_disposition fired BEFORE
+        # its spawn_character in the same reply). Still-invalid reasons become the
+        # narrator's next-turn note; characters' invalid calls are never fed back.
+        still_invalid: list[str] = []
+        for name, args, reason in invalid_calls:
+            out = tools.apply_tool(conn, gid, name, args, actor=None)
+            if out["kind"] == "invalid":
+                still_invalid.append(out["text"] or reason)
+                continue
+            if out["kind"] == "spawn":
+                spawned.append(out["cue"]["id"])
+            if out["kind"] in ("cue", "spawn") and out["cue"]:
+                cues.append(out["cue"])
+            if out["kind"] in ("state", "kill", "spawn") and out["text"]:
+                state_notes.append(out["text"])
+            enqueue(out["reactions"])
+        repo.set_last_tool_errors(conn, gid, still_invalid)
         prose = parsing.clean_prose(reply.content)
         if prose and reply.finish_reason == "length":
             prose = parsing.trim_to_sentence(prose)

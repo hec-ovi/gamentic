@@ -33,6 +33,7 @@ def chat(
     temperature: float = 0.8,
     max_tokens: int = 400,
     stop: list[str] | None = None,
+    thinking: bool | None = None,
 ) -> LLMReply:
     payload: dict = {
         "model": settings.LLM_MODEL,
@@ -46,6 +47,11 @@ def chat(
         payload["tool_choice"] = tool_choice
     if stop:
         payload["stop"] = stop
+    if thinking:
+        # llama.cpp merges request-level chat_template_kwargs over the server-level ones,
+        # so this enables hybrid-model reasoning for THIS call only. If the reply carries
+        # message.reasoning_content, it is ignored: content stays the only consumed field.
+        payload["chat_template_kwargs"] = {"enable_thinking": True}
 
     url = f"{settings.LLM_BASE_URL}/chat/completions"
     # One retry on connection-level failures only: a redeploy of the llama.cpp container

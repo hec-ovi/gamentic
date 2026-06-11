@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS games (
                                      -- transcript is trimmed to fit and the recap carries the rest)
     turn_voices INTEGER DEFAULT 0,   -- per-game cap on characters cued per turn (0 = settings.MAX_CHARACTER_REACTIONS)
     turn_acts INTEGER DEFAULT 0,     -- per-game cap on acts per character per turn (0 = settings.TURN_MAX_PER_CHARACTER)
+    last_tool_errors TEXT DEFAULT '[]',  -- narrator tool calls that did not apply last turn (JSON list of
+                                     -- reason strings; fed back to the narrator once, then overwritten)
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -208,6 +210,7 @@ _MIGRATIONS = {
         "context_tokens": "INTEGER DEFAULT 0",
         "turn_voices": "INTEGER DEFAULT 0",   # per-game turn-economy dial (0 = env default)
         "turn_acts": "INTEGER DEFAULT 0",     # per-game turn-economy dial (0 = env default)
+        "last_tool_errors": "TEXT DEFAULT '[]'",  # narrator's failed-call note (JSON list of reasons)
     },
     "beats": {
         "private_with": "TEXT",

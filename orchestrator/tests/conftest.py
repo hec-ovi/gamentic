@@ -46,11 +46,11 @@ class FakeLLM:
         self.calls = []
 
     def __call__(self, messages, tools=None, tool_choice="auto", temperature=0.8,
-                 max_tokens=400, stop=None):
+                 max_tokens=400, stop=None, thinking=None):
         sys = messages[0]["content"] if messages else ""
         names = [t["function"]["name"] for t in (tools or [])]
         self.calls.append({"messages": messages, "tools": tools, "system": sys, "names": names,
-                           "max_tokens": max_tokens})
+                           "max_tokens": max_tokens, "stop": stop, "thinking": thinking})
         if "save_world" in names:
             return self.finalize
         if "submit_segments" in names:               # input interpreter

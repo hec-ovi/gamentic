@@ -32,12 +32,20 @@ def trim_to_sentence(text: str) -> str:
     return text[: cut + 1].rstrip() if cut > 0 else ""
 
 
+# A line that is NOTHING BUT a bare call expression (plus an optional trailing comment)
+# is junk regardless of the name (live: a HALLUCINATED 'set_distance(distance="close")
+# # Implicit in the tense standoff.' leaked as prose; _TOOL_CALL only knows real tool
+# names). Anchored to the whole line, so prose with mid-sentence parens survives.
+_CODE_LINE = re.compile(r"^\s*[a-z_][a-z0-9_]*\(.*\)\s*(?:#.*)?$", re.I)
+
+
 def clean_prose(text: str) -> str:
     """Scrub model leakage from prose shown to the player: fenced code blocks, bare JSON
     lines, lines written in tool-call syntax, and inline pseudo tool calls."""
     text = _FENCE.sub("", text or "")
     lines = [ln for ln in text.splitlines()
-             if not _TOOL_CALL.search(ln) and not _JSON_LINE.match(ln)]
+             if not _TOOL_CALL.search(ln) and not _JSON_LINE.match(ln)
+             and not _CODE_LINE.match(ln)]
     text = _PSEUDO_TOOL.sub("", "\n".join(lines))
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
@@ -104,11 +112,38 @@ def _extract_emotion(text: str) -> tuple[str, str]:
 _PROSE_TAG = re.compile(r"[\[<]/?(?:%s|pause)[\]>]\s*" % "|".join(EMOTIONS), re.I)
 
 
+# The 26B prints the worked example's reasoning line aloud (live: 12 of 20 narration
+# beats opened with "(think: ...)"). The span is stripped from the head of any LINE
+# (the model also thinks mid-prose between paragraphs); a think-paren that never closes
+# takes its whole line with it. Narration-only: clean_prose stays generic.
+_THINK_SPAN = re.compile(r"\s*\(\s*think\b[^()]*\)\s*", re.I)
+_THINK_OPEN = re.compile(r"\s*\(\s*think\b", re.I)
+
+
+def _strip_think(text: str) -> str:
+    out = []
+    for ln in text.splitlines():
+        had = bool(ln.strip())
+        while True:
+            m = _THINK_SPAN.match(ln)
+            if m:
+                ln = ln[m.end():]
+                continue
+            if _THINK_OPEN.match(ln):
+                ln = ""   # opened but never closed: the whole line is reasoning
+            break
+        if ln.strip() or not had:   # a line stripped to nothing is dropped whole
+            out.append(ln)
+    return "\n".join(out)
+
+
 def _scrub_narration(text: str) -> tuple[str, str]:
-    """(emotion, clean_text) for narration prose: a leading known tag is lifted as the
-    beat's tone (mapped to its renderable value); every emotion tag is scrubbed."""
+    """(emotion, clean_text) for narration prose: a leading think-span is stripped first,
+    then a leading known tag is lifted as the beat's tone (mapped to its renderable
+    value); every emotion tag is scrubbed."""
+    text = _strip_think(text or "")
     emotion = ""
-    m = _EMOTION_TAG.match(text or "")
+    m = _EMOTION_TAG.match(text)
     if m and m.group(1).lower() in EMOTIONS:
         emotion = EMOTIONS[m.group(1).lower()]
     return emotion, _PROSE_TAG.sub("", text or "").strip()

@@ -152,6 +152,14 @@ def set_turn_voices(conn, gid: str, voices: int) -> None:
     conn.execute("UPDATE games SET turn_voices=? WHERE id=?", (int(voices), gid))
 
 
+def set_last_tool_errors(conn, gid: str, reasons: list) -> None:
+    """Overwrite the narrator's failed-call note: reason strings of tool calls that
+    stayed invalid after the intra-reply retry (JSON list; empty = clean slate).
+    Fed back ONCE in the next narrator user message, never to characters."""
+    conn.execute("UPDATE games SET last_tool_errors=? WHERE id=?",
+                 (json.dumps(list(reasons or [])), gid))
+
+
 def set_turn_acts(conn, gid: str, acts: int) -> None:
     """Per-game cap on times one character acts per turn (0 = the settings default)."""
     conn.execute("UPDATE games SET turn_acts=? WHERE id=?", (int(acts), gid))

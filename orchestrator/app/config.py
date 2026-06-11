@@ -15,6 +15,10 @@ class Settings:
 
     # Sampling
     NARRATOR_TEMPERATURE = float(os.getenv("NARRATOR_TEMPERATURE", "0.8"))
+    # A/B knob for the 26B hybrid model: request-level enable_thinking on the NARRATOR
+    # call only (llama.cpp merges it over the server's global chat-template kwargs).
+    # Utility and character calls never think. Default off.
+    NARRATOR_THINKING = os.getenv("NARRATOR_THINKING", "false").lower() == "true"
     CHARACTER_TEMPERATURE = float(os.getenv("CHARACTER_TEMPERATURE", "0.9"))
     NARRATOR_MAX_TOKENS = int(os.getenv("NARRATOR_MAX_TOKENS", "0"))    # 0 = uncapped (prompt governs length)
     # Follow-up "resolve" narration pass: when the narrator changed state via tools but wrote
