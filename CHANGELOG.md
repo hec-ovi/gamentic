@@ -2,6 +2,20 @@
 
 Notable changes to gamentic, newest first. No version numbers yet: this moves fast, so entries are dated and the README always describes the current state.
 
+## 2026-06-11
+
+### The model swap: Gemma 4 26B-A4B mixture-of-experts
+- The text model is now the heretic finetune of Gemma 4 26B-A4B (Q4_K_M, ~16.8 GB): 26B of knowledge, ~4B active per token. Measured on the box: ~900-1000 tok/s prefill and ~55 tok/s decode, against the 12B's ~600 and ~24. A full scripted adventure ran 49 turns with zero timeouts where the 12B lost three; deep-context turns dropped from 60-300s to 20-60s.
+- Side-by-side scripted runs (same arc, same code) showed the 26B holds what the 12B could not: no cast impersonation inside narration, state staying in sync with the prose across scene moves, dialogue from the whole cast with richer emotion coverage.
+
+### What the live runs taught the brain (fixes from real play, both models)
+- The hybrid model likes to print its reasoning line: a leading "(think: ...)" span is now stripped from narration, never shown. A NARRATOR_THINKING knob can instead route that reasoning into the model's real thinking channel, off by default pending A/B.
+- The narrator generation now carries stop sequences for every present character's name, so screenplay-style impersonation ("Vane: ...") halts mid-generation instead of reaching the screen. A line that is nothing but a code-shaped call is scrubbed whatever its name (a hallucinated tool once leaked as prose).
+- Failed tool calls get a second chance and a voice: a call that failed only because of ordering inside the same reply (a disposition set before its own spawn) is retried once and lands; whatever stays invalid is reported to the narrator next turn ("fix the call, not the story") instead of vanishing silently.
+- A turn is a beat, not a chapter: at most two characters speak per turn and each acts once, so quest unlocks, scene changes and new voices land as moments instead of pile-ups. Both dials are player-facing per-game settings now (voices per turn, acts per voice), next to the story-memory ones.
+- Thin character backstories get a real biography at creation: one focused call per character writes 5-8 concrete sentences (the whole-world finalize call consistently under-delivered), guided by a worked example. Trait wording is steered to vivid behavior words (cynical, impulsive, fiercely loyal), and the trait-fragment bug turned out to be the prompt's own worked example teaching a dangling word - fixed at the source.
+- Snapshot images get unique filenames (two background renders could overwrite each other and leave two captions pointing at one image); a closing emotion tag can no longer leak into dialogue as text; a length-cut fragment with no finished sentence is dropped instead of displayed; the transport timeout honors the slow-turns decision (300s).
+
 ## 2026-06-10
 
 ### Characters with their own memory (late batch; owner direction: whole context per character)

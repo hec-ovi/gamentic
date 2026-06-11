@@ -4,7 +4,7 @@ A self-hosted AI dungeon RPG you play in the browser. An AI narrator and a cast 
 
 > Built and tuned for an AMD Strix Halo APU (Ryzen AI Max), on standard containers.
 
-![status](https://img.shields.io/badge/status-work%20in%20progress-orange) ![local](https://img.shields.io/badge/runs-100%25%20local-success) ![model](https://img.shields.io/badge/LLM-Gemma%2012B%20(llama.cpp%2FVulkan)-blue) ![api](https://img.shields.io/badge/backend-FastAPI%20%2B%20SQLite-009688) ![license](https://img.shields.io/badge/license-MIT-green)
+![status](https://img.shields.io/badge/status-work%20in%20progress-orange) ![local](https://img.shields.io/badge/runs-100%25%20local-success) ![model](https://img.shields.io/badge/LLM-Gemma%2026B%20MoE%20(llama.cpp%2FVulkan)-blue) ![api](https://img.shields.io/badge/backend-FastAPI%20%2B%20SQLite-009688) ![license](https://img.shields.io/badge/license-MIT-green)
 
 ## The game
 
@@ -43,7 +43,7 @@ The world is an explicit state machine and the narrator is the engine that advan
 
 ## The models
 
-**Text** is an uncensored ("heretic") finetune of Gemma (`igorls/gemma-4-12B-it-heretic`, GGUF Q4) on llama.cpp with Vulkan. Chosen deliberately: a dungeon needs characters that can genuinely act (attack, betray, scheme, make morally grey choices) and a narrator that stays inside the fiction instead of refusing or moralizing.
+**Text** is an uncensored ("heretic") finetune of Gemma 4 26B-A4B, a mixture-of-experts model (`mradermacher/gemma-4-26B-A4B-it-heretic-GGUF`, Q4_K_M) on llama.cpp with Vulkan: 26B of knowledge with about 4B active per token, so it writes like a big model and generates at small-model speed (measured on the reference box: ~900-1000 tok/s prefill, ~55 tok/s decode). The heretic finetune is deliberate: a dungeon needs characters that can genuinely act (attack, betray, scheme, make morally grey choices) and a narrator that stays inside the fiction instead of refusing or moralizing.
 
 **Image** (optional) is FLUX.2 [klein] 4B distilled in ComfyUI behind a small REST adapter: scene art, a 3-view reference set per character, identity-conditioned story shots, item cards. The model set is the Comfy-Org repack (`flux-2-klein-4b` + `qwen_3_4b` encoder + `flux2-vae`, about 16 GB). The game is fully playable text-only; art fills in as it renders.
 
@@ -62,7 +62,7 @@ docker compose up -d --build       # from the repo root; the stack lives in infr
 |---|---|---|
 | Frontend | http://localhost:5173 | Vanilla HTML / CSS / JS, served by nginx |
 | Orchestrator (game API) | http://localhost:8000 | FastAPI, SQLite, httpx, Python 3.12 |
-| Text model | http://localhost:8080 | llama.cpp (Vulkan), `gemma-4-12B-it-heretic` GGUF Q4 |
+| Text model | http://localhost:8080 | llama.cpp (Vulkan), `gemma-4-26B-A4B-it-heretic` GGUF Q4 (MoE) |
 | Image | http://localhost:9001 | ComfyUI + FLUX.2 [klein] 4B (distilled), FastAPI REST adapter |
 | Voice model | http://localhost:9091 | llama.cpp (Vulkan), Maya1-3B GGUF |
 | Voice API | http://localhost:9002 | FastAPI: voice design, character registry, SNAC decode (CPU) |
@@ -90,7 +90,7 @@ Active personal project under heavy iteration. The brain, the services and the f
 
 Gamentic is just the harness. It does not distribute, host, or bundle any model weights. You bring your own, downloaded from their official sources, and each model stays the property of its authors under its own license and terms, which you are responsible for following:
 
-- **Text, Gemma (Google).** The game runs a community uncensored finetune of Google's Gemma. Gemma and its derivatives are governed by Google's own terms, not by this repository: [Gemma Terms of Use](https://ai.google.dev/gemma/terms), [Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy), [the finetune used](https://huggingface.co/igorls/gemma-4-12B-it-heretic-GGUF).
+- **Text, Gemma (Google).** The game runs a community uncensored finetune of Google's Gemma. Gemma and its derivatives are governed by Google's own terms, not by this repository: [Gemma Terms of Use](https://ai.google.dev/gemma/terms), [Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy), [the finetune used](https://huggingface.co/mradermacher/gemma-4-26B-A4B-it-heretic-GGUF).
 - **Image, FLUX.2 [klein] 4B (Black Forest Labs),** Apache-2.0: [model](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B), [BFL licensing](https://bfl.ai/licensing).
 - **Voice, Maya1 (Maya Research),** Apache-2.0: [model](https://huggingface.co/maya-research/maya1).
 - **Runtimes** under their own licenses: llama.cpp (MIT), ComfyUI (GPL-3.0).
