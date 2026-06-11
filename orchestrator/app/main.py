@@ -2,6 +2,7 @@
 
 Plain REST, sequential. One POST /games/{id}/action returns a fully-resolved turn.
 """
+import logging
 import os
 import re
 from contextlib import asynccontextmanager
@@ -18,6 +19,9 @@ from .models import (WorldSheet, ActionIn, ContinueIn, CreateMessageIn, GameStat
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # uvicorn's default config handles only its own loggers; this routes our named
+    # loggers (gamentic.tools) to the console at INFO. No-op if root is already configured.
+    logging.basicConfig(level=logging.INFO)
     db.init_db()
     yield
 

@@ -11,8 +11,15 @@ Two toolsets share the one validated dispatcher:
     character OR the player. The engine resolves these and queues the target to REACT, so a
     turn can cascade (bounded for pacing).
 """
+import json
+import logging
+
 from . import characters, combat, items, narrative, progression, scene, world  # noqa: F401 (registration)
 from .base import HANDLERS, SCHEMAS, _invalid, clean_arg
+
+# One INFO line per tool call (name, result kind, compact args): the raw material for
+# the measured tool-frequency review. main.py's lifespan makes INFO visible.
+_log = logging.getLogger("gamentic.tools")
 
 # The base narrator toolset, in the EXACT order the model has always seen (schema order
 # is part of the prompt a small model reads; keep it stable unless deliberately retuned).
@@ -53,10 +60,14 @@ def apply_tool(conn, gid: str, name: str, args: dict, actor=None) -> dict:
     on others. Unknown names and bad argument types come back as kind='invalid'."""
     handler = HANDLERS.get(name)
     if handler is None:
-        return _invalid(f"unknown tool '{name}'")
-    try:
-        # tool-stream debris is scrubbed from every string argument BEFORE it can reach
-        # state or a receipt (live: a malformed stream put "<|tool_call>..." inside a goal)
-        return handler(conn, gid, clean_arg(args or {}), actor)
-    except (ValueError, TypeError) as e:
-        return _invalid(f"{name}: bad args ({e})")
+        out = _invalid(f"unknown tool '{name}'")
+    else:
+        try:
+            # tool-stream debris is scrubbed from every string argument BEFORE it can reach
+            # state or a receipt (live: a malformed stream put "<|tool_call>..." inside a goal)
+            out = handler(conn, gid, clean_arg(args or {}), actor)
+        except (ValueError, TypeError) as e:
+            out = _invalid(f"{name}: bad args ({e})")
+    _log.info("tool=%s kind=%s args=%s", name, out["kind"],
+              json.dumps(args or {}, default=str)[:200])
+    return out
