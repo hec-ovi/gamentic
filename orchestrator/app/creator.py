@@ -7,8 +7,36 @@ JSON produced by a final tool call, then persisted by repo.create_game.
 """
 import json
 
-from . import prompts, llm, repo, db
+from . import engine, prompts, llm, repo, db
 from .models import WorldSheet
+
+ORIGIN_MIN_CHARS = 220   # ~3 short sentences; anything thinner gets the enrichment pass
+
+
+def enrich_origins(gid: str) -> None:
+    """Background (scheduled at every creation path): give each character with a thin
+    backstory a real one, one focused LLM call each. Never blocks or fails creation;
+    a character whose call fails simply keeps the thin origin."""
+    with db.get_conn() as conn:
+        g = repo.get_game(conn, gid)
+        if not g:
+            return
+        work = [(c["id"], prompts.build_origin_messages(g, c))
+                for c in repo.get_characters(conn, gid)
+                if c["alive"] and len((c["origin"] or "").strip()) < ORIGIN_MIN_CHARS]
+    for cid, messages in work:
+        try:
+            reply = llm.chat(messages, temperature=0.7, max_tokens=400)
+        except Exception:
+            continue
+        text = engine.clean_prose(reply.content or "")
+        if reply.finish_reason == "length":
+            text = engine.trim_to_sentence(text)   # a cut biography ends on a sentence
+        with db.get_conn() as conn:
+            c = repo.get_character(conn, cid)
+            # only ever upgrade: never downgrade a richer origin (idempotent, race-safe)
+            if c and text and len(text) > len((c["origin"] or "").strip()):
+                repo.set_character_origin(conn, cid, text)
 
 
 def _history(conn, session_id: str) -> list[dict]:

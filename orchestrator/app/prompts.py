@@ -369,6 +369,29 @@ def build_character_summary_messages(name: str, prev_summary: str, transcript: s
     ]
 
 
+def build_origin_messages(g, c) -> list[dict]:
+    """The origin-enrichment 'skill': one focused call per character at creation. The
+    finalize call writes the whole world in one shot and consistently under-delivers
+    on backstories; a single-character pass is what the small model does well."""
+    gender = repo.character_gender(c)
+    rel = repo.character_relation(c)
+    return [
+        {"role": "system", "content": render("origin.system.md")},
+        {"role": "user", "content": render(
+            "origin.user.md",
+            setting=g["setting"] or "unspecified",
+            tone=g["tone"] or "cinematic",
+            name=c["name"],
+            gender_line=f" ({gender})" if gender else "",
+            persona=c["persona"],
+            description=c["description"] or "(none)",
+            relation_line=f"\n- To the player: {rel}" if rel else "",
+            knowledge_line=(f"\n- What they privately know: {c['knowledge']}"
+                            if c["knowledge"] else ""),
+            origin=(c["origin"] or "").strip() or "(none yet)")},
+    ]
+
+
 # ---------- 'ask what this is' (tap-to-explain) ----------
 
 def _explain_facts(conn, gid: str, kind: str, key: str, beat_id: str | None) -> str | None:

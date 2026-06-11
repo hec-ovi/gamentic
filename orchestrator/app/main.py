@@ -48,6 +48,7 @@ def create_game(sheet: WorldSheet, background_tasks: BackgroundTasks):
     if settings.IMAGE_ENABLED:                               # images are optional
         background_tasks.add_task(integrate.generate_images_for_game, gid)  # character portraits
         background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)  # scene art
+    background_tasks.add_task(creator.enrich_origins, gid)   # thin backstories get real ones
     return {"game_id": gid}
 
 
@@ -105,6 +106,7 @@ def import_game(payload: dict, background_tasks: BackgroundTasks):
         background_tasks.add_task(integrate.generate_images_for_game, gid)  # missing portraits
     if need_scene_art:
         background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)
+    background_tasks.add_task(creator.enrich_origins, gid)   # imported templates may be thin too
     return {"game_id": gid}
 
 
@@ -366,4 +368,5 @@ def create_finalize(body: dict, background_tasks: BackgroundTasks):
     if settings.IMAGE_ENABLED:
         background_tasks.add_task(integrate.generate_images_for_game, gid)   # character portraits
         background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)  # opening-scene art
+    background_tasks.add_task(creator.enrich_origins, gid)   # thin backstories get real ones
     return {"game_id": gid}

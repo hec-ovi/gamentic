@@ -40,6 +40,9 @@ class FakeLLM:
         self.explain = llm.LLMReply(content="A thing of note, by the look of it.")
         self.summary = llm.LLMReply(content="- The player arrived and met the locals.")
         self.charsummary = llm.LLMReply(content="- You remember the player arriving.")
+        # default EMPTY: enrichment skips the write, so fixture origins stay untouched
+        # in every test that does not opt in by setting fake.origin to a biography
+        self.origin = llm.LLMReply(content="")
         self.calls = []
 
     def __call__(self, messages, tools=None, tool_choice="auto", temperature=0.8,
@@ -66,6 +69,10 @@ class FakeLLM:
             return self.summary
         if sys.startswith("You maintain the private memory"):  # per-character recap fold
             return self.charsummary
+        if sys.startswith("You deepen the private backstory"):  # origin enrichment
+            if isinstance(self.origin, Exception):
+                raise self.origin
+            return self.origin
         if sys.startswith("You are a warm"):         # story-creator chat
             return self.creator_text
         # otherwise a character call (may carry CHARACTER_TOOLS attack/give, or none)

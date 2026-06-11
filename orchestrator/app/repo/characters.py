@@ -208,6 +208,13 @@ def set_character_summary(conn, cid: str, text: str, through_turn: int) -> None:
                  (text, int(through_turn), cid))
 
 
+def set_character_origin(conn, cid: str, text: str) -> None:
+    """Replace a character's private backstory (the creation-time enrichment pass).
+    Read by the narrator's secrets block and the character's own agent; the player
+    only ever sees pieces unlocked through reveal_origin."""
+    conn.execute("UPDATE characters SET origin=? WHERE id=?", (_tidy(text), cid))
+
+
 # ---------- traits (personality unlocked through play) ----------
 
 def add_trait(conn, cid: str, text: str, cap: int) -> str | None:
