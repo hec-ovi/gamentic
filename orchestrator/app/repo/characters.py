@@ -375,10 +375,20 @@ def offer_action(conn, cid: str, label: str, cap_total: int) -> bool:
 def available_actions(conn, c, cap_total: int) -> list[dict]:
     """The player's action buttons for a character: disposition base set + narrator
     offers, capped. Offers keep their seat: when the set overflows the cap, the
-    LAST base actions give way (Talk always survives), never the contextual offers."""
+    LAST base actions give way (Talk always survives), never the contextual offers.
+    Deterministic sanity on the base set (owner playtest 2026-06-11): 'Give...' only
+    exists while the player holds anything to give, and a character already following
+    offers 'Ask to stay' instead of 'Ask to follow'."""
     from .. import constants
-    base = [{"id": f"b{i}", "label": lbl, "type": typ}
-            for i, (lbl, typ) in enumerate(constants.ACTIONS_BY_DISPOSITION.get(c["disposition"], []))]
+    from . import players
+    pack = db.loads(players.get_player(conn, c["game_id"])["inventory"], [])
+    base = []
+    for i, (lbl, typ) in enumerate(constants.ACTIONS_BY_DISPOSITION.get(c["disposition"], [])):
+        if typ == "give" and not pack:
+            continue
+        if typ == "follow" and c["following"]:
+            lbl = "Ask to stay"
+        base.append({"id": f"b{i}", "label": lbl, "type": typ})
     offers = [{"id": o["id"], "label": o["label"], "type": "offer"} for o in db.loads(c["offers"], [])
               if not any(b["label"].lower() == o["label"].lower() for b in base)]
     keep = max(cap_total - len(offers), 1)

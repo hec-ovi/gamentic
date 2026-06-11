@@ -6,7 +6,7 @@ import { cardCorners, escapeHtml, help, holoFx, initials, titleCase } from "./co
 import { renderInspectModal } from "./inspect.js";
 import { renderProfile } from "./profile.js";
 import { renderStory } from "./story.js";
-import { artImg, artLoading, avatarOrInitials, contextMeter, dispositionBadges, exitBtn, hpBar, iconBtn, modalShell, narratingDots, renderComposer, renderStack, renderViewPending, sceneActionBtn, sceneItemSlot, slotGrid } from "./widgets.js";
+import { artImg, artLoading, avatarOrInitials, contextMeter, dispositionBadges, exitBtn, hpBar, iconBtn, modalShell, narratingDots, renderComposer, renderStack, renderViewPending, sceneActionBtn, sceneItemSlot, slotGrid, slotInner, slotTip } from "./widgets.js";
 
 export { renderViewPending };
 
@@ -57,16 +57,18 @@ export function renderPlay(state) {
 }
 
 // Give-picker: choose an item from the player's inventory to hand to a character.
+// Renders the same fixed slot-grid language as the pack (owner: "show both text and
+// images, with empty gaps showing"): thumbnail or initials, name caption, 6 slots.
 export function renderGiveModal(s, give, locked) {
   const dis = locked ? "disabled" : "";
   const items = s.player.inventory || [];
+  const pickCell = (it) =>
+    `<button type="button" class="slot filled give-pick" data-act="pick-give" data-item="${escapeHtml(it.id || it.name)}" data-target="${escapeHtml(give.name)}" title="${escapeHtml(slotTip(it))}" aria-label="${escapeHtml(it.name)}" ${dis}>
+       <span class="give-art">${slotInner(it)}</span>
+       <span class="give-name">${escapeHtml(it.name)}</span>
+     </button>`;
   const body = items.length
-    ? `<div class="give-grid">${items
-        .map(
-          (it) =>
-            `<button type="button" class="holo-btn give-pick" data-act="pick-give" data-item="${escapeHtml(it.id || it.name)}" data-target="${escapeHtml(give.name)}" ${dis}>${escapeHtml(it.name)}</button>`,
-        )
-        .join("")}</div>`
+    ? slotGrid(items, 6, "give-items", pickCell)
     : `<p class="modal-body">You have nothing to give.</p>`;
   return modalShell({
     overlayAct: "cancel-give",

@@ -713,7 +713,12 @@ test("the profile composer's Do mode whispers a discreet private action (mode: d
 test("Give opens an item picker and sends a give segment with the item id", async () => {
   const u = user();
   let body;
+  const carrying = makeState({
+    player: { inventory: [{ id: "inv1", name: "credstick", description: "42 creds", qty: 1,
+                            image_url: "/media/g/item-credstick.png" }] },
+  });
   server.use(
+    http.get(`${API}/games/:id/state`, () => HttpResponse.json(carrying)),
     http.post(`${API}/games/:id/action`, async ({ request }) => {
       body = await request.json();
       return HttpResponse.json({ beats: [makeBeat({ text: "Taken." })], state: makeState() });
@@ -727,8 +732,13 @@ test("Give opens an item picker and sends a give segment with the item id", asyn
   await screen.findByRole("dialog", { name: /jacker's profile/i });
   await waitFor(() => expect(within(profileEl()).getByRole("button", { name: /give/i })).toBeTruthy());
   await u.click(within(profileEl()).getByRole("button", { name: /give/i }));
-  // picker lists the player's inventory item (above the profile); id on the wire
+  // the picker speaks the pack's slot-grid language (owner): the item shows its
+  // unlock-card THUMBNAIL and its NAME, and the empty slots show as gaps
   const pick = await screen.findByRole("button", { name: /^credstick$/i });
+  expect(pick.querySelector('img[src="/media/g/item-credstick.png"]')).toBeTruthy();
+  expect(pick.textContent).toMatch(/credstick/i);
+  expect(document.querySelectorAll(".give-items .slot").length).toBe(6);
+  expect(document.querySelectorAll(".give-items .slot.empty").length).toBe(5);
   await u.click(pick);
   await waitFor(() => expect(body).toBeTruthy());
   expect(body.segments[0]).toEqual({ type: "give", item: "inv1", target: "Jacker" });

@@ -3,18 +3,19 @@ hidden/reveal/take, capped slots, and the action buttons (base + offered, capped
 from app import llm
 
 
-def _world(chars=None, start="bar"):
+def _world(chars=None, start="bar", player_items=None):
     return {
         "title": "Sceneworld", "setting": "A dim bar.", "tone": "noir",
         "narrator_persona": "Terse.", "opening_scenario": "Smoke and neon.",
         "start_location": start, "player_life": 20,
         "characters": chars or [],
+        "player_items": player_items or [],
         "quests": [{"title": "Look", "description": "", "objectives": ["x"]}], "lore": [],
     }
 
 
-def _new(client, chars=None, start="bar"):
-    return client.post("/games", json=_world(chars, start)).json()["game_id"]
+def _new(client, chars=None, start="bar", player_items=None):
+    return client.post("/games", json=_world(chars, start, player_items)).json()["game_id"]
 
 
 def _state(client, gid):
@@ -84,7 +85,8 @@ def test_offers_fill_the_fourth_slot_and_rotate_when_full(client, fake_llm):
     flexibility'): the cap is 4 (3 base + a contextual slot), and once the offer slots
     are full a NEW offer evicts the OLDEST instead of bouncing - the buttons follow
     the story instead of freezing on the first offer."""
-    gid = _new(client, [{"name": "Mara", "persona": "a wary scout"}])   # neutral: 3 base
+    gid = _new(client, [{"name": "Mara", "persona": "a wary scout"}],
+               player_items=[{"name": "coin", "description": ""}])   # neutral: 3 base
     mara = next(c for c in _state(client, gid)["characters"] if c["name"] == "Mara")
     assert [a["label"] for a in mara["available_actions"]] == ["Talk", "Give...", "Provoke"]
     fake_llm.narrator = _nar(T("offer_action", name="Mara", label="Ask about the scar"))
@@ -105,7 +107,8 @@ def test_offers_still_displace_when_the_cap_leaves_no_room(client, fake_llm, mon
     exists - the offer displaces the last base button and Talk always survives."""
     from app.config import settings
     monkeypatch.setattr(settings, "CHAR_ACTION_CAP", 3)
-    gid = _new(client, [{"name": "Mara", "persona": "a wary scout"}])
+    gid = _new(client, [{"name": "Mara", "persona": "a wary scout"}],
+               player_items=[{"name": "coin", "description": ""}])
     fake_llm.narrator = _nar(T("offer_action", name="Mara", label="Ask about the scar"))
     client.post(f"/games/{gid}/action", json={"action": "I notice her scar."})
     mara = next(c for c in _state(client, gid)["characters"] if c["name"] == "Mara")
@@ -136,8 +139,34 @@ def test_a_new_scene_inherits_its_establishing_narration_as_description(client, 
     assert d["state"]["scene"]["description"].startswith("Rain needles")
 
 
+def test_give_button_only_exists_while_the_pack_holds_anything(client, fake_llm):
+    """Owner playtest (2026-06-11): 'give only available if i have items on my
+    inventory of course' - the affordance composer drops Give... on an empty pack
+    and brings it back the moment anything is obtained."""
+    gid = _new(client, [{"name": "Mara", "persona": "a guard"}])   # no player_items seeded
+    mara = next(c for c in _state(client, gid)["characters"] if c["name"] == "Mara")
+    assert "Give..." not in [a["label"] for a in mara["available_actions"]]
+    fake_llm.narrator = _nar(T("add_item", name="copper coin"))
+    client.post(f"/games/{gid}/action", json={"action": "I pocket the coin."})
+    mara = next(c for c in _state(client, gid)["characters"] if c["name"] == "Mara")
+    assert "Give..." in [a["label"] for a in mara["available_actions"]]
+
+
+def test_a_follower_offers_ask_to_stay_not_ask_to_follow(client, fake_llm):
+    """Owner playtest (2026-06-11): Sera was already FOLLOWING and still offered
+    'Ask to follow' - a follower's button reads 'Ask to stay' instead."""
+    gid = _new(client, [{"name": "Mara", "persona": "a guard"}])
+    fake_llm.narrator = _nar(T("set_disposition", name="Mara", disposition="friendly"),
+                             T("set_following", name="Mara", following=True))
+    client.post(f"/games/{gid}/action", json={"action": "Walk with me, Mara."})
+    mara = next(c for c in _state(client, gid)["characters"] if c["name"] == "Mara")
+    labels = [a["label"] for a in mara["available_actions"]]
+    assert "Ask to stay" in labels and "Ask to follow" not in labels
+
+
 def test_an_offer_matching_a_base_button_is_a_quiet_yes(client, fake_llm):
-    gid = _new(client, [{"name": "Mara", "persona": "a wary scout"}])
+    gid = _new(client, [{"name": "Mara", "persona": "a wary scout"}],
+               player_items=[{"name": "coin", "description": ""}])
     fake_llm.narrator = _nar(T("offer_action", name="Mara", label="Provoke"))
     client.post(f"/games/{gid}/action", json={"action": "I needle her."})
     mara = next(c for c in _state(client, gid)["characters"] if c["name"] == "Mara")

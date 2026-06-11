@@ -4,6 +4,10 @@ Notable changes to gamentic, newest first. No version numbers yet: this moves fa
 
 ## 2026-06-11
 
+### The buttons learn common sense (owner playtest, round two)
+- "Give..." only exists while the pack holds anything to give (an empty-handed player was offered a gift menu into nothing), and a character already walking with you offers "Ask to stay" instead of "Ask to follow" - both deterministic, both in the affordance composer, so the frontend keeps rendering state instead of inventing rules.
+- The give picker speaks the pack's slot-grid language now: each item shows its unlock-card thumbnail with its name captioned beneath, and the empty slots show as gaps - not a column of bare text buttons. Same wire, same controller, richer skin.
+
 ### The owner plays the verification game (four finds, one new agent)
 - "AH" in the pack was the heavy iron key wearing its article: the visible-item index keys are article-blind but the unlock-card job looked itself up with the article kept, missed its own entry and silently bailed forever - so the slot fell back to initials, and initials("a heavy iron key") is AH. The card job now resolves article-blind, and the initials fallback skips articles either way (HI, not AH).
 - Character buttons read static because they were: the action cap is now 4 (3 disposition base + ONE contextual slot, owner call) and narrator offers ROTATE - a new offer evicts the oldest instead of bouncing, so "let stale offers go" is mechanics now, not a prompt hope. The frontend grew the fourth button slot (scene actions stay 3).
