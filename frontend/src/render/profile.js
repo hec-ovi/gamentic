@@ -4,7 +4,7 @@ import { sameLocation } from "../adapters.js";
 import { icon } from "../icons.js";
 import { escapeHtml, holoFx, initials, stripWrappingQuotes, titleCase } from "./common.js";
 import { playerSpeech, speakBtn } from "./story.js";
-import { artImg, charActionBtn, contextMeter, dispositionBadges, hpBar, narratingDots, renderComposer, renderStack, renderViewPending, secHead, slotGrid, traitLi, veilWrap } from "./widgets.js";
+import { avatarOrInitials, artImg, charActionBtn, contextMeter, dispositionBadges, hpBar, narratingDots, renderComposer, renderStack, renderViewPending, secHead, slotGrid, traitLi, veilWrap } from "./widgets.js";
 
 // A character can be CONSULTED even when absent or dead: the profile stays
 // readable everywhere; only the INTERACTIVE parts (whisper composer, action
@@ -243,7 +243,7 @@ export function renderWhisperChannel(s, g, d, locked) {
   const thread = beats.length
     ? beats
         .slice(-40)
-        .map((b) => veilWrap(renderPmBeat(b), Boolean(veiled && veiled.has(b.id))))
+        .map((b) => veilWrap(renderPmBeat(b, d), Boolean(veiled && veiled.has(b.id))))
         .join("")
     : `<p class="pm-empty muted">${
         presence.present ? `Say something only ${escapeHtml(name)} will hear.` : "Nothing has passed between you in private."
@@ -289,7 +289,7 @@ export function renderWhisperChannel(s, g, d, locked) {
 // .pm-text span let the staged reveal typewrite private replies too. Narration
 // stays unlabeled here too (no "Narrator" tag anywhere), and no literal quote
 // marks: the player's own speech echoes show just what was said.
-export function renderPmBeat(beat) {
+export function renderPmBeat(beat, who = {}) {
   if (beat.kind === "image") {
     if (!beat.imageUrl) return "";
     return `<div class="pm-line pm-image" data-beat-id="${escapeHtml(beat.id)}">
@@ -311,7 +311,14 @@ export function renderPmBeat(beat) {
   const text = sp ? sp.quote : stripWrappingQuotes(beat.text);
   // a whispered reply speaks too: same per-message speak button as the story
   const playable = !mine && beat.voiceId ? speakBtn(beat) : "";
+  // the speaker label is their FACE, square, same image as the public chat
+  // (owner): the name keeps living in the alt/title for hover + screen readers
+  const face = !mine && beat.speakerName
+    ? `<span class="pm-face" title="${escapeHtml(beat.speakerName)}">${avatarOrInitials({
+        url: who.faceUrl, name: beat.speakerName, color: who.color || "var(--speaker)",
+        fallbackCls: "pm-face-abbr" })}</span>`
+    : "";
   return `<div class="pm-line ${mine ? "pm-you" : "pm-them"}${deed && !sp ? " pm-deed" : ""}${beat.pending ? " pending" : ""}" data-beat-id="${escapeHtml(beat.id)}">
-            ${!mine && beat.speakerName ? `<b>${escapeHtml(beat.speakerName)}</b> ` : ""}<span class="pm-text">${escapeHtml(text)}</span>${playable}
+            ${face}<span class="pm-text">${escapeHtml(text)}</span>${playable}
           </div>`;
 }

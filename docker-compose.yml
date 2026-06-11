@@ -30,7 +30,7 @@ services:
       - --model
       - /models/${LLM_TEXT_MODEL}
       - --alias
-      - ${LLM_ALIAS:-gemma-4-12b-heretic}
+      - ${LLM_ALIAS:-gemma-4-26b-a4b-heretic}
       - --host
       - 0.0.0.0
       - --port
@@ -217,7 +217,7 @@ services:
         condition: service_healthy
     environment:
       - LLM_BASE_URL=http://gamentic-llm-text:8080/v1
-      - LLM_MODEL=${LLM_ALIAS:-gemma-4-12b-heretic}
+      - LLM_MODEL=${LLM_ALIAS:-gemma-4-26b-a4b-heretic}
       - IMAGE_API_URL=http://gamentic-image-api:9001
       # voice-api listens on 8080 inside the container (host maps 9002->8080)
       - VOICE_API_URL=http://gamentic-voice-api:8080

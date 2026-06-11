@@ -160,3 +160,8 @@ def test_view_caption_join_has_no_double_punctuation():
     assert ".," not in cap
     assert cap == ("the room itself. The Rusty Hook Inn, common room, Day 1, morning. "
                    "The rain drums against the windows.")
+
+
+def test_narrator_prompt_demands_history_driven_offers():
+    text = prompts.render("narrator.system.md", narrator_persona="n", setting="s", tone="t")
+    assert "offer_action that character something the HISTORY now makes possible" in text

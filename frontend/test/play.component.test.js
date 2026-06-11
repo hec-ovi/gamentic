@@ -1668,3 +1668,32 @@ test("an item media-ready event (SSE) refreshes state so the pack slot gains its
     vi.unstubAllGlobals();
   }
 });
+
+test("whisper lines label the speaker with their square face, not a text name (owner)", async () => {
+  const u = user();
+  server.use(
+    http.get(`${API}/games/:id/state`, () => HttpResponse.json(makeState())),
+    http.get(`${API}/games/:id/characters/:cid/profile`, () => HttpResponse.json(makeProfile())),
+    http.get(`${API}/games/:id/beats`, ({ request }) =>
+      new URL(request.url).searchParams.has("since")
+        ? HttpResponse.json({ beats: [] })
+        : HttpResponse.json({ beats: [
+            makeBeat({ id: "w1", kind: "dialogue", speaker: "c1", speaker_name: "Jacker",
+                       text: "Only you know this.", private_with: "c1", emotion: "whisper" }),
+          ] }),
+    ),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await u.click(await within(profileEl()).findByRole("tab", { name: /whisper/i }));
+  const line = document.querySelector("#pmThread .pm-them");
+  expect(line.querySelector(".pm-face")).toBeTruthy();           // the face label
+  expect(line.querySelector(".pm-face").getAttribute("title")).toBe("Jacker");
+  expect(line.textContent).not.toMatch(/^Jacker/);                // no leading text name
+});
+
+test("joining a game seats you at the keyboard (composer focused)", async () => {
+  const u = user();
+  await gotoPlay(u);
+  await waitFor(() => expect(document.activeElement && document.activeElement.id).toBe("cmpInput"));
+});

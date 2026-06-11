@@ -1072,6 +1072,16 @@ figure.prose-art.art-loading { cursor: default; }
 /* per-message voice on whispered replies, same state machine as the story
    (inline-grid keeps the icon perfectly centered, like the story buttons) */
 .pm-line .speak-btn { position: relative; display: inline-grid; place-items: center; margin-left: 0.45rem; vertical-align: middle; flex: 0 0 auto; }
+/* the whisper speaker label is their FACE: square, small, top-aligned (owner) */
+.pm-face { flex: 0 0 auto; margin-right: 0.45rem; }
+.pm-face img, .pm-face .pm-face-abbr {
+  width: 26px; height: 26px; border-radius: 4px; object-fit: cover; display: block;
+}
+.pm-face .pm-face-abbr {
+  display: grid; place-items: center; font-size: 0.6rem; font-weight: 700;
+  color: var(--ink-inverse); text-transform: uppercase;
+}
+
 /* names and speak buttons align to the TOP of multi-line whispers (owner: the
    name floated mid-bubble beside long confessions) */
 .pm-line { display: flex; align-items: flex-start; gap: 0.1rem; }

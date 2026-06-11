@@ -18,7 +18,7 @@ A self-hosted AI dungeon RPG you play in the browser. An AI narrator and a cast 
 ## The game
 
 - Explore scenes, search for hidden things, find ways out. Talk to characters: each one is its own agent with its own voice, agenda and secrets, and they can act on you and on each other, not just talk.
-- Pull a character aside for a private word no one else hears.
+- Pull a character aside for a private word no one else hears. What they confide there sticks: characters keep their own memory of what they shared with you, and their profile (past, traits, pivotal moments, image memories) grows out of how you treat them.
 - Look at anything ("where is Mara looking?", "that ship on the horizon"). Looking is a real story action that can trigger reactions and discoveries, and every look earns an image. The narrator also fires images at big moments, paced so they stay special.
 - Characters grow. Personality traits unlock as the story reveals them and feed back into how that character behaves. Their pasts surface piece by piece: they hint early, open up with trust, and answer "who are you?" properly when asked. Relationships get named and renamed by the story (stranger, ally, sworn rival). Each character keeps a profile of traits, pivotal shared moments and the image memories they are actually part of.
 - The story never falls out of memory. The narrator re-reads recent scenes word for word and folds everything older into a rolling recap; window depth, fold cadence and a hard context budget are live settings per game.
@@ -44,7 +44,7 @@ flowchart TD
     OUT -. "spoken on demand" .-> VOICE["🔊 Voice<br>Maya1, one designed voice<br>per character"]
 ```
 
-One local model plays every role through separate, purpose-built contexts. Whatever it wants to do to the world must pass through a validated tool into the database, which is the single source of truth: LLMs hallucinate state, a database does not. Plain REST, sequential, one request returns one fully resolved turn. A map of where each piece lives is in [orchestrator/INDEX.md](orchestrator/INDEX.md).
+One local model plays every role through separate, purpose-built contexts. Whatever it wants to do to the world must pass through a validated tool into the database, which is the single source of truth: LLMs hallucinate state, a database does not. Plain REST, sequential, one request returns one fully resolved turn; the single push channel is a server-sent-events stream that announces background media the moment it lands, so art appears without polling or refreshing. A map of where each piece lives is in [orchestrator/INDEX.md](orchestrator/INDEX.md).
 
 ## The world model
 
@@ -56,7 +56,35 @@ The world is an explicit state machine and the narrator is the engine that advan
 
 **Image** (optional) is FLUX.2 [klein] 4B distilled in ComfyUI behind a small REST adapter: scene art, a 3-view reference set per character, identity-conditioned story shots, item cards. The model set is the Comfy-Org repack (`flux-2-klein-4b` + `qwen_3_4b` encoder + `flux2-vae`, about 16 GB). The game is fully playable text-only; art fills in as it renders.
 
-**Voice** (optional) is Maya1-3B as GGUF on llama.cpp Vulkan, decoded to 24 kHz audio through the SNAC codec on CPU. Each character gets a designed voice composed from their sheet (gender, age, pitch, tone, accent) and stored in a registry, so one character is always one voice. Lines carry inline emotion tags (`[whisper]`, `[laugh]`, `[angry]`, ...) and a streaming endpoint delivers first audio in about 0.3s.
+**Voice** (optional) is Maya1-3B as GGUF on llama.cpp Vulkan, decoded to 24 kHz audio through the SNAC codec on CPU. Each character gets a designed voice composed from their sheet (gender, age, pitch, tone, accent), stored with the character in the game database, so one character is always one voice, whatever the audio backend. Lines carry inline emotion tags (`[whisper]`, `[laugh]`, `[angry]`, ...) and a streaming endpoint delivers first audio in about 0.3s.
+
+## Run it
+
+Requires Docker (with GPU access for the model and the image service) and local model files on disk.
+
+```bash
+cp .env.example .env           # then set MODELS_DIR and the model file paths
+docker compose up -d --build   # from the repo root
+```
+
+| Service | URL | Tech stack |
+|---|---|---|
+| Frontend | http://localhost:5173 | Vanilla HTML / CSS / JS, served by nginx |
+| Orchestrator (game API) | http://localhost:8000 | FastAPI, SQLite, httpx, Python 3.12 |
+| Text model | http://localhost:8080 | llama.cpp (Vulkan), `gemma-4-26B-A4B-it-heretic` GGUF Q4 (MoE) |
+| Image | http://localhost:9001 | FastAPI REST adapter over ComfyUI + FLUX.2 [klein] 4B (ComfyUI itself at :8188) |
+| Voice model | http://localhost:9091 | llama.cpp (Vulkan), Maya1-3B GGUF |
+| Voice API | http://localhost:9002 | FastAPI: Maya1 synthesis, SNAC decode (CPU), streaming |
+
+Open the frontend, create a world by chatting with the story creator, and play.
+
+```
+gamentic/
+  orchestrator/   game brain (FastAPI + SQLite, narrator + character agents, tools)
+  frontend/       vanilla HTML / CSS / JS client
+  infra/          ComfyUI + image-api service (compose lives at the repo root)
+  voice-api/      Maya1 TTS service (synthesis + streaming; voice identity lives in the game DB)
+```
 
 ## Bring your own inference
 
@@ -85,7 +113,7 @@ image out.
 
 Two ways to configure it:
 
-- **Experts**: environment variables, three per modality.
+- **Experts**: environment variables, four per modality (audio adds a fifth for the voice).
   `TEXT_PROVIDER/_BASE_URL/_API_KEY/_MODEL`, same for `AUDIO_*` and `IMAGE_*`.
   Defaults run the local stack untouched. Point `TEXT_BASE_URL` at any
   OpenAI-compatible endpoint with a key and the narrator runs on it.
@@ -99,42 +127,14 @@ implemented against their published schemas and pinned by contract tests, but ha
 been verified against the paid live services. If you hold a key, the TEST button is the
 verification, and reports are welcome.
 
-## Run it
-
-Requires Docker (with GPU access for the model and the image service) and local model files on disk.
-
-```bash
-cp .env.example .env           # then set MODELS_DIR and the model file paths
-docker compose up -d --build   # from the repo root
-```
-
-| Service | URL | Tech stack |
-|---|---|---|
-| Frontend | http://localhost:5173 | Vanilla HTML / CSS / JS, served by nginx |
-| Orchestrator (game API) | http://localhost:8000 | FastAPI, SQLite, httpx, Python 3.12 |
-| Text model | http://localhost:8080 | llama.cpp (Vulkan), `gemma-4-26B-A4B-it-heretic` GGUF Q4 (MoE) |
-| Image | http://localhost:9001 | ComfyUI + FLUX.2 [klein] 4B (distilled), FastAPI REST adapter |
-| Voice model | http://localhost:9091 | llama.cpp (Vulkan), Maya1-3B GGUF |
-| Voice API | http://localhost:9002 | FastAPI: voice design, character registry, SNAC decode (CPU) |
-
-Open the frontend, create a world by chatting with the story creator, and play.
-
-```
-gamentic/
-  orchestrator/   game brain (FastAPI + SQLite, narrator + character agents, tools)
-  frontend/       vanilla HTML / CSS / JS client
-  infra/          docker-compose stack + image service
-  voice-api/      Maya1 TTS service (voice design, character registry, streaming)
-```
-
 ## Status and limits
 
 Active personal project under heavy iteration. The brain, the services and the frontend are covered by automated test suites and the whole loop has been soak-tested with full scripted adventures against the real stack. Where it honestly stands:
 
 - Voice is near-realtime, not instant: a 10 second line takes 11-12 seconds to fully render. English only for now.
 - Images render in the background and arrive seconds late by design (the turn never waits for art); the 4B image model occasionally sneaks lettering into a corner.
-- Deep story memory costs speed: turn time grows with the story window you choose (prefill is about 1s per 600 tokens on the reference hardware). The story-memory settings exist precisely to pick your own point on that curve.
-- A 12B Q4 model on local hardware will occasionally miss a tool call or repeat itself. The brain fights this with structure: bounded state, deterministic guards, adjudication with default-accept, and a no-dead-air narration pass.
+- Deep story memory costs speed: turn time grows with the story window you choose (prefill measures about 1s per 900 tokens on the reference hardware). The story-memory settings exist precisely to pick your own point on that curve.
+- A local Q4 model, even the 26B, will sometimes narrate a tool call instead of making it. The brain fights this with structure, never with hope: a deterministic movement router, validated tools with bounded state, adjudication with default-accept, output sanitizers on every path, and parsers that accept the model's intent even when it writes the call as prose.
 
 ## Models and licenses
 

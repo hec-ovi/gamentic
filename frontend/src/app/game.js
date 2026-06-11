@@ -8,7 +8,7 @@ import { showToast } from "./cues.js";
 import { withVoice } from "./speech.js";
 import { lastTurnIndexOf } from "./turns.js";
 import { stopMediaWatch, watchMedia } from "./mediastream.js";
-import { render } from "./ui.js";
+import { focusComposer, render } from "./ui.js";
 
 // ---------------------------------------------------------------------------
 // library
@@ -111,6 +111,9 @@ export async function openGame(gameId) {
     if (state.active) state.active.generating = false;
     render();
     watchMedia(state.active); // media-ready push + the slow fallback sweep
+    // joining a game seats you at the keyboard, same as a finished turn does
+    // (live: activeElement was <body> on entry and the first action needed a click)
+    if (state.active && state.view === "play") focusComposer("#cmpInput");
   }
 }
 
