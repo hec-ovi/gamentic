@@ -239,6 +239,10 @@ services:
       - SUMMARY_ENABLED=${SUMMARY_ENABLED:-true}
       - SUMMARY_EVERY_TURNS=${SUMMARY_EVERY_TURNS:-10}
       - SUMMARY_KEEP_TURNS=${SUMMARY_KEEP_TURNS:-8}
+      # turn economy: a turn is a beat, not a chapter (voices per turn, cascade budget)
+      - MAX_CHARACTER_REACTIONS=${MAX_CHARACTER_REACTIONS:-2}
+      - TURN_MAX_ACTOR_STEPS=${TURN_MAX_ACTOR_STEPS:-4}
+      - TURN_MAX_PER_CHARACTER=${TURN_MAX_PER_CHARACTER:-1}
       # character memory: per-character witnessed window + private rolling recap
       - CHAR_HISTORY_BEATS=${CHAR_HISTORY_BEATS:-30}
       - CHAR_SUMMARY_ENABLED=${CHAR_SUMMARY_ENABLED:-true}
