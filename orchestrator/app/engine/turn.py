@@ -108,6 +108,7 @@ def _character_reply(conn, gid, ch, emit, private_with=None):
         if segs and creply.finish_reason == "length":
             k, t, e = segs[-1]
             segs[-1] = (k, parsing.trim_to_sentence(t), e)   # never show a mid-word cut
+            segs = [s for s in segs if s[1]]   # a sentence-less fragment trims to nothing
         if segs or creply.tool_calls:
             break
     for kind, txt, emotion in segs:

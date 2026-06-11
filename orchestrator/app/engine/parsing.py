@@ -22,12 +22,14 @@ _FENCE = re.compile(r"```.*?(?:```|$)", re.S)
 
 def trim_to_sentence(text: str) -> str:
     """A generation that hit the token ceiling ends mid-word (live: 'we do not linger
-    for <'); cut back to the last completed sentence so truncation is never visible."""
+    for <'); cut back to the last completed sentence so truncation is never visible.
+    A cut text with NO completed sentence returns empty (live: 'from the sheer shock
+    of the lig' displayed verbatim) - the callers drop empty fragments."""
     cut = max(text.rfind(p) for p in (". ", "! ", "? ", ".\n", "!\n", "?\n"))
     last = max(text.rfind(p) for p in (".", "!", "?", "…"))
     if last == len(text) - 1:
         return text                      # already ends cleanly
-    return text[: cut + 1].rstrip() if cut > 0 else text
+    return text[: cut + 1].rstrip() if cut > 0 else ""
 
 
 def clean_prose(text: str) -> str:
@@ -40,9 +42,16 @@ def clean_prose(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
+# A closing square tag is NEVER meaningful display text (live: '[/whisper]' shipped to
+# screen as '[/whisper' because the trailing-debris scrub ate its bracket first). It
+# must die WHOLE, before _TAG_DEBRIS can unbalance it.
+_CLOSE_TAG = re.compile(r"\[/\w+\]\s*")
+
+
 def _clean_segment(text: str) -> str:
     text = _PSEUDO_TOOL.sub("", text)
     text = "\n".join(ln for ln in text.splitlines() if not _TOOL_CALL.search(ln))
+    text = _CLOSE_TAG.sub("", text)
     text = _TAG_DEBRIS.sub("", text)
     return text.strip()
 
@@ -68,7 +77,7 @@ EMOTIONS.update({"shout": "scream", "yell": "scream", "sob": "cry", "happy": "ex
                  "scared": "gasp", "furious": "angry", "tired": "sigh",
                  "nervous": "gasp", "calm": ""})
 _EMOTION_TAG = re.compile(r"^[\[<](\w+)[\]>]\s*")
-_ANY_TAG = re.compile(r"\[\w+\]\s*")
+_ANY_TAG = re.compile(r"\[/?\w+\]\s*")
 # Stray angle-bracket tags scrub by EMOTION WORD only (opening or closing form): unlike
 # square tags, angle brackets carry legitimate text the model may write.
 _ANGLE_TAG = re.compile(r"</?(?:%s)>\s*" % "|".join(EMOTIONS), re.I)

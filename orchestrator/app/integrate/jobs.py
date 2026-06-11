@@ -56,7 +56,9 @@ def generate_view_snapshot(gid: str, focus: str | None = None,
             focus, f"{sc['name']}, {t['label']}",
             image_prompts._clip(image_prompts._strip_quoted(sc["description"]), 30))
         turn = repo.next_turn_index(conn, gid)
-        url = storage._persist(gid, result["image_url"], f"view-t{turn}")
+        # unique suffix: two renders can persist while the turn counter reads the same
+        # value (live: two beats pointed at one overwritten view-t7.png, two captions)
+        url = storage._persist(gid, result["image_url"], f"view-t{turn}-{repo._id()}")
         # private_with: a quiet study from the private panel lands IN that thread
         return repo.add_beat(conn, gid, "narrator", None, "image", caption, loc,
                              turn_index=turn, image_url=url, private_with=private_with)
@@ -91,7 +93,7 @@ def generate_directed_image(gid: str, description: str, caption: str = "") -> di
         if not repo.get_game(conn, gid):
             return None    # game wiped while rendering: never re-create its media folder
         turn = repo.next_turn_index(conn, gid)
-        url = storage._persist(gid, result["image_url"], f"shot-t{turn}")
+        url = storage._persist(gid, result["image_url"], f"shot-t{turn}-{repo._id()}")
         # the narrator's own visual description IS the moment's concept
         return repo.add_beat(conn, gid, "narrator", None, "image",
                              image_prompts._concept(caption, description), loc,
