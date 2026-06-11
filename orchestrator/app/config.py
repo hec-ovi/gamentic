@@ -6,7 +6,10 @@ class Settings:
     # llama.cpp OpenAI-compatible endpoint. In compose this is the container name.
     LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:8080/v1")
     LLM_MODEL = os.getenv("LLM_MODEL", "gemma-4-12b-heretic")
-    LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "180"))
+    # Generous by owner decision: turns of 3-4 minutes are an accepted trade for story
+    # depth, and an uncapped narrator generation at deep context can pass 180s (live:
+    # a hard-mode continue at 10k ctx timed out at exactly 180s and lost the turn).
+    LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "300"))
     # The model's context window, for the context-usage meter (used/max shown in the UI).
     LLM_CONTEXT_SIZE = int(os.getenv("LLM_CONTEXT_SIZE", "131072"))
 
