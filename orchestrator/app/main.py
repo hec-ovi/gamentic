@@ -282,12 +282,22 @@ def update_settings(gid: str, body: GameSettingsIn):
             if body.context_tokens != 0 and not (4000 <= body.context_tokens <= 120000):
                 raise HTTPException(422, "context_tokens must be 0 (off) or 4000..120000")
             repo.set_context_tokens(conn, gid, body.context_tokens)
+        if body.turn_voices is not None:
+            if body.turn_voices != 0 and not (1 <= body.turn_voices <= 4):
+                raise HTTPException(422, "turn_voices must be 0 (default) or 1..4")
+            repo.set_turn_voices(conn, gid, body.turn_voices)
+        if body.turn_acts is not None:
+            if body.turn_acts != 0 and not (1 <= body.turn_acts <= 3):
+                raise HTTPException(422, "turn_acts must be 0 (default) or 1..3")
+            repo.set_turn_acts(conn, gid, body.turn_acts)
         g = repo.get_game(conn, gid)
         return {"settings": {"narrator_gender": g["narrator_gender"] or "",
                              "difficulty": g["difficulty"] or "normal",
                              "history_beats": repo.effective_history_beats(g),
                              "summary_every": repo.effective_summary_every(g),
-                             "context_tokens": repo.effective_context_tokens(g)},
+                             "context_tokens": repo.effective_context_tokens(g),
+                             "turn_voices": repo.effective_turn_voices(g),
+                             "turn_acts": repo.effective_turn_acts(g)},
                 "narrator_voice_id": g["narrator_voice_id"]}
 
 

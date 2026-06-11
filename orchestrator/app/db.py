@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS games (
     summary_every INTEGER DEFAULT 0, -- per-game fold cadence in turns (0 = settings.SUMMARY_EVERY_TURNS)
     context_tokens INTEGER DEFAULT 0,-- per-game narrator token budget (0 = off; else the verbatim
                                      -- transcript is trimmed to fit and the recap carries the rest)
+    turn_voices INTEGER DEFAULT 0,   -- per-game cap on characters cued per turn (0 = settings.MAX_CHARACTER_REACTIONS)
+    turn_acts INTEGER DEFAULT 0,     -- per-game cap on acts per character per turn (0 = settings.TURN_MAX_PER_CHARACTER)
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -204,6 +206,8 @@ _MIGRATIONS = {
         "history_beats": "INTEGER DEFAULT 0",
         "summary_every": "INTEGER DEFAULT 0",
         "context_tokens": "INTEGER DEFAULT 0",
+        "turn_voices": "INTEGER DEFAULT 0",   # per-game turn-economy dial (0 = env default)
+        "turn_acts": "INTEGER DEFAULT 0",     # per-game turn-economy dial (0 = env default)
     },
     "beats": {
         "private_with": "TEXT",

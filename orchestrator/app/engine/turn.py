@@ -288,7 +288,14 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         if failures:
             narrator_action = f"{action_text} (failed: {' '.join(failures)})"
 
-        history_limit = repo.effective_history_beats(repo.get_game(conn, gid))
+        # One game-row read covers every per-game dial this turn: the verbatim window
+        # plus the turn-economy caps (voices cued per turn, acts per character). 0 in
+        # the row = the env default. TURN_MAX_ACTOR_STEPS stays env-only on purpose:
+        # it is the runaway safety ceiling, not a feel dial.
+        game_row = repo.get_game(conn, gid)
+        history_limit = repo.effective_history_beats(game_row)
+        turn_voices = repo.effective_turn_voices(game_row)
+        turn_acts = repo.effective_turn_acts(game_row)
         reply = llm.chat(
             prompts.build_narrator_messages(conn, gid, narrator_action, history_limit,
                                             settings.LORE_BUDGET,
@@ -399,7 +406,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                     emit("narrator", "Narrator", "narration", rtext, emotion=remotion)
         for note in state_notes:
             emit("system", None, "system", note)
-        for cue in cues[: settings.MAX_CHARACTER_REACTIONS]:
+        for cue in cues[:turn_voices]:
             queue.append(cue)
 
         location = repo.get_player(conn, gid)["location"]
@@ -409,7 +416,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             ch = repo.get_character(conn, cid)
             if not ch or not ch["alive"] or not ch["present"] or ch["location"] != location:
                 continue
-            if acted.get(cid, 0) >= settings.TURN_MAX_PER_CHARACTER:
+            if acted.get(cid, 0) >= turn_acts:
                 continue
             acted[cid] = acted.get(cid, 0) + 1
             steps += 1

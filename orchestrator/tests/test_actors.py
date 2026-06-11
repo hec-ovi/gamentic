@@ -153,6 +153,55 @@ def test_cascade_is_bounded(client, fake_llm, monkeypatch):
     assert len(dialogues) == 1 and dialogues[0]["speaker_name"] == "Mara"
 
 
+def test_turn_voices_dial_limits_cued_speakers(client, fake_llm):
+    """Per-game turn_voices=1: the narrator cues three characters, exactly ONE speaks
+    (the env default would let two through)."""
+    gid = _new(client, [_char("Mara"), _char("Bron"), _char("Tessa")])
+    assert client.patch(f"/games/{gid}/settings", json={"turn_voices": 1}).status_code == 200
+    fake_llm.narrator = llm.LLMReply(content="All three turn toward you.",
+                                     tool_calls=[llm.ToolCall("cue_character", {"name": "Mara"}),
+                                                 llm.ToolCall("cue_character", {"name": "Bron"}),
+                                                 llm.ToolCall("cue_character", {"name": "Tessa"})])
+    fake_llm.character_replies = {
+        "Mara": llm.LLMReply(content="\"I'll do the talking.\""),
+        "Bron": llm.LLMReply(content="\"And me.\""),
+        "Tessa": llm.LLMReply(content="\"Me too.\""),
+    }
+    d = client.post(f"/games/{gid}/action", json={"action": "I address the room."}).json()
+    speakers = [b["speaker_name"] for b in d["beats"] if b["kind"] == "dialogue"]
+    assert speakers == ["Mara"]                                    # one voice: the first cued
+
+
+def test_turn_acts_dial_lets_a_character_act_twice(client, fake_llm):
+    """Per-game turn_acts=2: a character pulled BACK into the cascade speaks again;
+    flipping back to the default (0 -> env cap 1) silences the second act."""
+    gid = _new(client, [_char("Mara"), _char("Bron")])
+
+    def script():
+        fake_llm.narrator = llm.LLMReply(content="Steel scrapes.",
+                                         tool_calls=[llm.ToolCall("cue_character", {"name": "Mara"})])
+        fake_llm.character_replies = {
+            # Mara strikes Bron; Bron strikes back, putting Mara BACK in the queue
+            "Mara": [llm.LLMReply(content="\"Take this!\"",
+                                  tool_calls=[llm.ToolCall("attack", {"target": "Bron", "amount": 2})]),
+                     llm.LLMReply(content="\"And stay down!\"")],
+            "Bron": llm.LLMReply(content="\"Right back at you!\"",
+                                 tool_calls=[llm.ToolCall("attack", {"target": "Mara", "amount": 2})]),
+        }
+
+    assert client.patch(f"/games/{gid}/settings", json={"turn_acts": 2}).status_code == 200
+    script()
+    d = client.post(f"/games/{gid}/action", json={"action": "I watch them."}).json()
+    mara = [b for b in d["beats"] if b["speaker_name"] == "Mara" and b["kind"] == "dialogue"]
+    assert len(mara) == 2 and "stay down" in mara[1]["text"]       # acted twice
+
+    client.patch(f"/games/{gid}/settings", json={"turn_acts": 0})  # back to the default (1)
+    script()
+    d = client.post(f"/games/{gid}/action", json={"action": "I watch them."}).json()
+    mara = [b for b in d["beats"] if b["speaker_name"] == "Mara" and b["kind"] == "dialogue"]
+    assert len(mara) == 1                                          # re-entry blocked again
+
+
 def test_character_say_do_tags_split_into_beats(client, fake_llm):
     gid = _new(client, [_char("Mara")])
     fake_llm.narrator = llm.LLMReply(content="Mara tenses.",

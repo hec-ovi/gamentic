@@ -45,7 +45,9 @@ def game_state(conn, gid: str) -> dict:
                      "difficulty": g["difficulty"] or "normal",
                      "history_beats": games.effective_history_beats(g),
                      "summary_every": games.effective_summary_every(g),
-                     "context_tokens": games.effective_context_tokens(g)},
+                     "context_tokens": games.effective_context_tokens(g),
+                     "turn_voices": games.effective_turn_voices(g),
+                     "turn_acts": games.effective_turn_acts(g)},
         "context": {"used": g["context_used"] or 0, "max": settings.LLM_CONTEXT_SIZE},
         "images_enabled": settings.IMAGE_ENABLED,  # FE: if true and an image_url is null, show a loader
         "time": clock.game_time(conn, gid),        # fictional story clock {minutes, day, hour, part, label}

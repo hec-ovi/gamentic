@@ -114,6 +114,8 @@ class GameSettingsIn(BaseModel):
     history_beats: Optional[int] = None     # verbatim story window (0 = default, 8..400)
     summary_every: Optional[int] = None     # auto-summarize fold cadence in turns (0 = default, 2..50)
     context_tokens: Optional[int] = None    # narrator token budget (0 = off, 4000..120000)
+    turn_voices: Optional[int] = None       # characters cued to speak per turn (0 = default, 1..4)
+    turn_acts: Optional[int] = None         # times one character may act per turn (0 = default, 1..3)
 
 
 class ViewIn(BaseModel):

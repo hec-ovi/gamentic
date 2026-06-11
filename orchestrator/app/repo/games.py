@@ -147,6 +147,16 @@ def set_context_tokens(conn, gid: str, tokens: int) -> None:
     conn.execute("UPDATE games SET context_tokens=? WHERE id=?", (int(tokens), gid))
 
 
+def set_turn_voices(conn, gid: str, voices: int) -> None:
+    """Per-game cap on characters cued to speak per turn (0 = the settings default)."""
+    conn.execute("UPDATE games SET turn_voices=? WHERE id=?", (int(voices), gid))
+
+
+def set_turn_acts(conn, gid: str, acts: int) -> None:
+    """Per-game cap on times one character acts per turn (0 = the settings default)."""
+    conn.execute("UPDATE games SET turn_acts=? WHERE id=?", (int(acts), gid))
+
+
 def _col(g, name: str, default=0):
     return (g[name] or default) if name in g.keys() else default
 
@@ -163,3 +173,13 @@ def effective_summary_every(g) -> int:
 
 def effective_context_tokens(g) -> int:
     return _col(g, "context_tokens")   # 0 = no budget
+
+
+def effective_turn_voices(g) -> int:
+    from ..config import settings
+    return _col(g, "turn_voices") or settings.MAX_CHARACTER_REACTIONS
+
+
+def effective_turn_acts(g) -> int:
+    from ..config import settings
+    return _col(g, "turn_acts") or settings.TURN_MAX_PER_CHARACTER
