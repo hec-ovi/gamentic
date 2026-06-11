@@ -5,16 +5,20 @@ Plain REST, sequential. One POST /games/{id}/action returns a fully-resolved tur
 import logging
 import os
 import re
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from . import db, repo, engine, creator, integrate, prompts, llm, constants, transfer
 from .config import settings
+from .providers import DIALECTS, MODALITIES, capability_notes, resolve
+from .providers import audio as audio_providers
+from .providers import image as image_providers
 from .models import (WorldSheet, ActionIn, ContinueIn, CreateMessageIn, GameState,
-                     GameSettingsIn, TurnOut, ViewIn, ExplainIn)
+                     GameSettingsIn, SpeakIn, TurnOut, ViewIn, ExplainIn)
 
 
 @asynccontextmanager
@@ -361,6 +365,151 @@ def create_session(session_id: str):
     if history is None:
         raise HTTPException(404, "unknown creator session")
     return {"session_id": session_id, "history": history}
+
+
+@app.post("/audio/speak")
+def audio_speak(body: SpeakIn):
+    """Key-safe TTS passthrough: resolve the ACTIVE audio provider server-side and
+    return the audio bytes (API keys never reach the browser). With provider=local
+    this simply proxies voice-api; in cloud-audio mode the frontend's /voice proxy
+    points here instead (FE work order). Emotion routes per the provider's mode."""
+    if not settings.VOICE_ENABLED:
+        raise HTTPException(409, "voice is disabled")
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(400, "empty text")
+    cfg = resolve("audio")
+    provider = audio_providers.get_provider(cfg)
+    voice = (body.voice_id or "").strip() or audio_providers.default_voice(cfg)
+    try:
+        out = provider.speak(text, voice, body.emotion)
+    except Exception:
+        out = None
+    if not out:
+        raise HTTPException(502, "voice synthesis unavailable")
+    data, content_type = out
+    return Response(content=data, media_type=content_type)
+
+
+# ---------- admin panel: provider config (docs/shared/inference-providers.md) ----------
+
+def _admin_guard(request: Request) -> None:
+    """Optional bearer gate: when ADMIN_TOKEN is set, the panel page and its API
+    require 'Authorization: Bearer <token>' (or ?token= for the page itself,
+    since a browser cannot attach a header to the initial page load)."""
+    token = settings.ADMIN_TOKEN
+    if not token:
+        return
+    if request.headers.get("authorization", "") == f"Bearer {token}":
+        return
+    if request.query_params.get("token") == token:
+        return
+    raise HTTPException(401, "admin token required")
+
+
+def _provider_view(modality: str) -> dict:
+    cfg = resolve(modality)
+    return {
+        "provider": cfg.provider,
+        "base_url": cfg.base_url,
+        "model": cfg.model,
+        "api_key": "********" if cfg.api_key else "",   # write-only: never echoed back
+        "dialects": list(DIALECTS[modality]),
+        "capabilities": {
+            "supports_seed": cfg.supports_seed,
+            "supports_references": cfg.supports_references,
+            "emotion_mode": cfg.emotion_mode,
+            "max_stops": cfg.max_stops,
+            "supports_thinking": cfg.supports_thinking,
+        },
+        "notes": capability_notes(cfg),
+    }
+
+
+@app.get("/admin")
+def admin_page(request: Request):
+    """The provider admin panel: one static vanilla HTML file, no build step."""
+    _admin_guard(request)
+    return FileResponse(os.path.join(os.path.dirname(__file__), "static", "admin.html"))
+
+
+@app.get("/admin/providers")
+def get_providers(request: Request):
+    _admin_guard(request)
+    return {m: _provider_view(m) for m in MODALITIES}
+
+
+_OVERRIDE_FIELDS = ("provider", "base_url", "api_key", "model", "supports_seed",
+                    "supports_references", "emotion_mode", "max_stops",
+                    "supports_thinking", "voice_pool")
+
+
+@app.put("/admin/providers")
+def put_providers(body: dict, request: Request):
+    """Write admin overrides ({modality: {field: value}}). An empty value CLEARS the
+    override (the env shows through again); absent fields stay untouched, so the
+    write-only api_key survives every save that doesn't retype it. Providers resolve
+    config at call time, so the next game call uses the new values: no restart."""
+    _admin_guard(request)
+    audio_before = resolve("audio").provider
+    with db.get_conn() as conn:
+        for modality, fields in (body or {}).items():
+            if modality not in MODALITIES:
+                raise HTTPException(422, f"unknown modality: {modality}")
+            if not isinstance(fields, dict):
+                raise HTTPException(422, f"{modality}: expected an object of fields")
+            prov = (fields.get("provider") or "").strip()
+            if prov and prov not in DIALECTS[modality]:
+                raise HTTPException(422, f"{modality}.provider must be one of {DIALECTS[modality]}")
+            for field, value in fields.items():
+                if field not in _OVERRIDE_FIELDS:
+                    raise HTTPException(422, f"unknown field: {modality}.{field}")
+                repo.set_provider_override(conn, f"{modality}.{field}", value)
+    if resolve("audio").provider != audio_before:
+        # voice identity follows the provider: re-resolve every character's stored
+        # design into the new voice space ONCE (deterministic; designs never move)
+        integrate.reresolve_voices()
+    return {m: _provider_view(m) for m in MODALITIES}
+
+
+@app.post("/admin/providers/test")
+def test_provider(body: dict, request: Request):
+    """One real minimal call against the RESOLVED config of a modality. This is the
+    live-verification path for cloud dialects (paste a key, press TEST)."""
+    _admin_guard(request)
+    modality = (body or {}).get("modality", "")
+    if modality not in MODALITIES:
+        raise HTTPException(422, f"modality must be one of {MODALITIES}")
+    t0 = time.perf_counter()
+
+    def _done(ok: bool, detail: str = "", error: str = "") -> dict:
+        out = {"ok": ok, "latency_ms": int((time.perf_counter() - t0) * 1000)}
+        if detail:
+            out["detail"] = detail
+        if error:
+            out["error"] = error
+        return out
+
+    try:
+        if modality == "text":
+            reply = llm.chat([{"role": "user", "content": "Reply with the single word: ok"}],
+                             temperature=0.0, max_tokens=8)
+            return _done(True, detail=(reply.content or "")[:80] or "(empty reply)")
+        if modality == "audio":
+            cfg = resolve("audio")
+            out = audio_providers.get_provider(cfg).speak(
+                "Voice check.", audio_providers.default_voice(cfg))
+            if not out or not out[0]:
+                return _done(False, error="no audio in response")
+            return _done(True, detail=f"{len(out[0])} audio bytes")
+        cfg = resolve("image")
+        out = image_providers.get_provider(cfg).generate(
+            "a plain gray pebble on a white surface, studio photo", (512, 512))
+        if not out or not out.get("image_url"):
+            return _done(False, error="no image in response")
+        return _done(True, detail="image rendered")
+    except Exception as e:                       # the error itself IS the test result
+        return _done(False, error=str(e)[:300] or type(e).__name__)
 
 
 @app.post("/create/finalize")

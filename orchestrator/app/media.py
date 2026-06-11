@@ -1,15 +1,25 @@
-"""Best-effort clients for the accessory media services (image-api, voice-api).
+"""Best-effort facade over the accessory media providers (image, voice).
+
+These functions keep their historical signatures (tests and integrate/jobs.py call
+them directly) but now dispatch to the ACTIVE provider from app/providers/, resolved
+at call time (admin DB override -> env -> default). With the default local stack the
+wire behavior is byte-identical to what this module always did.
 
 Every call is wrapped so a missing/slow/erroring service NEVER breaks the game:
 on any failure these return empty/None and the game stays fully playable text-only.
 Gated by IMAGE_ENABLED / VOICE_ENABLED.
 """
+import base64
+
 import httpx
 
 from .config import settings
+from .providers import base as providers
+from .providers import image as image_providers
 
 
-# ---------- voice-api ----------
+# ---------- voice-api (local registry back-compat; the engine composes voice
+# designs itself now and no longer registers them here) ----------
 
 def list_voice_ids() -> list[str]:
     if not settings.VOICE_ENABLED:
@@ -24,9 +34,8 @@ def list_voice_ids() -> list[str]:
 
 def register_character_voice(char_id: str, name: str, description: str,
                              gender: str = "") -> str | None:
-    """Maya1 registry: one character = one stored, DESIGNED voice, composed from the sheet
-    (gender, age, pitch, tone, accent) and spaced from voices already in use. Idempotent
-    per id (re-posting never reshuffles). Returns the composed voice_id, or None."""
+    """DEPRECATED for the engine (voice identity lives in OUR DB now; see
+    integrate/voice.py). Kept for back-compat with anything still calling it."""
     if not settings.VOICE_ENABLED or not (description or name).strip():
         return None
     body = {"id": char_id, "name": name, "description": description}
@@ -41,7 +50,8 @@ def register_character_voice(char_id: str, name: str, description: str,
 
 
 def delete_character_voice(char_id: str) -> None:
-    """Release a character's registry entry (called on game wipe). Best-effort."""
+    """Release a character's legacy registry entry (called on game wipe so old
+    voice-api state never piles up). Best-effort."""
     if not settings.VOICE_ENABLED:
         return
     try:
@@ -50,34 +60,34 @@ def delete_character_voice(char_id: str) -> None:
         pass
 
 
-# ---------- image-api ----------
+# ---------- image ----------
+
+def _provider() -> image_providers.ImageProvider:
+    return image_providers.get_provider(providers.resolve("image"))
+
 
 def generate_character_images(descriptor: str, style: str = "", seed: int | None = None) -> dict | None:
     """Returns {face_url, body_front_url, body_side_url, seed} or None."""
     if not settings.IMAGE_ENABLED or not descriptor.strip():
         return None
-    # Character view sizing (square face vs tall full-body) is owned by the image-api per view,
-    # configured on its side. The orchestrator only describes the character; it does not dictate
-    # sizes here (that would force one size on all views). See docs/image-agent-contract.md.
-    body: dict = {"descriptor": descriptor, "style": style}
-    if seed is not None:
-        body["seed"] = seed
     try:
-        # 3 images; allow generous time since this runs in a background task.
-        r = httpx.post(f"{settings.IMAGE_API_URL}/image/character", json=body, timeout=300)
-        r.raise_for_status()
-        return r.json()
+        return _provider().character_set(descriptor, style, seed=seed)
     except Exception:
         return None
 
 
 def fetch_image_bytes(url: str | None) -> bytes | None:
-    """Download an image-api image (relative or absolute URL) so we can persist it per-game."""
+    """Materialize a provider image (data: URL, absolute URL, or a path relative to
+    the active image provider's base) so we can persist it per-game."""
     if not url:
         return None
-    full = url if url.startswith("http") else f"{settings.IMAGE_API_URL}{url}"
     try:
-        r = httpx.get(full, timeout=60)
+        if url.startswith("data:"):
+            return base64.b64decode(url.split(",", 1)[1])
+        if not url.startswith("http"):
+            base = providers.resolve("image").base_url
+            url = f"{base}{url}"
+        r = httpx.get(url, timeout=60)
         r.raise_for_status()
         return r.content
     except Exception:
@@ -89,19 +99,14 @@ def generate_scene_image(prompt: str, seed: int | None = None,
                          references: list[str] | None = None) -> dict | None:
     """Returns {image_url, ...} or None. Optional; off the turn hot-path by default.
     width/height override the scene defaults (the 'See' snapshot uses a landscape frame).
-    references are fetchable image URLs (characters' stored views): the image-api
-    conditions the render on them so existing characters keep their identity."""
+    references are fetchable image URLs (characters' stored views): providers that
+    support them condition the render so existing characters keep their identity;
+    providers that don't silently fall back to plain t2i."""
     if not settings.IMAGE_ENABLED or not prompt.strip():
         return None
-    body: dict = {"prompt": prompt, "width": width or settings.IMAGE_SCENE_W,
-                  "height": height or settings.IMAGE_SCENE_H}
-    if references:
-        body["references"] = references
-    if seed is not None:
-        body["seed"] = seed
     try:
-        r = httpx.post(f"{settings.IMAGE_API_URL}/image/generate", json=body, timeout=120)
-        r.raise_for_status()
-        return r.json()
+        return _provider().generate(
+            prompt, (width or settings.IMAGE_SCENE_W, height or settings.IMAGE_SCENE_H),
+            seed=seed, references=references)
     except Exception:
         return None

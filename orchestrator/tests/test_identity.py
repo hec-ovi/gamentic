@@ -41,15 +41,15 @@ def test_explicit_sex_is_stored_and_served(client, fake_llm):
 
 
 def test_gender_reaches_every_consumer(client, fake_llm, monkeypatch):
-    captured = {}
     monkeypatch.setattr(integrate.media, "list_voice_ids", lambda: ["narrator"])
-    monkeypatch.setattr(integrate.media, "register_character_voice",
-                        lambda cid, name, sheet, gender="": captured.setdefault(name, gender) or f"v-{name}")
     from app.config import settings
     monkeypatch.setattr(settings, "VOICE_ENABLED", True)
     gid = client.post("/games", json=WORLD).json()["game_id"]
-    # voice: the registry was given the stored gender, not a fresh guess
-    assert captured["Vex"] == "male"
+    # voice: the engine-composed design used the stored gender, not a fresh guess
+    # (the persona has no pronouns, so only the stored field can say "male")
+    with db.get_conn() as conn:
+        vex_row = repo.find_character_by_name(conn, gid, "Vex")
+    assert vex_row["voice_design"].startswith("Male voice, ")
     # image: the descriptor leads with the stored gender despite a cue-less sheet
     with db.get_conn() as conn:
         vex = repo.find_character_by_name(conn, gid, "Vex")

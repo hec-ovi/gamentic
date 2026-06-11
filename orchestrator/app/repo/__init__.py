@@ -21,7 +21,7 @@ from .characters import (  # noqa: F401
     present_characters, resolve_target, set_character_context, set_character_description,
     set_character_images, set_character_life, set_character_location,
     set_character_origin, set_character_summary, set_character_voice, set_disposition,
-    set_following, set_relation, spawn_character,
+    set_following, set_relation, set_voice_design, spawn_character,
 )
 from .clock import advance_time, elapsed_text, game_time, time_at  # noqa: F401
 from .games import (  # noqa: F401
@@ -36,6 +36,7 @@ from .items import (  # noqa: F401
     _item_matches, narrator_items, set_item_image, visible_item_index, visible_items,
 )
 from .lore import match_lore  # noqa: F401
+from .providers import get_provider_overrides, set_provider_override  # noqa: F401
 from .players import (  # noqa: F401
     add_item, add_points, get_player, player_dict, player_has_item, remove_item,
     set_flag, set_life,

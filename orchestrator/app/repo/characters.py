@@ -87,8 +87,19 @@ def character_has_images(c) -> bool:
     return bool(c["face_url"] and c["body_front_url"] and c["body_side_url"])
 
 
-def set_character_voice(conn, char_id: str, voice_id: str) -> None:
-    conn.execute("UPDATE characters SET voice_id=? WHERE id=?", (voice_id, char_id))
+def set_character_voice(conn, char_id: str, voice_id: str, provider: str | None = None) -> None:
+    """Store the resolved voice_id; when the resolving provider is known, stamp it
+    too so a provider switch knows which characters still need re-resolution."""
+    if provider is None:
+        conn.execute("UPDATE characters SET voice_id=? WHERE id=?", (voice_id, char_id))
+    else:
+        conn.execute("UPDATE characters SET voice_id=?, voice_provider=? WHERE id=?",
+                     (voice_id, provider, char_id))
+
+
+def set_voice_design(conn, char_id: str, design: str) -> None:
+    """The composed voice DESCRIPTION (engine-owned identity; survives provider swaps)."""
+    conn.execute("UPDATE characters SET voice_design=? WHERE id=?", (design, char_id))
 
 
 def set_character_life(conn, cid: str, delta: int):

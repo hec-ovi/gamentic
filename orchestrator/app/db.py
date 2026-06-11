@@ -82,7 +82,10 @@ CREATE TABLE IF NOT EXISTS characters (
     moments TEXT DEFAULT '[]',        -- PIVOTAL shared events with the player (JSON list of {id,text,minutes})
     relation TEXT DEFAULT '',         -- what they ARE to the player (free 1-2 words: sister, boss, rival...)
     memory_summary TEXT DEFAULT '',   -- THEIR private rolling recap, built only from beats they witnessed
-    summarized_through INTEGER DEFAULT 0  -- beats turn_index folded so far (same cursor unit as the game recap)
+    summarized_through INTEGER DEFAULT 0,  -- beats turn_index folded so far (same cursor unit as the game recap)
+    voice_design TEXT DEFAULT '',     -- the composed voice DESCRIPTION (engine-owned identity; voice_id is
+                                      -- its per-provider resolution and may change when the provider does)
+    voice_provider TEXT DEFAULT ''    -- which audio provider voice_id was resolved under (re-resolve on switch)
 );
 
 CREATE TABLE IF NOT EXISTS quests (
@@ -153,6 +156,11 @@ CREATE TABLE IF NOT EXISTS creator_sessions (
     updated_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS provider_config (
+    key TEXT PRIMARY KEY,             -- '<modality>.<field>', e.g. 'image.provider'
+    value TEXT                        -- admin override; beats env, read at call time (hot-swap)
+);
+
 CREATE INDEX IF NOT EXISTS idx_scenes_game ON scenes(game_id, name);
 CREATE INDEX IF NOT EXISTS idx_beats_game ON beats(game_id, turn_index, seq);
 CREATE INDEX IF NOT EXISTS idx_chars_game ON characters(game_id);
@@ -194,6 +202,8 @@ _MIGRATIONS = {
         "relation": "TEXT DEFAULT ''",
         "memory_summary": "TEXT DEFAULT ''",
         "summarized_through": "INTEGER DEFAULT 0",  # beats turn_index, same unit as games.summarized_through
+        "voice_design": "TEXT DEFAULT ''",       # engine-owned composed voice description
+        "voice_provider": "TEXT DEFAULT ''",     # audio provider voice_id was resolved under
     },
     "games": {
         "scene_status": "TEXT DEFAULT 'calm'",

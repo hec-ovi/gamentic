@@ -252,6 +252,25 @@ services:
       - CHAR_SUMMARY_EVERY=${CHAR_SUMMARY_EVERY:-12}
       - CHAR_SUMMARY_KEEP_TURNS=${CHAR_SUMMARY_KEEP_TURNS:-8}
       - CHAR_SUMMARY_MAX_TOKENS=${CHAR_SUMMARY_MAX_TOKENS:-320}
+      # inference providers (per-modality; admin overrides at /admin beat these).
+      # Defaults = this local stack. Empty base_url/model = the local URLs above
+      # (LLM_BASE_URL/LLM_MODEL stay working aliases for TEXT_*).
+      - TEXT_PROVIDER=${TEXT_PROVIDER:-local}
+      - TEXT_BASE_URL=${TEXT_BASE_URL:-}
+      - TEXT_API_KEY=${TEXT_API_KEY:-}
+      - TEXT_MODEL=${TEXT_MODEL:-}
+      - AUDIO_PROVIDER=${AUDIO_PROVIDER:-local}
+      - AUDIO_BASE_URL=${AUDIO_BASE_URL:-}
+      - AUDIO_API_KEY=${AUDIO_API_KEY:-}
+      - AUDIO_MODEL=${AUDIO_MODEL:-}
+      # elevenlabs only: comma-separated voice ids characters map onto deterministically
+      - AUDIO_VOICE_POOL=${AUDIO_VOICE_POOL:-}
+      - IMAGE_PROVIDER=${IMAGE_PROVIDER:-comfy}
+      - IMAGE_BASE_URL=${IMAGE_BASE_URL:-}
+      - IMAGE_API_KEY=${IMAGE_API_KEY:-}
+      - IMAGE_MODEL=${IMAGE_MODEL:-}
+      # set to require Authorization Bearer on /admin (page + API); empty = open
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
     volumes:
       - ./orchestrator/data:/data
     ports:

@@ -4,7 +4,7 @@ Glue to the media services, one module per concern. Callers import the PACKAGE (
 
 | Module | Owns | Key functions |
 |---|---|---|
-| `voice.py` | voice assignment (inline at creation) | `assign_voices_for_game`, `apply_narrator_gender`, `release_game_voices`, `NARRATOR_VOICES` |
+| `voice.py` | voice identity: engine-composed designs (app/voice_design.py) resolved per the ACTIVE audio provider; inline at creation, re-resolved once on provider switch | `assign_voices_for_game`, `apply_narrator_gender`, `reresolve_voices`, `release_game_voices`, `NARRATOR_VOICES` |
 | `image_prompts.py` | prompt composition, the pure layer: gender net, quoted-span stripping, the no-text guard, the FLUX.2 klein view recipe, the agentic prompt writer | `character_descriptor`, `scene_prompt`, `view_prompt`, `item_prompt`, `NO_TEXT_GUARD`, `_harden_image_prompt`, `_image_context`, `_agentic_prompt`, `_gendered_base`, `_strip_quoted`, `_concept` |
 | `storage.py` | media persistence on disk (the per-game /media folder) | `_persist`, `_existing_char_urls`, `delete_game_images`, `delete_all_media` |
 | `jobs.py` | the stateful generate_* orchestrators (background tasks, plus the synchronous See snapshot): own DB conns around the slow render, wiped-game re-checks | `generate_view_snapshot`, `generate_directed_image`, `generate_item_image`, `generate_images_for_game`, `generate_scene_image`, `_reference_url` |

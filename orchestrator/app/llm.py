@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 import httpx
 
 from .config import settings
+from .providers import base as providers
 
 
 @dataclass
@@ -35,8 +36,11 @@ def chat(
     stop: list[str] | None = None,
     thinking: bool | None = None,
 ) -> LLMReply:
+    # Resolved at call time (admin DB override -> env -> default), so swapping the
+    # text provider in the admin panel takes effect on the next call, no restart.
+    cfg = providers.resolve("text")
     payload: dict = {
-        "model": settings.LLM_MODEL,
+        "model": cfg.model,
         "messages": messages,
         "temperature": temperature,
     }
@@ -46,21 +50,27 @@ def chat(
         payload["tools"] = tools
         payload["tool_choice"] = tool_choice
     if stop:
-        payload["stop"] = stop
-    if thinking:
+        # Capability: the local llama.cpp tolerates 8 stop sequences; the OpenAI
+        # dialect caps at 4. Truncate, never error: stops are a guard, not content.
+        payload["stop"] = stop[:cfg.max_stops] if cfg.max_stops > 0 else stop
+    if thinking and cfg.supports_thinking:
         # llama.cpp merges request-level chat_template_kwargs over the server-level ones,
         # so this enables hybrid-model reasoning for THIS call only. If the reply carries
         # message.reasoning_content, it is ignored: content stays the only consumed field.
+        # Capability-gated: cloud OpenAI-dialect endpoints have no such kwarg.
         payload["chat_template_kwargs"] = {"enable_thinking": True}
 
-    url = f"{settings.LLM_BASE_URL}/chat/completions"
+    url = f"{cfg.base_url}/chat/completions"
+    kwargs: dict = {"json": payload, "timeout": settings.LLM_TIMEOUT}
+    if cfg.api_key:                     # local llama.cpp needs none; cloud gets Bearer
+        kwargs["headers"] = {"Authorization": f"Bearer {cfg.api_key}"}
     # One retry on connection-level failures only: a redeploy of the llama.cpp container
     # kills in-flight requests (seen live), and a fresh connection a beat later succeeds.
     # Timeouts are NOT retried (a 180s timeout means the box is busy; retrying doubles
     # the pain), and HTTP status errors are real answers, not transport flakes.
     for attempt in (0, 1):
         try:
-            resp = httpx.post(url, json=payload, timeout=settings.LLM_TIMEOUT)
+            resp = httpx.post(url, **kwargs)
             break
         except (httpx.ConnectError, httpx.RemoteProtocolError):
             if attempt:

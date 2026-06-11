@@ -14,6 +14,7 @@ whole surface so every caller keeps the single import: `from . import integrate`
 from .. import media  # noqa: F401  (tests patch integrate.media.<fn>)
 from .voice import (  # noqa: F401
     NARRATOR_VOICES, apply_narrator_gender, assign_voices_for_game, release_game_voices,
+    reresolve_voices,
 )
 from .image_prompts import (  # noqa: F401
     NO_TEXT_GUARD, _agentic_prompt, _clip, _concept, _focus_character, _gendered_base,

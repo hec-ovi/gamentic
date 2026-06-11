@@ -138,6 +138,15 @@ class CreateMessageIn(BaseModel):
     message: str
 
 
+class SpeakIn(BaseModel):
+    """The key-safe TTS passthrough: the engine resolves the active audio provider
+    server-side (API keys never reach the browser) and returns the audio bytes.
+    With provider=local it simply proxies voice-api."""
+    text: str = Field(..., min_length=1)
+    voice_id: str = ""
+    emotion: str = ""
+
+
 class Beat(BaseModel):
     id: str
     turn_index: int
