@@ -11,14 +11,14 @@ Resolver-style map of the game brain: find what you want to change, go straight 
 | Where | What lives there |
 |---|---|
 | `app/main.py` | The REST surface. Every route, request gating, background-task scheduling. Nothing else. |
-| `app/engine.py` | The turn loop: player beats, deterministic adjudication of attempts, the narrator call, the character cascade (bounded), whispers, the context meter, prose scrubbing, the new-item diff. |
+| `app/engine/` | The turn loop: player beats, deterministic adjudication of attempts, the narrator call, the character cascade (bounded), whispers, the context meter, prose scrubbing, the new-item diff, the background memory folds. One module per concern (parsing, folds, turn). Own index: `app/engine/INDEX.md`. |
 | `app/tools/` | The model's ONLY way to change state: one module per domain, each tool's schema and handler side by side, composed by a registry. A tool the schema does not describe does not exist. Own index: `app/tools/INDEX.md`. |
 | `app/prompts.py` | Message assembly for every agent (narrator, characters, interpreter, explainer, image-prompt writer, creator). Computes the state block and decides WHICH protocol blocks inject this turn. |
 | `prompts/*.md` | The actual prose of every prompt, editable without touching code (reloaded per call). See the dispatch table below. |
 | `app/repo/` | All SQL, one module per domain (games, players, characters, items, scenes, quests, lore, beats, clock, state). Callers still just use `repo.<fn>`. Own index: `app/repo/INDEX.md`. |
 | `app/db.py` | Schema, migrations, WAL connection settings. |
 | `app/models.py` | Pydantic request/response shapes (the wire contract). |
-| `app/integrate.py` | Glue to the media services: image prompt composition (gender net, no-text guard, identity references), voice assignment, all background generation jobs. |
+| `app/integrate/` | Glue to the media services: image prompt composition (gender net, no-text guard, identity references), voice assignment, media persistence, all background generation jobs. One module per concern (voice, image_prompts, storage, jobs). Own index: `app/integrate/INDEX.md`. |
 | `app/media.py` | Thin HTTP clients for image-api and voice-api. |
 | `app/transfer.py` | Export/import: adventure templates and checkpoint saves, id remapping, media scrubbing. |
 | `app/creator.py` | The story-creator chat sessions (persisted in SQLite) and world finalization. |
