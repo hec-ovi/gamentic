@@ -50,8 +50,13 @@ def chat(
         payload["tools"] = tools
         payload["tool_choice"] = tool_choice
     if stop:
-        # Capability: the local llama.cpp tolerates 8 stop sequences; the OpenAI
-        # dialect caps at 4. Truncate, never error: stops are a guard, not content.
+        # Truncate, never error: stops are a guard, not content. Upstream llama.cpp
+        # imposes NO cap (the server reads the whole "stop" array into its antiprompt
+        # vector; verified against ggml-org/llama.cpp tools/server), so the local
+        # max_stops=8 is OUR conservative budget (providers/base.py); the OpenAI
+        # dialect hard-caps at 4. The slice keeps the FRONT of the list, and the turn
+        # engine builds its scaffold stops before the cast name-stops, so under any
+        # truncation the scaffold guards survive and only name-stops fall off.
         payload["stop"] = stop[:cfg.max_stops] if cfg.max_stops > 0 else stop
     if thinking and cfg.supports_thinking:
         # llama.cpp merges request-level chat_template_kwargs over the server-level ones,

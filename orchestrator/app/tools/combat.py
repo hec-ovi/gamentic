@@ -1,6 +1,7 @@
 """Combat: damage and healing. 'attack' (the character agents' verb) is an alias of
 apply_damage; the engine routes player attack attempts here too after adjudication."""
 from .. import repo
+from ..config import settings
 from .base import _DAMAGE_DEFAULT, _invalid, _result, alias, tool
 
 # The character agents' own attack schema (same handler, actor-aware wording).
@@ -24,6 +25,15 @@ def apply_damage(conn, gid, args, actor):
         return _invalid("damage: amount 0")
     tname = args.get("target") or ("player" if actor is None else "")
     kind_t, row = repo.resolve_target(conn, gid, tname)
+    # One blow against a CHARACTER lands at most DAMAGE_CAP, whoever swings (live:
+    # amount=9999 one-shot a 10hp character off "a flick on the ear"; the engine clamps
+    # client amounts too, this is defense in depth). A character striking the PLAYER is
+    # capped the same. The NARRATOR's own damage to the player stays uncapped: player
+    # death is a designed, recoverable story turn (lost + heal-back), and a lethal fall
+    # must be able to kill (live replay: a roof plunge dealt a capped 6 and the story
+    # could not turn).
+    if kind_t != "player" or actor is not None:
+        amount = min(amount, settings.DAMAGE_CAP)
     by = f"{actor['name']} " if actor else ""
     if kind_t == "player":
         new = repo.set_life(conn, gid, -amount)

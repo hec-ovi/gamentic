@@ -25,7 +25,9 @@ def test_creator_sets_relation_and_everyone_sees_it(client, fake_llm, world):
     fake_llm.narrator = _nar(T("cue_character", name="Mara"), content="Mara looks up.")
     client.post(f"/games/{gid}/action", json={"action": "Sis, we need to talk."})
     assert "the player's older sister" in fake_llm.narrator_calls()[-1]["system"]
-    assert "You are the player's older sister." in fake_llm.character_calls()[-1]["system"]
+    # the CHARACTER's side never says "the player" (live: the meta-term leaked into beats)
+    assert "To the one you are with, you are their older sister." \
+        in fake_llm.character_calls()[-1]["system"]
 
 
 def test_narrator_can_evolve_the_relation_freely(client, fake_llm, world):
@@ -33,14 +35,15 @@ def test_narrator_can_evolve_the_relation_freely(client, fake_llm, world):
     fake_llm.narrator = _nar(T("set_relation", name="Mara", relation="sworn ally"),
                              content="Something is settled between you.")
     d = client.post(f"/games/{gid}/action", json={"action": "I offer her my hand."}).json()
-    assert any(b["text"] == "Mara is now your sworn ally." for b in d["beats"]
+    # article-aware wording (live: 'Tamsin is now your stranger.' read broken)
+    assert any(b["text"] == "Mara now sees you as a sworn ally." for b in d["beats"]
                if b["kind"] == "system")
     mara = _mara(client, gid)
     assert mara["relation"] == "sworn ally"
     assert mara["disposition"] in ("friendly", "neutral", "hostile", "unknown")  # axis intact
     # the change is itself a pivotal moment
     prof = client.get(f"/games/{gid}/characters/{mara['id']}/profile").json()
-    assert "Became the player's sworn ally" in [m["text"] for m in prof["moments"]]
+    assert "Came to see the player as a sworn ally" in [m["text"] for m in prof["moments"]]
     # re-setting the same relation is silent
     fake_llm.narrator = _nar(T("set_relation", name="Mara", relation="Sworn Ally"),
                              content="Nothing changes.")

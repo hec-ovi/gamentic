@@ -11,11 +11,14 @@ _CHAR_CLOSE = re.compile(r"\[/?(?:say|do)\]", re.I)
 _PSEUDO_TOOL = re.compile(r"\[\w+\s*\{[^\[\]]*\}\s*\]?")
 _TAG_DEBRIS = re.compile(r"(\*+\]|\[+\*+|[\[\]*]+$)")
 # Tool-call shapes leaked AS PROSE (live: the model occasionally printed call syntax like
-# move_location("the docks") instead of calling the tool). Any line carrying a known tool
-# name followed by ( or { is junk, as is a bare JSON-object line or a fenced code block.
+# move_location("the docks") instead of calling the tool). Only a FULL-LINE call shape is
+# junk - name(args) or name {json-ish} with nothing else on the line - as is a bare
+# JSON-object line or a fenced code block. The old 'name followed by ( or {' substring
+# rule deleted legitimate lines whole (static review 2026-06-11: 'We attack (quietly) at
+# dawn' silenced a character because attack is a tool name).
 _TOOL_NAMES = sorted({t["function"]["name"] for t in tools.NARRATOR_TOOLS + tools.CHARACTER_TOOLS}
                      | {"reject_attempt", "submit_segments", "save_world"})
-_TOOL_CALL = re.compile(r"\b(?:%s)\s*[({]" % "|".join(_TOOL_NAMES))
+_TOOL_CALL = re.compile(r"^\s*(?:%s)(?:\([^()]*\)|\s*\{[^{}]*\})\s*(?:#.*)?$" % "|".join(_TOOL_NAMES))
 _JSON_LINE = re.compile(r"^\s*[\[{].*[\]}]\s*,?\s*$")
 _FENCE = re.compile(r"```.*?(?:```|$)", re.S)
 
@@ -44,7 +47,7 @@ def clean_prose(text: str) -> str:
     lines, lines written in tool-call syntax, and inline pseudo tool calls."""
     text = _FENCE.sub("", text or "")
     lines = [ln for ln in text.splitlines()
-             if not _TOOL_CALL.search(ln) and not _JSON_LINE.match(ln)
+             if not _TOOL_CALL.match(ln) and not _JSON_LINE.match(ln)
              and not _CODE_LINE.match(ln)]
     text = _PSEUDO_TOOL.sub("", "\n".join(lines))
     return re.sub(r"\n{3,}", "\n\n", text).strip()
@@ -57,8 +60,9 @@ _CLOSE_TAG = re.compile(r"\[/\w+\]\s*")
 
 
 def _clean_segment(text: str) -> str:
+    text = strip_markup(text)
     text = _PSEUDO_TOOL.sub("", text)
-    text = "\n".join(ln for ln in text.splitlines() if not _TOOL_CALL.search(ln))
+    text = "\n".join(ln for ln in text.splitlines() if not _TOOL_CALL.match(ln))
     text = _CLOSE_TAG.sub("", text)
     text = _TAG_DEBRIS.sub("", text)
     return text.strip()
@@ -90,6 +94,37 @@ _ANY_TAG = re.compile(r"\[/?\w+\]\s*")
 # square tags, angle brackets carry legitimate text the model may write.
 _ANGLE_TAG = re.compile(r"</?(?:%s)>\s*" % "|".join(EMOTIONS), re.I)
 
+# Markup guard (live, e2e 2026-06-11 turn 19: the narrator emitted a raw '<div style=...>'
+# state panel, '<strong>Exits:</strong>' lists and all, INTO A STORED NARRATION BEAT; no
+# sanitizer knew markup). HTML is never legitimate prose. A line that OPENS with a tag is
+# structure and dies whole, so a panel like that one reduces to nothing; a tag inside a
+# prose line loses only the tag. Known angle words are exempt: <whisper>/<pause> belong
+# to the emotion/filler scrubs, and <think> must reach the think-strip INTACT so the
+# reasoning dies WITH its tags instead of being unwrapped into visible prose.
+_HTML_TAG = re.compile(r"</?(?!(?:think|pause|%s)\b)[a-zA-Z][^>]*>" % "|".join(EMOTIONS),
+                       re.I)
+
+
+def strip_markup(text: str) -> str:
+    out = []
+    for ln in (text or "").splitlines():
+        if _HTML_TAG.match(ln.lstrip()):   # structural line: junk whole
+            continue
+        out.append(re.sub(r" {2,}", " ", _HTML_TAG.sub("", ln)).rstrip())
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
+
+
+def _strip_bracket_debris(text: str) -> str:
+    """Unbalanced bracket remnants of half-formed tag markup survive every tag-shaped
+    scrub (live, e2e 2026-06-11 edge-C: a dialogue beat stored as 'The keeper?!]' after
+    the leading [angry] was lifted, leaving a stray close-bracket no rule recognized).
+    Only the SURPLUS side dies: balanced brackets are legitimate speech."""
+    while text.endswith("]") and text.count("]") > text.count("["):
+        text = text[:-1].rstrip()
+    while text.startswith("[") and text.count("[") > text.count("]"):
+        text = text[1:].lstrip()
+    return text
+
 
 def _extract_emotion(text: str) -> tuple[str, str]:
     """(emotion, clean_text): a leading known [tag] or <tag> becomes the line's tone
@@ -102,7 +137,8 @@ def _extract_emotion(text: str) -> tuple[str, str]:
             emotion, found = EMOTIONS[m.group(1).lower()], True
         text = text[m.end():]
         m = _EMOTION_TAG.match(text)
-    return emotion, _ANGLE_TAG.sub("", _ANY_TAG.sub("", text)).strip()
+    return emotion, _strip_bracket_debris(
+        _ANGLE_TAG.sub("", _ANY_TAG.sub("", text)).strip())
 
 
 # Narrator prose: emotion tags leak in BOTH forms and were shown verbatim AND honored by
@@ -116,11 +152,17 @@ _PROSE_TAG = re.compile(r"[\[<]/?(?:%s|pause)[\]>]\s*" % "|".join(EMOTIONS), re.
 # opened with "(think: ...)"; later, turn 53 carried a multi-line think with a NESTED
 # parenthetical inside, plus a mid-line opener). The span is stripped wherever it starts,
 # parens balanced across lines; a think that never closes is reasoning to the end of the
-# text and takes it along. Narration-only: clean_prose stays generic.
+# text and takes it along. The XML habit ('<think>...</think>', unclosed = to the end of
+# the text) dies the same way, and BEFORE the markup guard could eat just its tags and
+# leave the reasoning standing as prose. Was narration-only by design; the 2026-06-11
+# audit proved character replies, folds and /explain leak the same artifacts, so every
+# model-text path strips now (strip_reasoning below).
 _THINK_OPEN = re.compile(r"\(\s*think\b", re.I)
+_XML_THINK = re.compile(r"<think>.*?(?:</think>|$)", re.I | re.S)
 
 
 def _strip_think(text: str) -> str:
+    text = _XML_THINK.sub("", text)
     out, i = [], 0
     while True:
         m = _THINK_OPEN.search(text, i)
@@ -166,16 +208,44 @@ def _strip_scaffold(text: str) -> str:
     return "\n".join(out)
 
 
+def strip_reasoning(text: str) -> str:
+    """Both think habits plus the example scaffold, one pass. Every path that turns
+    model text into stored or displayed words runs this; the 2026-06-11 audit caught
+    each path that skipped it (character replies, folds, /explain) leaking."""
+    return _strip_scaffold(_strip_think(text or ""))
+
+
+def scrub_model_text(text: str) -> str:
+    """The full hygiene pass for model text that leaves the turn pipeline (fold
+    memories, /explain answers): clean_prose plus the think/scaffold/markup strip.
+    Folds matter most: a stored recap is re-fed to prompts EVERY turn, so one leaked
+    scaffold compounds (e2e 2026-06-11: the turn-53 bytes passed clean_prose whole)."""
+    return strip_markup(strip_reasoning(clean_prose(text))).strip()
+
+
+# A screenplay impersonation in the FIRST line dodges the stop list: every name-colon
+# stop begins with '\n' (turn.py builds them), so a reply OPENING with 'Vane: "Movement.
+# Now."' sails through and no scrub caught it (live, e2e 2026-06-11). No cast list is
+# available here, so the shape is judged generically: a leading Name-colon followed
+# immediately by an opening quote is faked dialogue and that line dies. Prose with a
+# mid-sentence colon has no quote right after it and survives.
+_SCREENPLAY = re.compile(r"^[A-Z][\w .'-]{0,40}:\s*[\"“]")
+
+
 def _scrub_narration(text: str) -> tuple[str, str]:
     """(emotion, clean_text) for narration prose: think-spans and example-scaffold
-    blocks are stripped first, then a leading known tag is lifted as the beat's tone
-    (mapped to its renderable value); every emotion tag is scrubbed."""
-    text = _strip_scaffold(_strip_think(text or ""))
+    blocks are stripped first, then leaked markup, then a first-line screenplay
+    impersonation; a leading known tag is lifted as the beat's tone (mapped to its
+    renderable value); every emotion tag is scrubbed."""
+    text = strip_markup(strip_reasoning(text or "")).strip()
+    first, _, rest = text.partition("\n")
+    if _SCREENPLAY.match(first):
+        text = rest.strip()
     emotion = ""
     m = _EMOTION_TAG.match(text)
     if m and m.group(1).lower() in EMOTIONS:
         emotion = EMOTIONS[m.group(1).lower()]
-    return emotion, _PROSE_TAG.sub("", text or "").strip()
+    return emotion, _PROSE_TAG.sub("", text).strip()
 
 
 def _reclassify_do(content: str) -> tuple[str, str, str]:
@@ -193,8 +263,11 @@ def parse_character_output(text: str) -> list[tuple[str, str, str]]:
     'say' or 'do'. [say]...[/say] -> speech (dialogue beat); [do]...[/do] -> action.
     A speech segment may OPEN with a Maya1 emotion tag ([angry] You dare?), extracted
     into the beat's tone for the voice and stripped from the display text.
-    Tolerant: untagged text is treated as speech; text before the first tag as action."""
-    text = (text or "").strip()
+    Tolerant: untagged text is treated as speech; text before the first tag as action.
+    Think spans and scaffold are stripped BEFORE any tag parsing (live, e2e 2026-06-11:
+    a leading '(think: ...)' fell into the parenthetical splitter below and shipped as
+    a player-visible do beat): reasoning is deleted, never reclassified."""
+    text = strip_reasoning(text).strip()
     if not text:
         return []
     matches = list(_CHAR_TAG.finditer(text))

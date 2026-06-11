@@ -23,7 +23,9 @@ from .characters import (  # noqa: F401
     set_character_origin, set_character_summary, set_character_voice, set_disposition,
     set_following, set_relation, set_voice_design, spawn_character,
 )
-from .clock import advance_time, elapsed_text, game_time, time_at  # noqa: F401
+from .clock import (  # noqa: F401
+    START_HOURS, advance_time, elapsed_text, game_time, start_minutes, time_at,
+)
 from .games import (  # noqa: F401
     append_memory, clear_arrival_note, create_game, delete_game,
     effective_context_tokens, effective_history_beats, effective_summary_every,
@@ -33,22 +35,24 @@ from .games import (  # noqa: F401
     set_story_summary, set_summary_every, set_turn_acts, set_turn_voices,
 )
 from .items import (  # noqa: F401
-    _item_matches, narrator_items, set_item_image, visible_item_index, visible_items,
+    _item_matches, item_key, narrator_items, set_item_image, visible_item_index,
+    visible_items,
 )
 from .lore import match_lore  # noqa: F401
 from .providers import get_provider_overrides, set_provider_override  # noqa: F401
 from .players import (  # noqa: F401
-    add_item, add_points, get_player, player_dict, player_has_item, remove_item,
-    set_flag, set_life,
+    add_item, add_points, get_player, near_pack_item, player_dict, player_has_item,
+    remove_item, set_flag, set_life,
 )
 from .quests import (  # noqa: F401
     get_objectives, get_quests, objective_text, quest_dict, quest_title,
     set_quest_status, start_quest, update_objective,
 )
 from .scenes import (  # noqa: F401
-    add_exit, add_scene_item, current_scene, get_or_create_scene, get_scene,
-    get_scene_by_id, offer_scene_action, reveal_scene_item, scene_available_actions,
-    scene_is_established, set_location, set_scene_background, set_scene_description,
-    set_scene_draft, set_scene_image, set_scene_status, take_scene_item,
+    absorb_scene_item_into_character, add_exit, add_scene_item, current_scene,
+    get_or_create_scene, get_scene, get_scene_by_id, offer_scene_action,
+    reveal_scene_item, scene_available_actions, scene_is_established, set_location,
+    set_scene_background, set_scene_description, set_scene_draft, set_scene_image,
+    set_scene_status, take_scene_item,
 )
 from .state import game_state  # noqa: F401

@@ -2,6 +2,7 @@
 deterministic adjudication pre-check, the narrator call, the bounded character cascade,
 the private channel, and the freeform-input interpreter."""
 import json
+import re
 from collections import deque
 
 from .. import repo, prompts, tools, llm
@@ -16,6 +17,21 @@ def _display(s: dict, key: str) -> str:
         if r.get("id") and r["id"] == key and r.get("name"):
             return r["name"]
     return key
+
+
+def _sane_amount(v):
+    """Clamp a client-stated attack amount to 1..DAMAGE_CAP at the entry seam. Nothing
+    bounded the segment amount before (live audit 2026-06-11: a typed 'for 999999' is an
+    adjudication-proof instakill, because default-accept applies the raw args and
+    _attempt_amount back-fills them into narrator-accepted strikes). Overshoots clamp to
+    the cap; junk, zero and negatives become None (the narrator's default applies)."""
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return None
+    if n < 1:
+        return None
+    return min(n, settings.DAMAGE_CAP)
 
 
 def _compose(segments) -> tuple[str, list[dict]]:
@@ -39,9 +55,18 @@ def _compose(segments) -> tuple[str, list[dict]]:
             if target:
                 directed.append({"tool": "_address", "args": {"target": target}})
         elif t == "attack":
-            parts.append(f"you attack {_display(s, target) if target else 'them'}")
-            directed.append({"tool": "attack", "args": {"target": target, "amount": s.get("amount")},
-                             "display": {"target": _display(s, target) if target else "them"}})
+            # the HOW rides along (live replay: "I grab her wrist" composed to a bare
+            # "you attack Mira" and the narrator invented a bloody slap - the player's
+            # stated force never reached the echo or the adjudication line)
+            how = f": {text}" if text else ""
+            parts.append(f"you attack {_display(s, target) if target else 'them'}{how}")
+            # _sane_amount HERE covers every client path at once: composer segments,
+            # raw API segments, and the interpreter all flow through this compose, and
+            # default-accept + _attempt_amount both read these args downstream
+            directed.append({"tool": "attack", "args": {"target": target,
+                                                        "amount": _sane_amount(s.get("amount"))},
+                             "display": {"target": _display(s, target) if target else "them",
+                                         "how": text}})
         elif t == "give":
             parts.append(f"you give {_display(s, item)} to {_display(s, target) if target else 'them'}")
             directed.append({"tool": "give_item", "args": {"item": item, "target": target},
@@ -71,7 +96,9 @@ def _why_impossible(conn, gid, d) -> str | None:
     t_disp = disp.get("target") or args.get("target") or "them"
     kind_t, row = repo.resolve_target(conn, gid, args.get("target") or "")
     if d["tool"] == "attack" and kind_t is None:
-        return f"There is no {t_disp} here."
+        # article-safe phrasing: targets arrive both bare ('dragon') and with their own
+        # article (live: 'There is no the lighthouse keeper here.')
+        return f"You see no sign of {t_disp} here."
     if kind_t == "character" and row:
         here = repo.get_player(conn, gid)["location"]
         if not row["alive"]:
@@ -80,9 +107,48 @@ def _why_impossible(conn, gid, d) -> str | None:
             return f"{row['name']} is not here."
     if d["tool"] == "give_item":
         if kind_t is None:
-            return f"There is no {t_disp} here."
+            return f"You see no sign of {t_disp} here."
         if not repo.player_has_item(conn, gid, args.get("item") or ""):
             return f"You don't have {disp.get('item') or args.get('item') or 'that'}."
+    return None
+
+
+def _norm_move(s: str) -> str:
+    """Lowercased, whitespace-collapsed form for movement matching."""
+    return re.sub(r"\s+", " ", (s or "").strip().lower())
+
+
+def _strip_article(s: str) -> str:
+    """Drop one leading article from an already-normalized phrase ('the lighthouse'
+    and 'lighthouse' must name the same exit)."""
+    for a in ("the ", "a ", "an "):
+        if s.startswith(a):
+            return s[len(a):]
+    return s
+
+
+def _match_exit(texts, exits) -> dict | None:
+    """The deterministic movement router's matcher: does a public 'do' text name a
+    REVEALED exit? Case- and article-insensitive. A text matches when it equals/starts
+    with 'go to <label>' (the FE exit button sends exactly that shape), or contains the
+    full exit label, or contains the full target name. First match wins. Movement
+    language that names no revealed exit matches NOTHING: discovering new places stays
+    the narrator's call."""
+    for raw in texts:
+        text = _norm_move(raw)
+        if not text:
+            continue
+        for e in exits:
+            phrases = []
+            for p in (_norm_move(e.get("label")), _norm_move(e.get("target"))):
+                for v in (p, _strip_article(p)):
+                    if v and v not in phrases:
+                        phrases.append(v)
+            for p in phrases:
+                # lookarounds, not \b: a label may start/end with a non-word character
+                if text.startswith(f"go to {p}") \
+                        or re.search(rf"(?<!\w){re.escape(p)}(?!\w)", text):
+                    return e
     return None
 
 
@@ -223,6 +289,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
     # Snapshot what the player can SEE before the turn; the after-diff finds newly
     # unlocked items (each gets a small unlock image, rendered in the background).
     items_before = set(repo.visible_item_index(conn, gid))
+    location_before = repo.get_player(conn, gid)["location"]
 
     # Hybrid story clock: every turn costs a few fictional minutes automatically, so time
     # never freezes; the narrator jumps it with advance_time for rests/journeys/nightfall.
@@ -238,8 +305,13 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         action_text, directed = _compose(public) if public else (action_text, [])
         if not continue_story:
             # the player's echo is THEIR words: typed input echoes verbatim (echo_text);
-            # the composed rendition is for the narrator, never put in the player's mouth
-            emit("player", None, "action", echo_text or action_text or "...")
+            # the composed rendition is for the narrator, never put in the player's mouth.
+            # EXCEPT when the input split into public + whisper segments: the verbatim
+            # text carries the whispered words and this beat is witnessed by EVERYONE
+            # (static-confirmed leak: the secret entered every bystander's recap), so a
+            # mixed turn echoes the composed public-only rendition instead.
+            emit("player", None, "action",
+                 (echo_text if not whispers else "") or action_text or "...")
 
         # Impossible attempts are rejected deterministically with a friendly in-world beat,
         # BEFORE anything is applied, and the narrator is told they failed (so its prose
@@ -275,7 +347,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             disp = d.get("display", {})
             if d["tool"] == "attack":
                 amt = d["args"].get("amount")
-                line = f"attack {disp.get('target')}" + (f" ({amt} damage)" if amt else "")
+                how = f' "{disp.get("how")}"' if disp.get("how") else ""
+                line = f"attack {disp.get('target')}{how}" + (f" ({amt} damage)" if amt else "")
                 family = "attack"
             else:
                 line = f"give {disp.get('item')} to {disp.get('target')}"
@@ -283,6 +356,34 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             pending.append({"d": d, "family": family, "line": line,
                             "tid": "player" if kind_t == "player" else (row["id"] if row else None),
                             "handled": False, "rejected": False})
+
+        # Deterministic movement router: an explicit step through a REVEALED exit moves
+        # the player HERE, before the narrator call, so the narrator narrates the ARRIVAL
+        # under the NEW/RETURNING machinery instead of staying behind (live audit
+        # 2026-06-11, the worst finding: move_location fired once in 40 turns; four
+        # explicit movements - including a literal exit-button click - produced traveling
+        # prose but no move, so describe_scene overwrote the scene being left, items
+        # pinned to it, and witness stamps kept 'present' characters hearing things the
+        # player had fictionally walked away from). Only public 'do' texts (or the raw
+        # typed text) can move; one move per turn; movement language that names no
+        # revealed exit changes nothing - discovery stays the narrator's.
+        state_notes: list[str] = []
+        moved_key = None
+        if not continue_story:
+            move_texts = ([(s.get("text") or "") for s in public
+                           if (s.get("type") or "do").lower() == "do"]
+                          if public else [action_text])
+            ex = _match_exit(move_texts,
+                             repo.db.loads(repo.current_scene(conn, gid)["exits"], []))
+            if ex and (ex.get("target") or "").strip():
+                margs = {"location": ex["target"]}
+                out = tools.apply_tool(conn, gid, "move_location", margs, actor=None)
+                if out["kind"] == "state":
+                    if out["text"]:
+                        state_notes.append(out["text"])   # 'You move to X.', in receipt order
+                    # pre-seed the dedup key: the narrator restating the same move in its
+                    # reply must not land a second receipt
+                    moved_key = ("move_location", json.dumps(margs, sort_keys=True, default=str))
 
         narrator_action = CONTINUE_IMPULSE if continue_story else action_text
         if failures:
@@ -359,9 +460,9 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                     return p["d"]["args"].get("amount")
             return None
 
-        cues, state_notes = [], []
+        cues: list = []   # state_notes opened above (the movement router seeds it)
         invalid_calls: list[tuple[str, dict, str]] = []  # (name, args, reason): the second chance
-        seen_calls: set = set()
+        seen_calls: set = {moved_key} if moved_key else set()
         for tc in reply.tool_calls:
             if tc.name in ("apply_damage", "attack") and pending \
                     and not (tc.arguments or {}).get("amount"):
@@ -447,9 +548,16 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                     prompts.build_narrator_resolve_messages(conn, gid, narrator_action, state_notes),
                     temperature=settings.NARRATOR_TEMPERATURE,
                     max_tokens=settings.NARRATOR_RESOLVE_MAX_TOKENS,
+                    # same narrator voice, same defenses: the scaffold + impersonation
+                    # stops above (static review: a screenplay line passed this pass
+                    # verbatim because only the main call was stopped)
+                    stop=stops or None,
                 )
                 track["ctx"] = max(track["ctx"], (resolve.usage or {}).get("prompt_tokens", 0) or 0)
-                remotion, rtext = parsing._scrub_narration(parsing.clean_prose(resolve.content))
+                rprose = parsing.clean_prose(resolve.content)
+                if rprose and resolve.finish_reason == "length":
+                    rprose = parsing.trim_to_sentence(rprose)   # never show a mid-word cut
+                remotion, rtext = parsing._scrub_narration(rprose)
                 if rtext:
                     emit("narrator", "Narrator", "narration", rtext, emotion=remotion)
         for note in state_notes:
@@ -477,8 +585,24 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
     location = repo.get_player(conn, gid)["location"]
     exchanges: list[tuple[dict, list[dict]]] = []   # (character row, [segments])
     for w in whispers[: settings.TURN_MAX_ACTOR_STEPS]:
-        kind_t, row = repo.resolve_target(conn, gid, (w.get("target") or ""))
-        if kind_t != "character" or not row or not row["alive"] or row["location"] != location:
+        target = (w.get("target") or "").strip()
+        kind_t, row = repo.resolve_target(conn, gid, target)
+        # A bad whisper target BOUNCES like the public path, never swallows (live:
+        # whispers to a nonexistent AND to a dead character both returned 200 with zero
+        # beats - dead air with the clock ticked). An unknown name bounces publicly
+        # (there is no private channel to land it in); a known-but-dead/absent character
+        # bounces INTO their private thread, where the player tried to speak.
+        if kind_t != "character" or not row:
+            emit("system", None, "system",
+                 f"There is no one called {_display(w, target) or 'that'} here.")
+            continue
+        if not row["alive"]:
+            emit("system", None, "system", f"{row['name']} can no longer hear you.",
+                 private_with=row["id"])
+            continue
+        if not row["present"] or row["location"] != location:
+            emit("system", None, "system", f"{row['name']} is not here.",
+                 private_with=row["id"])
             continue
         if exchanges and exchanges[-1][0]["id"] == row["id"]:
             exchanges[-1][1].append(w)
@@ -500,9 +624,12 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                 continue
             spoke = True
             if mode == "do":
-                # a discreet private action (slip a note, flash a badge): only they notice
+                # a discreet private action (slip a note, flash a badge): only they
+                # notice. The text stays the player's own first-person words, like the
+                # public do echo (live: prefixing 'you ' produced 'you I slide the
+                # ledger across the table')
                 emit("player", None, "action",
-                     f"(only {row['name']} notices) you {text}", private_with=row["id"])
+                     f"(only {row['name']} notices) {text}", private_with=row["id"])
             else:
                 emit("player", None, "action",
                      f'you whisper to {row["name"]}: "{text}"', private_with=row["id"])
@@ -513,6 +640,38 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         repo.clear_arrival_note(conn, gid)
     if track["ctx"]:
         repo.set_context_used(conn, gid, track["ctx"])
+    # Death is ENGINE-owned: a turn that ends with the player at 0 life IS lost, no
+    # matter what the model said (live, e2e 2026-06-11: the lethal-fall turn printed the
+    # fall receipt, then a set_game_status('active') later in the SAME reply silently
+    # reverted the flip - 'active' receipts are silent - so the response said 'active',
+    # and the next turn dealt 3 more damage at zero and re-printed the fall). The fall
+    # receipt already landed when life first hit 0; this re-assert is silent. The staged
+    # rescue (heal from 0) raises life first, so it is never caught here.
+    if repo.get_player(conn, gid)["life"] == 0 \
+            and (repo.get_game(conn, gid)["status"] or "active") == "active":
+        repo.set_game_status(conn, gid, "lost")
+    # Stranded-companion net: on a turn that MOVED the player, narration that names a
+    # character the state left behind is prose walking someone along without the tool
+    # (live replay 2026-06-11: "Basir falls into step behind you" into the stables while
+    # set_following never fired - his location stayed the common room, so he would
+    # witness none of what the fiction showed him). No state is changed here: the
+    # narrator gets the discrepancy through the same next-turn note as invalid calls,
+    # and either set_followings them or writes them out. A mere mention of someone far
+    # away costs only this harmless reminder.
+    location_now = repo.get_player(conn, gid)["location"]
+    if location_now != location_before:
+        told = [b["text"] for b in new_beats
+                if b["kind"] == "narration" and not b.get("private_with")]
+        stranded = [c["name"] for c in repo.get_characters(conn, gid)
+                    if c["alive"] and c["location"] != location_now and c["name"]
+                    and any(c["name"].split()[0].lower() in t.lower() for t in told)]
+        if stranded:
+            g = repo.get_game(conn, gid)
+            notes = repo.db.loads(g["last_tool_errors"], []) if "last_tool_errors" in g.keys() else []
+            notes += [(f"your narration placed {n} at {location_now}, but they stayed at "
+                       f"their own scene: set_following('{n}', true) if they came along, "
+                       f"or keep them out of the scene's present action") for n in stranded]
+            repo.set_last_tool_errors(conn, gid, notes)
     result = {"beats": new_beats, "state": repo.game_state(conn, gid), "spawned": spawned}
     if image_request:
         # caller schedules the slow render in the background; the look's text becomes

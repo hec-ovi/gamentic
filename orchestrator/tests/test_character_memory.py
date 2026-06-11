@@ -231,7 +231,8 @@ def test_your_state_speaks_in_words_never_numbers(client, fake_llm, world):
     fake_llm.narrator = llm.LLMReply(content="She takes it.")   # default-accept transfers it
     client.post(f"/games/{gid}/action", json={"segments": [
         {"type": "give", "item": "silver locket", "target": "Mara"}]})
-    fake_llm.narrator = _nar(T("apply_damage", target="Mara", amount=7),   # 3/10 left
+    fake_llm.narrator = _nar(T("apply_damage", target="Mara", amount=4),   # two blows under
+                             T("apply_damage", target="Mara", amount=3),   # DAMAGE_CAP: 3/10 left
                              T("set_disposition", name="Mara", disposition="friendly"),
                              T("cue_character", name="Mara"),
                              content="The blow lands; she still smiles.")
@@ -240,7 +241,7 @@ def test_your_state_speaks_in_words_never_numbers(client, fake_llm, world):
     assert "YOUR STATE:" in system
     assert "you are badly wounded" in system
     assert "you carry silver locket" in system
-    assert "you feel friendly toward the player" in system
+    assert "you feel friendly toward the one you are with" in system
     assert "3/10" not in system and "3 hp" not in system     # felt, never counted
 
 
@@ -249,7 +250,7 @@ def test_your_state_is_lean_when_nothing_to_say(client, fake_llm, world):
     fake_llm.narrator = _nar(T("cue_character", name="Mara"), content="Mara waits.")
     client.post(f"/games/{gid}/action", json={"action": "I wait too."})
     system = _char_calls(fake_llm, "Mara")[-1]["system"]
-    assert "you feel neutral toward the player" in system    # disposition always speaks
+    assert "you feel neutral toward the one you are with" in system  # disposition always speaks
     assert "you carry" not in system                         # empty-handed: omitted
     for words in ("roughed up", "you are hurt", "badly wounded"):
         assert words not in system                           # full life: omitted
@@ -304,10 +305,12 @@ def test_traits_anchor_the_final_line_and_a_worked_example(client, fake_llm, wor
     # recency anchor: the traits are the LAST thing the model reads
     assert _user(call).rstrip().endswith(
         "Respond now, in character, as Mara - distrusts authority; blunt.")
-    # one worked example of the TOP trait, in the reply format
-    assert 'Example of staying true to yourself (trait: "distrusts authority")' in call["system"]
-    assert "[say]You know how I am - distrusts authority, through and through.[/say]" in call["system"]
-    assert call["system"].count("Example of staying true") == 1
+    # the TOP trait frames the format example as a direction, never spliced into the
+    # spoken line (static-confirmed: the old spliced example invited trait recitation)
+    assert 'Your trait "distrusts authority" is a stance, never a script' in call["system"]
+    assert "[say]You know how I am" not in call["system"]
+    assert '[say]"Make it quick."[/say]' in call["system"]
+    assert call["system"].count("is a stance, never a script") == 1
 
 
 def test_no_traits_means_no_anchor_and_no_example(client, fake_llm, world):
@@ -316,7 +319,7 @@ def test_no_traits_means_no_anchor_and_no_example(client, fake_llm, world):
     client.post(f"/games/{gid}/action", json={"action": "I nod."})
     call = _char_calls(fake_llm, "Mara")[-1]
     assert _user(call).rstrip().endswith("Respond now, in character, as Mara.")
-    assert "Example of staying true" not in call["system"]
+    assert "is a stance, never a script" not in call["system"]
 
 
 # ---------- narrator staging ----------

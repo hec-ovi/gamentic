@@ -37,11 +37,11 @@ def test_full_playthrough(client, fake_llm):
     # Turn 2: a trap -> take damage, find the altar (objective done)
     fake_llm.narrator_script = [llm.LLMReply(
         content="A blade springs from the dark and bites your leg; ahead, an altar bleeds.",
-        tool_calls=[llm.ToolCall("apply_damage", {"amount": 7}),
+        tool_calls=[llm.ToolCall("apply_damage", {"amount": 5}),
                     llm.ToolCall("update_objective", {"objective_id": oid0, "done": True}),
                     llm.ToolCall("move_location", {"location": "altar chamber"})])]
     t2 = client.post(f"/games/{gid}/action", json={"action": "I press deeper."}).json()
-    assert t2["state"]["player"]["life"] == 13
+    assert t2["state"]["player"]["life"] == 15
     assert t2["state"]["player"]["location"] == "altar chamber"
     assert t2["state"]["quests"][0]["objectives"][0]["done"] is True
 

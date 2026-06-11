@@ -31,10 +31,12 @@ def set_scene_status(conn, gid, args, actor):
 
 @tool({"type": "function", "function": {
     "name": "describe_scene",
-    "description": "Write or update the current scene's short description (do this when the "
-                   "player enters a new place so the scene card reads right). Optionally also "
-                   "set its background: the place's deeper story (what it is, what it was, why "
-                   "it matters), which you will be reminded of every turn spent here.",
+    "description": "REDECORATE the CURRENT scene only: write or update its short description "
+                   "(do this when the player enters a new place so the scene card reads right). "
+                   "This never moves anyone; to travel somewhere else use move_location, never "
+                   "this. Optionally also set its background: the place's deeper story (what it "
+                   "is, what it was, why it matters), which you will be reminded of every turn "
+                   "spent here.",
     "parameters": {"type": "object", "properties": {
         "description": {"type": "string", "description": "Short visual description (the card)."},
         "background": {"type": "string",

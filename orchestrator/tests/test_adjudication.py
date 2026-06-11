@@ -42,7 +42,7 @@ def test_attack_unknown_target_is_rejected_friendly(client, fake_llm):
     gid = _new(client)
     out = client.post(f"/games/{gid}/action", json={"segments": [
         {"type": "attack", "target": "the dragon"}]}).json()
-    assert any(b["kind"] == "system" and "There is no the dragon here" in b["text"]
+    assert any(b["kind"] == "system" and "You see no sign of the dragon here" in b["text"]
                for b in out["beats"])
 
 

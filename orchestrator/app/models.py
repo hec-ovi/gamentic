@@ -1,6 +1,17 @@
 """Request/response shapes. These mirror docs/SPECS.md section 7."""
+import re
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+# Input caps, single-sourced (static-confirmed 2026-06-11: none existed, so one oversized
+# request could blow the model context, flood a turn with hundreds of attempts, and store
+# megabyte beats). These are schema bounds with friendly 422s; the engine clamps the
+# SEMANTICS (damage resolution, per-turn step caps) separately.
+MAX_ACTION_CHARS = 4000    # typed freeform action (also echoed verbatim as the player beat)
+MAX_SEGMENT_CHARS = 2000   # one tagged segment's text
+MAX_WISH_CHARS = 500       # the wish channel
+MAX_SEGMENTS = 12          # tagged segments per turn
+MAX_ATTACK_AMOUNT = 1000   # player-stated attack force (live: an unbounded amount was an instakill)
 
 
 class ObjectiveIn(BaseModel):
@@ -40,6 +51,17 @@ class CharacterIn(BaseModel):
         if isinstance(data, dict) and not data.get("gender") and data.get("sex"):
             data["gender"] = data["sex"]
         return data
+
+    @model_validator(mode="after")
+    def _default_description(self):
+        # live 2026-06-11: the creator left every description empty and all three
+        # character cards (and the world export) rendered a blank line; the persona's
+        # first sentence is who they are at a glance, so it backstops the field here,
+        # on BOTH creation paths
+        if not self.description.strip() and self.persona.strip():
+            first = re.split(r"(?<=[.!?])\s", self.persona.strip(), maxsplit=1)[0]
+            self.description = first[:160].strip()
+        return self
     voice_id: Optional[str] = None
     color: Optional[str] = None
     talkativeness: float = 0.5
@@ -56,6 +78,14 @@ class LoreIn(BaseModel):
     priority: int = 0
 
 
+class PlayerItemIn(BaseModel):
+    """A possession the creation chat established the player already holds; seeded into
+    the pack at finalize so the opening fiction and the inventory agree (live: a sealed
+    ledger existed only in the opening prose and stayed unreachable for 40 turns)."""
+    name: str
+    description: str = ""
+
+
 class WorldSheet(BaseModel):
     """The story-creator's output and the create-game payload."""
     title: str
@@ -69,7 +99,20 @@ class WorldSheet(BaseModel):
     quests: list[QuestIn] = Field(default_factory=list)
     lore: list[LoreIn] = Field(default_factory=list)
     start_location: str = "start"
+    # The model proposes this number, code bounds it (live replay 2026-06-11: the
+    # creator filled player_life=1 and the hero spawned one scratch from death).
+    # Clamped, not rejected: a 422 here would kill an otherwise perfect finalize.
     player_life: int = 20
+
+    @field_validator("player_life")
+    @classmethod
+    def _sane_life(cls, v: int) -> int:
+        return max(10, min(int(v or 20), 100))
+    player_items: list[PlayerItemIn] = Field(default_factory=list)  # opening possessions (seeded at finalize)
+    # morning | afternoon | evening | night; '' keeps the clock default. The mapping to
+    # story minutes lives with the clock (repo.clock.START_HOURS); unknown words are
+    # tolerated and simply ignored there (the model never owns the clock).
+    start_time_of_day: str = ""
 
 
 class EntityRef(BaseModel):
@@ -84,26 +127,27 @@ class Segment(BaseModel):
     """One tagged piece of a player turn. type in: say | do | attack | give | whisper.
     A turn can stack several: [do] go to the table, [say] "nice beer", [attack] X, [give] key -> X."""
     type: str = "do"
-    text: str = ""
+    text: str = Field("", max_length=MAX_SEGMENT_CHARS)
     target: Optional[str] = None   # for attack/give/directed say: a character id or name (or "player")
     item: Optional[str] = None     # for give: an item id or name
-    amount: Optional[int] = None   # for attack (damage)
+    # for attack (damage); schema-bounded so a typed or posted force can never instakill
+    amount: Optional[int] = Field(None, ge=0, le=MAX_ATTACK_AMOUNT)
     refs: Optional[list[EntityRef]] = None  # entity chips tagged inside this segment's text
     mode: Optional[str] = None     # for whisper: "say" (default) or "do" (a discreet private action)
 
 
 class ActionIn(BaseModel):
     # Back-compat: a plain freeform action string. OR structured tagged segments.
-    action: Optional[str] = None
-    segments: Optional[list[Segment]] = None
+    action: Optional[str] = Field(None, max_length=MAX_ACTION_CHARS)
+    segments: Optional[list[Segment]] = Field(None, max_length=MAX_SEGMENTS)
     # The wish channel: what the player HOPES happens next (never an action). The
     # narrator weighs it by difficulty mode: easy leans into it, hard may ignore it.
-    wish: Optional[str] = None
+    wish: Optional[str] = Field(None, max_length=MAX_WISH_CHARS)
 
 
 class ContinueIn(BaseModel):
     """Optional body of /continue; the wish channel rides along naturally here."""
-    wish: Optional[str] = None
+    wish: Optional[str] = Field(None, max_length=MAX_WISH_CHARS)
 
 
 class GameSettingsIn(BaseModel):

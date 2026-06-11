@@ -26,7 +26,23 @@ def add_item(conn, gid, args, actor):
     nm = repo.norm_name(args.get("name") or "")
     if not nm:
         return _invalid("add_item: empty name")
-    repo.add_item(conn, gid, nm, args.get("description", ""), int(args.get("qty", 1) or 1))
+    raw_qty = args.get("qty", 1)
+    qty = 1 if raw_qty in (None, "") else int(raw_qty)
+    if qty <= 0:
+        # live: the narrator 'paid' with add_item(copper coins, qty=-3) and the player
+        # GAINED coins plus an 'Obtained' receipt; bounce it so the retry/feedback
+        # loop steers the model to the right tool instead
+        return _invalid("add_item: qty must be positive; use remove_item to take things from the player")
+    # The model says add_item where it means take_item (live: 'takes the rusted
+    # lantern' minted a pack copy while the scene kept its own - three lanterns where
+    # the fiction had one). A VISIBLE scene item by this name means MOVE it, exactly
+    # as take_item would; fixed scenery refuses the same in-world way.
+    res = repo.take_scene_item(conn, gid, nm)
+    if res == "ok":
+        return _result("state", f"You take {nm}.")
+    if res == "fixed":
+        return _result("state", f"The {nm} is part of the place; it won't come with you.")
+    repo.add_item(conn, gid, nm, args.get("description", ""), qty)
     return _result("state", f"Obtained: {nm}.")
 
 
@@ -37,7 +53,16 @@ def add_item(conn, gid, args, actor):
         "name": {"type": "string"}, "qty": {"type": "integer"}}, "required": ["name"]}}})
 def remove_item(conn, gid, args, actor):
     nm = (args.get("name") or "").strip()
-    removed = repo.remove_item(conn, gid, nm, int(args.get("qty", 1) or 1))
+    qty = int(args.get("qty", 1) or 1)
+    removed = repo.remove_item(conn, gid, nm, qty)
+    if not removed:
+        # near-miss net (live: remove_item('room key') against a pack holding 'heavy
+        # iron key' showed the player BOTH "You don't have room key." and the retry's
+        # "Lost: heavy iron key"): exactly one pack item sharing the final token wins;
+        # zero or several stay invalid.
+        near = repo.near_pack_item(conn, gid, nm)
+        if near is not None:
+            removed = repo.remove_item(conn, gid, near["id"], qty)
     if not removed:
         return _invalid(f"remove_item: '{nm}' not in inventory")
     return _result("state", f"Lost: {removed['name']}.")
@@ -84,22 +109,48 @@ def place_item(conn, gid, args, actor):
 
 @tool({"type": "function", "function": {
     "name": "reveal_item",
-    "description": "Reveal a hidden item (the player discovers it) in the scene or on a character.",
+    "description": "The player DISCOVERS an item: in the scene, on a character, or (target "
+                   "'player') straight into their pack. Reveals it if it was planted hidden; "
+                   "creates it on the spot otherwise.",
     "parameters": {"type": "object", "properties": {
-        "target": {"type": "string", "description": "'scene' or a character name."},
+        "target": {"type": "string", "description": "'scene', a character name, or 'player'."},
         "name": {"type": "string"},
     }, "required": ["target", "name"]}}})
 def reveal_item(conn, gid, args, actor):
     target = (args.get("target") or "").strip()
     nm = repo.norm_name(args.get("name") or "")
+    if not nm:
+        return _invalid("reveal_item: no name")
+    # The model reaches for reveal_item to AUTHOR discoveries, not just to flip planted
+    # ones (live, both e2e games: reveal_item('water-damaged ledger', target='player')
+    # and reveal_item('broken clay jug', target='scene') were the single most common
+    # invalid class). The narrator can already invent items freely via place_item, so
+    # degrading a miss into place-and-reveal grants no new power; it removes a dead end.
     if target.lower() in _SCENE_WORDS:
-        ok = repo.reveal_scene_item(conn, gid, nm)
-        return _result("state", f"You spot {nm}.") if ok else _invalid(f"reveal_item: no hidden '{nm}' here")
+        if repo.reveal_scene_item(conn, gid, nm):
+            return _result("state", f"You spot {nm}.")
+        res = repo.add_scene_item(conn, gid, nm, args.get("description", ""), False,
+                                  settings.SCENE_INVENTORY_CAP, False)
+        if res == "full":
+            return _invalid(f"reveal_item: scene is full ({settings.SCENE_INVENTORY_CAP})")
+        if res == "exists":
+            # already in plain sight: nothing was discovered (live replay: place_item +
+            # reveal_item of the same name in one reply printed two receipts)
+            return _result("state")
+        return _result("state", f"You spot {nm}.")
+    if target.lower() in ("player", "you", "me"):
+        repo.add_item(conn, gid, nm, args.get("description", ""))
+        return _result("state", f"Obtained: {nm}.")
     kt, row = repo.resolve_target(conn, gid, target)
     if kt != "character" or not row:
         return _invalid(f"reveal_item: unknown target '{target}'")
-    ok = repo.character_reveal_item(conn, row["id"], nm)
-    return _result("state", f"You notice {row['name']} carries {nm}.") if ok else _invalid("reveal_item: nothing hidden")
+    if repo.character_reveal_item(conn, row["id"], nm):
+        return _result("state", f"You notice {row['name']} carries {nm}.")
+    res = repo.character_add_item(conn, row["id"], nm, args.get("description", ""), False,
+                                  cap=settings.CHAR_INVENTORY_CAP)
+    if res == "full":
+        return _invalid(f"reveal_item: {row['name']} can carry no more")
+    return _result("state", f"You notice {row['name']} carries {nm}.")
 
 
 @tool({"type": "function", "function": {
@@ -114,7 +165,11 @@ def take_item(conn, gid, args, actor):
     if res == "fixed":
         # scenery (altar, lever, statue): can't be pocketed, but say so in-world so flow continues
         return _result("state", f"The {nm} is part of the place; it won't come with you.")
-    return _invalid(f"take_item: no '{nm}' to take")
+    # steer the retry: the most common miss is taking a thing the fiction produced but
+    # state never held (live: a character handed over a lantern in prose only; the
+    # narrator's take_item had nothing to take and the item stayed cosmetic for turns)
+    return _invalid(f"take_item: no '{nm}' in this scene; if the fiction already put it "
+                    f"in the player's hands, add_item it instead")
 
 
 @tool({"type": "function", "function": {

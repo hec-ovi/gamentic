@@ -5,6 +5,26 @@ from ..config import settings
 from .base import _invalid, _result, tool
 
 
+def _a_or_an(phrase: str) -> str:
+    """'a stranger' / 'an old friend': the article follows the FIRST word's letter
+    (multi-word relations like 'sworn enemy' read right; role-words like 'boss' still
+    read fine with an article)."""
+    return f"an {phrase}" if phrase.lstrip()[:1].lower() in "aeiou" else f"a {phrase}"
+
+
+def _not_here(conn, gid, ch) -> str | None:
+    """Why this character cannot witness the current moment: dead, or not in the
+    player's scene. None when they are right here. Guards note_moment/note_trait only
+    (static-confirmed they wrote into ANY character's prompt-visible memory);
+    reveal_origin stays open - learning someone's past from a third party is fine."""
+    if not ch["alive"]:
+        return f"{ch['name']} is dead"
+    here = repo.get_player(conn, gid)["location"]
+    if not ch["present"] or repo.norm_name(ch["location"] or "").lower() != repo.norm_name(here).lower():
+        return f"{ch['name']} is not present"
+    return None
+
+
 @tool({"type": "function", "function": {
     "name": "cue_character",
     "description": "Hand the scene to a present character so they speak/act next. Call several "
@@ -49,6 +69,9 @@ def spawn_character(conn, gid, args, actor):
                                args.get("knowledge", ""), life=int(args.get("life", 10) or 10),
                                gender=args.get("sex", ""), origin=args.get("origin", ""),
                                relation=(args.get("relation") or "").strip())
+    # a person authored as scenery first becomes ONE entity, not an item card beside a
+    # character card (live replay: 'a sleeping camel driver' kept its slot after he woke)
+    repo.absorb_scene_item_into_character(conn, gid, nm)
     return _result("spawn", text=f"{nm} arrives.",
                    cue={"id": cid, "name": nm, "reason": "has just arrived"}, reactions=[cid])
 
@@ -62,6 +85,10 @@ def kill_character(conn, gid, args, actor):
     kind_t, row = repo.resolve_target(conn, gid, tname)
     if kind_t != "character" or not row:
         return _invalid(f"kill_character: unknown character '{tname}'")
+    if not row["alive"]:
+        # the no-op-receipt disease, kill flavor: re-killing someone already gone
+        # must not print '{name} is gone.' a second time
+        return _result("state")
     repo.kill_character(conn, row["id"])
     return _result("kill", f"{row['name']} is gone.")
 
@@ -81,10 +108,13 @@ def set_disposition(conn, gid, args, actor):
     ch = repo.find_character_by_name(conn, gid, who)
     if not ch:
         return _invalid(f"set_disposition: no character '{who}'")
-    changed = (ch["disposition"] or "").lower() != disp
+    if (ch["disposition"] or "").lower() == disp:
+        # unchanged: silent (live: 'Tamsin turns hostile.' printed SIX times while she
+        # already was - the changed guard covered the moment but not the receipt)
+        return _result("state")
     repo.set_disposition(conn, ch["id"], disp)
-    if changed:   # a real shift in the bond is a pivotal moment, mechanically detected
-        repo.add_moment(conn, ch["id"], f"Turned {disp} toward the player")
+    # a real shift in the bond is a pivotal moment, mechanically detected
+    repo.add_moment(conn, ch["id"], f"Turned {disp} toward the player")
     return _result("state", f"{ch['name']} turns {disp}.")
 
 
@@ -148,6 +178,9 @@ def note_trait(conn, gid, args, actor):
     ch = repo.find_character_by_name(conn, gid, who)
     if not ch:
         return _invalid(f"note_trait: no character '{who}'")
+    why = _not_here(conn, gid, ch)
+    if why:   # a trait is revealed by behavior in THIS moment; the absent reveal nothing
+        return _invalid(f"note_trait: {why}")
     trait = repo.add_trait(conn, ch["id"], args.get("trait", ""), settings.CHAR_TRAIT_CAP)
     if not trait:
         return _result("state")  # duplicate or full: silent
@@ -172,11 +205,18 @@ def set_relation(conn, gid, args, actor):
     ch = repo.find_character_by_name(conn, gid, who)
     if not ch:
         return _invalid(f"set_relation: no character '{who}'")
-    if repo.character_relation(ch).lower() == rel.lower():
+    old = repo.character_relation(ch)
+    if old.lower() == rel.lower():
         return _result("state")  # unchanged: silent
     repo.set_relation(conn, ch["id"], rel)
-    repo.add_moment(conn, ch["id"], f"Became the player's {rel}")
-    return _result("state", f"{ch['name']} is now your {rel}.")
+    if not old and rel.lower() in ("stranger", "unknown"):
+        # empty -> stranger is bookkeeping, not a story beat (live: 'Tamsin is now
+        # your stranger.' plus a fake 'Became the player's stranger' pivotal moment
+        # from this exact non-event); record the label, stage nothing
+        return _result("state")
+    # article-aware grammar (live: 'Tamsin is now your stranger.' read broken)
+    repo.add_moment(conn, ch["id"], f"Came to see the player as {_a_or_an(rel)}")
+    return _result("state", f"{ch['name']} now sees you as {_a_or_an(rel)}.")
 
 
 @tool({"type": "function", "function": {
@@ -195,6 +235,9 @@ def note_moment(conn, gid, args, actor):
     ch = repo.find_character_by_name(conn, gid, who)
     if not ch:
         return _invalid(f"note_moment: no character '{who}'")
+    why = _not_here(conn, gid, ch)
+    if why:   # a SHARED moment needs both parties in the scene; the absent share nothing
+        return _invalid(f"note_moment: {why}")
     repo.add_moment(conn, ch["id"], args.get("event", ""))
     return _result("state")  # silent: the event itself was just narrated
 

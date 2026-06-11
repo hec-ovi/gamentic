@@ -74,6 +74,11 @@ def test_unlocked_traits_feed_the_character_agent(client, fake_llm, world):
 
 
 def test_profile_collects_traits_pivotal_moments_and_stays_spoiler_safe(client, fake_llm, world):
+    # an explicit public description: with none given, the persona's FIRST sentence now
+    # intentionally becomes the public line (the live blank-card fix), which would make
+    # this fixture's one-sentence persona public by design
+    world = dict(world)
+    world["characters"] = [dict(world["characters"][0], description="A dwarven scout.")]
     gid = client.post("/games", json=world).json()["game_id"]
     cid = _cid(client, gid)
     # a trait, a pivotal moment (narrator-noted), and a whisper that must NOT appear

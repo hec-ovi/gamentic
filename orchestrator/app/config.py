@@ -73,6 +73,12 @@ class Settings:
     DAY_START_HOUR = int(os.getenv("DAY_START_HOUR", "8"))     # in-fiction hour at story start
     TIME_ADVANCE_CAP_DAYS = int(os.getenv("TIME_ADVANCE_CAP_DAYS", "30"))  # max one advance_time jump
 
+    # Hard ceiling on ONE apply_damage/attack call, whoever calls it. The engine clamps
+    # client-supplied attack amounts separately; this is defense in depth at the tool
+    # layer (live: a player segment rode amount=9999 through adjudication and one-shot
+    # a 10hp character off "a flick on the ear").
+    DAMAGE_CAP = int(os.getenv("DAMAGE_CAP", "6"))
+
     # Scene/inventory/action caps (the fixed slot counts; single source of truth for the UI grids)
     SCENE_EXIT_CAP = int(os.getenv("SCENE_EXIT_CAP", "3"))
     SCENE_INVENTORY_CAP = int(os.getenv("SCENE_INVENTORY_CAP", "6"))

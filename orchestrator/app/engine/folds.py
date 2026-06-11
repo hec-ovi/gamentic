@@ -32,7 +32,10 @@ def maybe_update_summary(gid: str) -> None:
                          temperature=0.3, max_tokens=settings.SUMMARY_MAX_TOKENS)
     except Exception:
         return
-    text = parsing.clean_prose(reply.content or "")   # drift safety: junk never becomes memory
+    # Drift safety: junk, think spans and scaffold never become memory. A recap is
+    # re-fed to prompts every turn, so one leak compounds (e2e 2026-06-11: the turn-53
+    # scaffold bytes passed the old clean_prose-only scrub verbatim).
+    text = parsing.scrub_model_text(reply.content or "")
     if not text:
         return
     with db.get_conn() as conn:
@@ -79,7 +82,8 @@ def maybe_update_character_summaries(gid: str) -> None:
                 temperature=0.3, max_tokens=settings.CHAR_SUMMARY_MAX_TOKENS)
         except Exception:
             continue   # keep the previous recap; a later turn retries
-        text = parsing.clean_prose(reply.content or "")   # drift safety: junk never becomes memory
+        # same full scrub as the game recap: junk/think/scaffold never becomes memory
+        text = parsing.scrub_model_text(reply.content or "")
         if not text:
             continue
         with db.get_conn() as conn:

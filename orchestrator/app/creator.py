@@ -8,6 +8,7 @@ JSON produced by a final tool call, then persisted by repo.create_game.
 import json
 
 from . import engine, prompts, llm, repo, db
+from .engine import parsing
 from .models import WorldSheet
 
 ORIGIN_MIN_CHARS = 220   # ~3 short sentences; anything thinner gets the enrichment pass
@@ -59,16 +60,33 @@ def message(session_id: str, user_message: str) -> dict:
         temperature=0.8,
         max_tokens=400,
     )
+    # Sanitize BEFORE storing or returning (static-confirmed: this path shipped raw model
+    # content): a leaked think-span or tool-call line would otherwise reach the player AND
+    # persist in the session history, re-fed to the model on every later creator turn.
+    text = engine.clean_prose(parsing._strip_think(reply.content or ""))
     history.append({"role": "user", "content": user_message})
-    history.append({"role": "assistant", "content": reply.content})
+    history.append({"role": "assistant", "content": text})
     with db.get_conn() as conn:
         _save(conn, session_id, history)
-    return {"reply": reply.content}
+    return {"reply": text}
 
 
 def get_session(conn, session_id: str) -> list[dict] | None:
     row = conn.execute("SELECT history FROM creator_sessions WHERE id=?", (session_id,)).fetchone()
     return db.loads(row["history"], []) if row else None
+
+
+def _seed_sheet_extras(conn, gid: str, sheet: WorldSheet) -> None:
+    """Make the sheet's opening fiction TRUE in state at creation (live 2026-06-11: the
+    creator's opening prose put a sealed ledger in the player's satchel and quested about
+    it, but the inventory started empty and the narrator never managed to reify it; and
+    the clock sat at its default morning while the established fiction was a rainy
+    evening). Validated-tool doctrine: the sheet declares, code seeds."""
+    for it in sheet.player_items:
+        repo.add_item(conn, gid, it.name, it.description)
+    minutes = repo.start_minutes(sheet.start_time_of_day)
+    if minutes:
+        repo.advance_time(conn, gid, minutes)
 
 
 def finalize(conn, session_id: str) -> str:
@@ -87,5 +105,6 @@ def finalize(conn, session_id: str) -> str:
         raise ValueError("creator did not produce a world; keep chatting and try again")
     sheet = WorldSheet(**call.arguments)
     gid = repo.create_game(conn, sheet)
+    _seed_sheet_extras(conn, gid, sheet)
     conn.execute("DELETE FROM creator_sessions WHERE id=?", (session_id,))
     return gid

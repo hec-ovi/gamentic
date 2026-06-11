@@ -29,8 +29,11 @@ def test_tool_stream_debris_is_scrubbed_from_arguments(client, fake_llm, world):
     assert inv[0]["name"] == "iron key"
 
 
-def test_player_attack_amount_wins_when_narrator_accepts_without_one(client, fake_llm, world):
+def test_player_attack_amount_wins_when_narrator_accepts_without_one(client, fake_llm, world,
+                                                                     monkeypatch):
     """Live: 'attack for 12' was accepted as a default-3 hit (Ser Odo survived at 2 hp)."""
+    from app.config import settings
+    monkeypatch.setattr(settings, "DAMAGE_CAP", 12)   # this test pins carry-over, not the cap
     gid = client.post("/games", json=world).json()["game_id"]
     fake_llm.narrator = _nar(T("apply_damage", target="Mara"),   # accepted, no amount named
                              content="Your blade bites deep.")

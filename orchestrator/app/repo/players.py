@@ -57,6 +57,14 @@ def player_has_item(conn, gid: str, key: str) -> bool:
     return any(items._item_matches(it, key) for it in db.loads(p["inventory"], []))
 
 
+def near_pack_item(conn, gid: str, name: str):
+    """Peek: the SINGLE pack record sharing the request's final token, or None when
+    zero or several qualify (see items.near_match for the live incident). The caller
+    removes by the returned record's id, so the match can never drift."""
+    inv = db.loads(get_player(conn, gid)["inventory"], [])
+    return items.near_match(inv, name)
+
+
 def remove_item(conn, gid: str, key: str, qty: int = 1):
     """Remove by item ID or name. Returns the matched item dict (so callers know the real
     name even when called with an ID), or None if the player does not hold it."""

@@ -1,8 +1,21 @@
 """Item-blob logic. Items live as JSON lists on their owner's row (player pack, a
 character's inventory, a scene's items); this module owns every shape and search over
 those blobs so the rules live in ONE place."""
+import re
+
 from .. import db
 from .base import _id, norm_name
+
+_LEAD_ARTICLE = re.compile(r"^(?:a|an|the)\s+", re.I)
+
+
+def item_key(s: str) -> str:
+    """Canonical MATCHING key for item names (and other in-fiction labels): norm_name,
+    lowercased, leading a/an/the dropped. The model drifts freely between 'a rusted
+    lantern' and 'rusted lantern' (live: the scene slot never cleared, dedupe missed,
+    two unlock cards rendered and three lanterns existed where the fiction had one).
+    Stored names keep their article; only LOOKUPS go article-blind."""
+    return _LEAD_ARTICLE.sub("", norm_name(s).lower())
 
 
 def visible_items(value) -> list[dict]:
@@ -36,10 +49,11 @@ def narrator_items(value) -> str:
 
 def _item_matches(it: dict, key: str) -> bool:
     """An inventory item matches by ID (entity chips) or by case-insensitive name (the model).
-    Names compare underscore/whitespace-collapsed, so 'scanner_device' finds 'scanner device'."""
+    Names compare via item_key (collapsed, article-blind), so 'scanner_device' finds
+    'scanner device' and 'rusted lantern' finds 'a rusted lantern'."""
     k = norm_name(key or "").lower()
     return bool(k) and ((it.get("id") or "").lower() == k
-                        or norm_name(it["name"]).lower() == k)
+                        or item_key(it["name"]) == item_key(k))
 
 
 # ---------- blob mutations (shared by pack / character inventories / scene items) ----------
@@ -47,8 +61,24 @@ def _item_matches(it: dict, key: str) -> bool:
 # these, and saves it back to its own table. The rules live here, once.
 
 def find_by_name(items_list: list[dict], name: str):
-    """The record whose stored name matches (stored names are already normalized)."""
-    return next((it for it in items_list if it["name"].lower() == name.lower()), None)
+    """The record whose stored name matches, article-blind: an add of 'rusted lantern'
+    must MERGE into an existing 'a rusted lantern', never sit beside it as a twin."""
+    k = item_key(name)
+    return next((it for it in items_list if item_key(it["name"]) == k), None)
+
+
+def near_match(items_list: list[dict], name: str):
+    """Last-resort lookup: when no record matches the full name, the request's FINAL
+    token decides (live: the narrator asked remove_item('room key') while the pack held
+    'heavy iron key'; the invalid surfaced to the player as 'You don't have room key.'
+    next to a retry's 'Lost: heavy iron key'). Exactly ONE candidate sharing that token
+    matches; zero or several stay unmatched (None) - guessing between keys is worse."""
+    tokens = item_key(name).split()
+    if not tokens:
+        return None
+    last = tokens[-1]
+    cands = [it for it in items_list if last in item_key(it["name"]).split()]
+    return cands[0] if len(cands) == 1 else None
 
 
 def stack(it: dict, qty: int = 1, image_url: str | None = None) -> None:
@@ -93,13 +123,13 @@ def set_item_image(conn, gid: str, name: str, url: str) -> bool:
     empty slots (an item never swaps an image it already has). Returns True if anything matched."""
     import json
     from . import characters, players
-    k = norm_name(name).lower()
-    hit = False
+    k = item_key(name)   # article-blind: the render may have been queued under 'rusted
+    hit = False          # lantern' while the item still sits in scene as 'a rusted lantern'
 
     def _fill(items) -> bool:
         changed = False
         for it in items:
-            if norm_name(it["name"]).lower() == k and not it.get("image_url"):
+            if item_key(it["name"]) == k and not it.get("image_url"):
                 it["image_url"] = url
                 changed = True
         return changed
@@ -124,15 +154,17 @@ def set_item_image(conn, gid: str, name: str, url: str) -> bool:
 
 def visible_item_index(conn, gid: str) -> dict:
     """Every item the player can SEE right now (pack + revealed scene items + revealed
-    items on present characters), keyed by collapsed name. The engine diffs this across
-    a turn to find newly unlocked items (for their small unlock images)."""
+    items on present characters), keyed by item_key. The engine diffs this across a
+    turn to find newly unlocked items (for their small unlock images). Article-blind
+    keys make 'a rusted lantern' and 'rusted lantern' ONE item (live: both rendered
+    their own unlock card)."""
     from . import characters, players, scenes
     pd = players.get_player(conn, gid)
     out: dict[str, dict] = {}
 
     def _take(items):
         for it in items:
-            out.setdefault(norm_name(it["name"]).lower(),
+            out.setdefault(item_key(it["name"]),
                            {"name": it["name"], "description": it.get("description") or "",
                             "image_url": it.get("image_url")})
     _take(db.loads(pd["inventory"], []))

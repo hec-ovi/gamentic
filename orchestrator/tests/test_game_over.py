@@ -3,7 +3,17 @@
 - a heal from 0 on a lost game stages the rescue: status back to 'active',
 - the narrator's state block carries a STORY line ONLY while the game is not active,
 - turns stay allowed on won/lost games."""
+import pytest
+
 from app import llm
+from app.config import settings
+
+
+@pytest.fixture(autouse=True)
+def big_hits(monkeypatch):
+    # this file tests the death/rescue flow, not the damage ceiling: lift the
+    # tool-layer DAMAGE_CAP so one scripted blow can still drop the player
+    monkeypatch.setattr(settings, "DAMAGE_CAP", 99)
 
 
 WORLD = {

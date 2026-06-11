@@ -80,8 +80,13 @@ def _clip(s: str, words: int) -> str:
 def _concept(*parts, max_chars: int = 320) -> str:
     """A short human description of WHAT an image shows (its concept), built from the
     given parts: shown clamped as the caption in the chat flow and in full on the
-    lightbox and the profile's memories (an image without a concept is just a picture)."""
-    text = " ".join(p.strip().rstrip(".") + "." for p in parts if p and p.strip())
+    lightbox and the profile's memories (an image without a concept is just a picture).
+    The join is mechanical, so punctuation is normalized: a period stranded before a
+    comma INSIDE a part dies (live: the scene NAME carries its own trailing period, so
+    the caption read 'The Rusty Hook Inn, common room., Day 1, morning.')."""
+    cleaned = (re.sub(r"\.+(?=\s*,)", "", p.strip()).rstrip(".") + "."
+               for p in parts if p and p.strip())
+    text = " ".join(cleaned)
     if len(text) > max_chars:
         text = text[:max_chars].rsplit(" ", 1)[0].rstrip(",;:") + "..."
     return text

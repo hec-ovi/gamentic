@@ -66,13 +66,14 @@ def set_scene_draft(conn, gid: str, note: str) -> None:
 # ---------- movement + the draft layer ----------
 
 def _ensure_exit(conn, gid: str, scene_name: str, label: str, target: str) -> None:
-    """Add an exit to a scene if it doesn't already lead to `target` (dedup by target)."""
+    """Add an exit to a scene if it doesn't already lead to `target` (dedup by
+    item_key: article-blind, see add_exit for the live incident)."""
     sc = get_scene(conn, gid, scene_name)
     if not sc:
         return
     target = norm_name(target)
     exits = db.loads(sc["exits"], [])
-    if any(norm_name(e["target"]).lower() == target.lower() for e in exits):
+    if any(items.item_key(e["target"]) == items.item_key(target) for e in exits):
         return
     exits.append({"id": _id(), "label": label, "target": target})
     conn.execute("UPDATE scenes SET exits=? WHERE id=?", (json.dumps(exits), sc["id"]))
@@ -117,7 +118,9 @@ def add_exit(conn, gid: str, label: str, target: str, cap: int) -> str:
     sc = current_scene(conn, gid)
     target = norm_name(target)
     exits = db.loads(sc["exits"], [])
-    if any(norm_name(e["target"]).lower() == target.lower() for e in exits):
+    # dedup by item_key, article-blind (live: 'Lighthouse Path' vs 'The Lighthouse
+    # Path' slipped a second exit to the same place past the plain-name compare)
+    if any(items.item_key(e["target"]) == items.item_key(target) for e in exits):
         return "exists"
     if len(exits) >= cap:
         return "full"
@@ -171,6 +174,26 @@ def take_scene_item(conn, gid: str, key: str) -> str:
                              image_url=it.get("image_url"))
             return "ok"
     return "missing"
+
+
+def absorb_scene_item_into_character(conn, gid: str, char_name: str) -> bool:
+    """A spawned character ABSORBS their scene-item ghost: the narrator often authors a
+    person as scenery first ('a sleeping camel driver' placed as an item), then spawns
+    them when they wake; without this the same man stands in the scene twice, once as an
+    item card and once as a character card (live replay 2026-06-11). Token-subset match
+    on item_key, either direction ('camel driver' against 'a sleeping camel driver')."""
+    sc = current_scene(conn, gid)
+    scene_items = db.loads(sc["items"], [])
+    want = set(items.item_key(char_name).split())
+    if not want:
+        return False
+    for it in scene_items:
+        have = set(items.item_key(it["name"]).split())
+        if have and (want <= have or have <= want):
+            scene_items.remove(it)
+            _save_items(conn, sc["id"], scene_items)
+            return True
+    return False
 
 
 def scene_available_actions(conn, sc, cap_total: int) -> list[dict]:

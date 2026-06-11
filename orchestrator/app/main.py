@@ -47,7 +47,8 @@ def health():
 def create_game(sheet: WorldSheet, background_tasks: BackgroundTasks):
     with db.get_conn() as conn:
         gid = repo.create_game(conn, sheet)
-        integrate.assign_voices_for_game(conn, gid)          # fast, inline, best-effort
+        creator._seed_sheet_extras(conn, gid, sheet)         # opening possessions + clock,
+        integrate.assign_voices_for_game(conn, gid)          # exactly like the finalize path
         scene_id = repo.current_scene(conn, gid)["id"]
     # origins first: fast text calls, and the narrator's first turns deserve real pasts;
     # the slow image renders queue behind them
@@ -350,7 +351,10 @@ def explain(gid: str, body: ExplainIn):
     if not messages:
         raise HTTPException(404, "nothing like that in sight")
     reply = llm.chat(messages, temperature=0.6, max_tokens=160)
-    return {"text": (reply.content or "").strip() or "There is little more to say about it."}
+    # Same hygiene as every other model-text surface (e2e 2026-06-11: this returned
+    # reply.content raw, so think spans, scaffold and markup shipped straight to the tap).
+    text = engine.parsing.scrub_model_text(reply.content or "")
+    return {"text": text or "There is little more to say about it."}
 
 
 @app.post("/create/message")

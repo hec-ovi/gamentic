@@ -5,7 +5,6 @@ The location is new and bare. Establish it now so it is whole:
 - place_item what is here: fixed=true for scenery seen but not carried (an altar, a lever), fixed=false for loose loot, hidden=true for what must be searched out (reveal_item when found).
 - A companion coming along must be set_following BEFORE or as you move them, or they are left behind.
 
-Example, player just entered the drain tunnel:
-(think: new place. What IS this tunnel: look, mood, ways on, what lies here?)
-Tools: describe_scene("A brick gullet, ankle-deep in black water.", background="These drains predate the city above; smugglers widened them in the famine years, and things have been left down here ever since."), set_scene_status("tense"), add_exit("a rusted ladder up", "pump room"), place_item("scene", "bloated satchel", hidden=true).
-Prose: "The dark swallows the sound of your steps..."
+Example (reasoning and tool calls are NEVER printed as text): the player just entered the drain tunnel.
+It CALLS the tools: describe_scene("A brick gullet, ankle-deep in black water.", background="These drains predate the city above; smugglers widened them in the famine years, and things have been left down here ever since."), set_scene_status("tense"), add_exit("a rusted ladder up", "pump room"), place_item("scene", "bloated satchel", hidden=true) - real tool calls, never written into the reply.
+The reply is ONLY the prose: The dark swallows the sound of your steps...
