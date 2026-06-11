@@ -4,6 +4,23 @@ Notable changes to gamentic, newest first. No version numbers yet: this moves fa
 
 ## 2026-06-10
 
+### Characters with their own memory (late batch; owner direction: whole context per character)
+- Every beat now records WHO witnessed it. A character's verbatim window is what THEY lived through, not the room's log: a follower keeps the scenes it traveled through, a late arrival can never "remember" talk from before it entered, and a whisper belongs to its addressee alone. Legacy beats keep working through a location fallback; checkpoint import remaps the stamps so imported casts keep their memory.
+- Each character can fold their older witnessed beats into a private second-person recap ("You remember...") in the background, facts-only and capped, only when enough unfolded memory piles up, so only story-central characters ever trigger a call. On by default, env-tunable (`CHAR_HISTORY_BEATS`, `CHAR_SUMMARY_*`).
+- Characters now feel their state when they speak: disposition toward the player, wounds in words ("badly wounded", never numbers), and what they carry. They remember their newest pivotal moments with story-clock labels, and their top traits are restated as the last thing they read plus one worked example, the two levers with actual evidence against persona drift.
+- The narrator's state block now carries each present character's revealed traits, so it stages personality, not just mood and relation.
+- Pivotal moments evict the oldest at the cap instead of rejecting the newest (a long story no longer freezes a character's memories in act one).
+
+### Hardening pass (deep-read audit of the whole brain)
+- One retry on dropped connections to the model server: a redeploy no longer kills the in-flight turn. Timeouts are deliberately never retried.
+- Falling to zero life turns the story lost, with a system beat and the narrator told to stage the aftermath; a heal from zero brings it back. Turns stay allowed either way (aftermath play is a feature).
+- Emotion tags are now mapped to what the voice can actually render ([tired] becomes a sigh instead of silently losing its tone), angle-bracket tags the model emits from habit are understood and scrubbed, and narrator prose can never show a tag on screen; a leading tag becomes the narration beat's spoken tone.
+- A partial character portrait set (a crashed render that saved one of three views) now counts as missing and re-renders complete instead of passing as done.
+- A stale background recap fold skips its write instead of clobbering a fresher one; a stray authoring artifact was removed from three live prompt templates; the last raw-SQL bypass of the repo layer is gone; three dead config knobs removed.
+
+### Public face
+- README rewritten: compact, current state only, the architecture rule stated once, no decoration. The GitHub description and topics finally stopped claiming Kokoro (Maya1 shipped two days ago).
+
 The first full-playtest feedback batch.
 
 ### Engine and state machine (the brain)
