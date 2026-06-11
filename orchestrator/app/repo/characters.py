@@ -353,11 +353,11 @@ def character_profile(conn, gid: str, cid: str) -> dict | None:
 # ---------- offered actions (the player's buttons toward a character) ----------
 
 def offer_action(conn, cid: str, label: str, cap_total: int) -> bool:
-    """Add a narrator-offered contextual action to a character. One contextual slot is
-    always available even when the disposition base set fills the cap (live: every
-    3-button disposition refused every offer, so the history-driven buttons the
-    narrator prompt demands could never appear) - the offer displaces the last base
-    action at serialization instead."""
+    """Add a narrator-offered contextual action to a character. Offers are a LIVING
+    surface (owner call 2026-06-11: the buttons read too static): at least one
+    contextual slot always exists even when the disposition base set fills the cap,
+    and when the offer slots are full a NEW offer evicts the OLDEST one instead of
+    bouncing - the narrator prompt's 'let stale offers go' is mechanical now."""
     from .. import constants
     c = get_character(conn, cid)
     base = constants.ACTIONS_BY_DISPOSITION.get(c["disposition"], [])
@@ -365,8 +365,8 @@ def offer_action(conn, cid: str, label: str, cap_total: int) -> bool:
     if any(o["label"].lower() == label.lower() for o in offers) or \
        any(lbl.lower() == label.lower() for lbl, _ in base):
         return True   # already a button (offered or base): nothing to add
-    if len(offers) >= max(cap_total - len(base), 1):
-        return False
+    room = max(cap_total - len(base), 1)
+    offers = offers[-(room - 1):] if room > 1 else []   # full -> the oldest yields
     offers.append({"id": _id(), "label": label})
     conn.execute("UPDATE characters SET offers=? WHERE id=?", (json.dumps(offers), cid))
     return True

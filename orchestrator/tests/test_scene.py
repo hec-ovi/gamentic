@@ -79,11 +79,11 @@ def test_a_scene_overfull_in_the_db_never_pushes_the_wire_past_the_cap(client, f
     assert [e["target"] for e in exits[:2]] == ["street", "backroom"]
 
 
-def test_offered_action_displaces_the_last_base_button_on_a_full_set(client, fake_llm):
-    """Live (the verification run): friendly/neutral/hostile base sets fill all 3 slots,
-    so offer_action refused every history-driven offer the narrator prompt demands.
-    One contextual slot is always available now; the offer displaces the last base
-    action and Talk always survives."""
+def test_offers_fill_the_fourth_slot_and_rotate_when_full(client, fake_llm):
+    """Owner call (2026-06-11 playtest: 'actions are almost always the same, we want
+    flexibility'): the cap is 4 (3 base + a contextual slot), and once the offer slots
+    are full a NEW offer evicts the OLDEST instead of bouncing - the buttons follow
+    the story instead of freezing on the first offer."""
     gid = _new(client, [{"name": "Mara", "persona": "a wary scout"}])   # neutral: 3 base
     mara = next(c for c in _state(client, gid)["characters"] if c["name"] == "Mara")
     assert [a["label"] for a in mara["available_actions"]] == ["Talk", "Give...", "Provoke"]
@@ -91,12 +91,49 @@ def test_offered_action_displaces_the_last_base_button_on_a_full_set(client, fak
     client.post(f"/games/{gid}/action", json={"action": "I notice her scar."})
     mara = next(c for c in _state(client, gid)["characters"] if c["name"] == "Mara")
     labels = [a["label"] for a in mara["available_actions"]]
-    assert labels == ["Talk", "Give...", "Ask about the scar"]   # offer in, Provoke out
+    assert labels == ["Talk", "Give...", "Provoke", "Ask about the scar"]   # 4th slot
     fake_llm.narrator = _nar(T("offer_action", name="Mara", label="Buy her a drink"))
     client.post(f"/games/{gid}/action", json={"action": "I wave the bottle."})
     mara = next(c for c in _state(client, gid)["characters"] if c["name"] == "Mara")
-    assert len(mara["available_actions"]) == 3                   # second offer refused
-    assert "Buy her a drink" not in [a["label"] for a in mara["available_actions"]]
+    labels = [a["label"] for a in mara["available_actions"]]
+    assert labels == ["Talk", "Give...", "Provoke", "Buy her a drink"]      # oldest yields
+    assert "Ask about the scar" not in labels
+
+
+def test_offers_still_displace_when_the_cap_leaves_no_room(client, fake_llm, monkeypatch):
+    """Defense for tight caps (CHAR_ACTION_CAP=3 by env): the contextual slot still
+    exists - the offer displaces the last base button and Talk always survives."""
+    from app.config import settings
+    monkeypatch.setattr(settings, "CHAR_ACTION_CAP", 3)
+    gid = _new(client, [{"name": "Mara", "persona": "a wary scout"}])
+    fake_llm.narrator = _nar(T("offer_action", name="Mara", label="Ask about the scar"))
+    client.post(f"/games/{gid}/action", json={"action": "I notice her scar."})
+    mara = next(c for c in _state(client, gid)["characters"] if c["name"] == "Mara")
+    assert [a["label"] for a in mara["available_actions"]] == \
+        ["Talk", "Give...", "Ask about the scar"]                # offer in, Provoke out
+
+
+def test_a_new_scene_inherits_its_establishing_narration_as_description(client, fake_llm):
+    """Live (owner playtest): 'vault interior' lived its whole life with an empty
+    description - bare-name scene card, no history text, art prompted from the name
+    alone - because the narrator wrote background lore but never called describe_scene.
+    The establishing narration IS the description: the engine seeds it (first two
+    sentences) whenever the slot is still empty after the narrator pass."""
+    gid = _new(client)
+    fake_llm.narrator = _nar(T("add_exit", label="the street", target="street"))
+    client.post(f"/games/{gid}/action", json={"action": "I look for a way out."})
+    fake_llm.narrator = _nar(content=(
+        "Rain needles the empty street. Neon bleeds across the wet asphalt. "
+        "Somewhere beyond the rooftops a siren dies mid-wail."))
+    d = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "do", "text": "go to the street"}]}).json()
+    sc = d["state"]["scene"]
+    assert sc["name"] == "street"
+    assert sc["description"] == "Rain needles the empty street. Neon bleeds across the wet asphalt."
+    # an established scene never gets overwritten by later prose
+    fake_llm.narrator = _nar(content="A cat crosses the street. Nothing else moves.")
+    d = client.post(f"/games/{gid}/action", json={"action": "I wait."}).json()
+    assert d["state"]["scene"]["description"].startswith("Rain needles")
 
 
 def test_an_offer_matching_a_base_button_is_a_quiet_yes(client, fake_llm):

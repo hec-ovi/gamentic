@@ -151,3 +151,23 @@ test("tolerates missing fields without throwing", () => {
   assert.deepEqual(s.characters, []);
   assert.equal(s.player.life, 0);
 });
+
+test("a character keeps four action buttons (3 base + the rotating offer); scene actions stay capped at 3", () => {
+  const s = mapGameState({
+    characters: [{ id: "c9", name: "Mara", present: true, available_actions: [
+      { id: "b0", label: "Talk", type: "talk" },
+      { id: "b1", label: "Give...", type: "give" },
+      { id: "b2", label: "Provoke", type: "offer" },
+      { id: "o1", label: "Ask about the scar", type: "offer" },
+    ] }],
+    scene: { id: "s1", name: "Bar", available_actions: [
+      { id: "s0", label: "Look around", type: "look" },
+      { id: "s1", label: "Search", type: "search" },
+      { id: "s2", label: "Pray", type: "offer" },
+      { id: "s3", label: "Overflow", type: "offer" },
+    ] },
+  });
+  assert.deepEqual(s.characters[0].actions.map((a) => a.label),
+    ["Talk", "Give...", "Provoke", "Ask about the scar"]);
+  assert.equal(s.scene.actions.length, 3);
+});

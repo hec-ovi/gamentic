@@ -28,7 +28,8 @@ const PALETTE = [
 
 const SCENE_ITEM_SLOTS = 6;
 const CHAR_ITEM_SLOTS = 3;
-const ACTION_SLOTS = 3;
+const SCENE_ACTION_SLOTS = 3;
+const CHAR_ACTION_SLOTS = 4; // 3 disposition base + the narrator's rotating contextual offer
 const PLAYER_INV_SLOTS = 6;
 // NOTE: exits are NOT capped here. The backend sends up to 3 narrator exits PLUS
 // an automatic "back to X" return exit, so a scene can legitimately have 4.
@@ -65,7 +66,7 @@ export function mapGameState(state = {}) {
     bodyFrontUrl: c.body_front_url || null,
     bodySideUrl: c.body_side_url || null,
     inventory: (c.inventory || []).slice(0, CHAR_ITEM_SLOTS).map(mapItem),
-    actions: (c.available_actions || []).slice(0, ACTION_SLOTS).map(mapAction),
+    actions: (c.available_actions || []).slice(0, CHAR_ACTION_SLOTS).map(mapAction),
   }));
 
   const player = state.player || {};
@@ -146,7 +147,7 @@ function mapScene(scene) {
       isBack: /^back\b|^back to /i.test(e.label || ""),
     })),
     items: (scene.items || []).slice(0, SCENE_ITEM_SLOTS).map(mapItem),
-    actions: (scene.available_actions || []).slice(0, ACTION_SLOTS).map(mapAction),
+    actions: (scene.available_actions || []).slice(0, SCENE_ACTION_SLOTS).map(mapAction),
   };
 }
 

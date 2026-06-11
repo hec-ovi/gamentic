@@ -419,6 +419,33 @@ def build_origin_messages(g, c) -> list[dict]:
     ]
 
 
+def build_artdirector_messages(g, chars, time_of_day: str = "", start_location: str = "") -> list[dict]:
+    """The art-director 'skill' (owner direction 2026-06-11): ONE focused call at
+    creation that reads the whole world bible and writes the first-sight prompts -
+    every character's reference descriptor plus the main opening image - so first
+    impressions never depend on a thin per-render template."""
+    cast = []
+    for c in chars:
+        gender = repo.character_gender(c)
+        bits = [b for b in [c["description"], c["appearance"] if "appearance" in c.keys() else ""]
+                if (b or "").strip()]
+        cast.append(f"- {c['name']}{f' ({gender})' if gender else ''}: "
+                    f"{' '.join(bits) or c['persona']}")
+    return [
+        {"role": "system", "content": render("artdirector.system.md")},
+        {"role": "user", "content": render(
+            "artdirector.user.md",
+            title=g["title"] or "Untitled",
+            setting=g["setting"] or "unspecified",
+            tone=g["tone"] or "cinematic",
+            art_style=g["art_style"] or g["tone"] or "cinematic",
+            opening_scenario=g["opening_scenario"] or "(unwritten)",
+            start_location=start_location or "the opening scene",
+            time_of_day=time_of_day or "day",
+            cast="\n".join(cast) or "(no named characters)")},
+    ]
+
+
 # ---------- 'ask what this is' (tap-to-explain) ----------
 
 def _explain_facts(conn, gid: str, kind: str, key: str, beat_id: str | None) -> str | None:

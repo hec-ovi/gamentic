@@ -302,6 +302,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
     # unlocked items (each gets a small unlock image, rendered in the background).
     items_before = set(repo.visible_item_index(conn, gid))
     location_before = repo.get_player(conn, gid)["location"]
+    location_at_pass = None   # the scene the narrator pass SAW (set at the pass; stays
+    # None on whisper-only turns, which run no narrator)
 
     # Hybrid story clock: every turn costs a few fictional minutes automatically, so time
     # never freezes; the narrator jumps it with advance_time for rests/journeys/nightfall.
@@ -438,6 +440,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                 if s not in stops:
                     stops.append(s)
         stops = stops[:12]  # llama.cpp accepts a list; keep it bounded
+        location_at_pass = repo.get_player(conn, gid)["location"]   # the scene this pass SEES
         messages = prompts.build_narrator_messages(conn, gid, narrator_action, history_limit,
                                                    settings.LORE_BUDGET,
                                                    attempts=[p["line"] for p in pending],
@@ -693,6 +696,23 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                        f"their own scene: set_following('{n}', true) if they came along, "
                        f"or keep them out of the scene's present action") for n in stranded]
             repo.set_last_tool_errors(conn, gid, notes)
+    # A scene the narrator never furnishes stays "unestablished" forever if the
+    # describe_scene call never comes (live: 'vault interior' showed a bare-name card,
+    # no history text, and its art rendered from the name alone while the prose sat in
+    # the beats). The establishing narration IS the description: when the slot is still
+    # empty after a narrator pass that RAN AT this scene (it saw the NEW PLACE furnish
+    # protocol and skipped describe_scene), seed it from this turn's public prose
+    # (first two sentences); a later describe_scene simply overwrites it. A narrator
+    # that moved the player mid-pass keeps its furnish chance next turn.
+    sc_now = repo.current_scene(conn, gid)
+    if location_at_pass == sc_now["name"] and not (sc_now["description"] or "").strip():
+        told = [b["text"] for b in new_beats
+                if b["kind"] == "narration" and not b.get("private_with") and b["text"]]
+        if told:
+            sentences = re.split(r"(?<=[.!?])\s+", " ".join(told[0].split()))
+            seeded = " ".join(sentences[:2]).strip()[:400]
+            if seeded:
+                repo.set_scene_description(conn, gid, seeded)
     result = {"beats": new_beats, "state": repo.game_state(conn, gid), "spawned": spawned}
     if image_request:
         # caller schedules the slow render in the background; the look's text becomes

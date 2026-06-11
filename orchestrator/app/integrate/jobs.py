@@ -2,7 +2,10 @@
 render call (never across it), re-checks the game still exists before persisting (a
 wipe mid-render must never resurrect a media folder), and lands results as beats or
 row updates. All run as background tasks except the synchronous See snapshot."""
-from .. import db, repo, media
+import json
+import re
+
+from .. import db, repo, media, llm, prompts
 from ..config import settings
 from . import events, image_prompts, storage
 
@@ -121,7 +124,10 @@ def generate_item_image(gid: str, name: str) -> dict | None:
         g = repo.get_game(conn, gid)
         if not g:
             return None
-        entry = repo.visible_item_index(conn, gid).get(repo.norm_name(name).lower())
+        # the index keys are article-blind item_keys; norm_name kept the article, so an
+        # article-led name ("a heavy iron key") missed its OWN entry and the card job
+        # silently bailed forever (live: the key showed bare initials in the pack)
+        entry = repo.visible_item_index(conn, gid).get(repo.item_key(name))
         if not entry or entry.get("image_url"):       # gone from view, or already pictured
             return None
         style = g["art_style"] or g["tone"] or ""
@@ -144,18 +150,59 @@ def generate_item_image(gid: str, name: str) -> dict | None:
     return beat
 
 
-def generate_images_for_game(gid: str) -> None:
+def art_direction(gid: str) -> dict | None:
+    """ONE art-director call at creation (owner direction 2026-06-11): the agent reads
+    the whole world bible and writes the first-sight prompts - a reference descriptor
+    per character plus the main opening image - so the adventure's first impression
+    never depends on a thin per-render template. Guarded like every agentic prompt:
+    any failure returns None and the deterministic templates carry the renders."""
+    with db.get_conn() as conn:
+        g = repo.get_game(conn, gid)
+        if not g:
+            return None
+        chars = repo.get_characters(conn, gid)
+        part = repo.game_time(conn, gid).get("part") or ""
+        start = repo.current_scene(conn, gid)["name"]
+        messages = prompts.build_artdirector_messages(g, chars, time_of_day=part,
+                                                      start_location=start)
+    try:
+        reply = llm.chat(messages, temperature=0.4, max_tokens=700)
+        raw = re.sub(r"^```(?:json)?|```$", "", (reply.content or "").strip(),
+                     flags=re.M).strip()
+        data = json.loads(raw)
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    main_raw = str(data.get("main_image") or "").strip()
+    main = image_prompts._harden_image_prompt(main_raw) if main_raw else ""
+    cast = {}
+    for entry in data.get("characters") or []:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name") or "").strip()
+        desc = str(entry.get("descriptor") or "").strip()
+        if name and desc:
+            cast[name.lower()] = image_prompts._clip(desc, 90)
+    if not main and not cast:
+        return None
+    return {"main_image": main, "characters": cast}
+
+
+def generate_images_for_game(gid: str, direction: dict | None = None) -> None:
     """Background: generate + persist the 3-image reference set for each character.
     Resilient (live bug: a 'database is locked' on ONE character's commit killed the
     whole loop, leaving every portrait null): each character is independent, files
     already on disk are RELINKED instead of re-rendered, and the per-turn self-heal
-    re-schedules this job until every character has their set."""
+    re-schedules this job until every character has their set. An art-director
+    `direction` (creation only) supplies the descriptor; the sheet template is the net."""
     with db.get_conn() as conn:
         g = repo.get_game(conn, gid)
         if not g:
             return
         style = g["art_style"] or g["tone"] or ""
         chars = repo.get_characters(conn, gid)
+    directed = (direction or {}).get("characters") or {}
     for c in chars:
         if repo.character_has_images(c):
             continue
@@ -163,7 +210,8 @@ def generate_images_for_game(gid: str) -> None:
             urls = storage._existing_char_urls(gid, c["id"])
             if not urls:
                 result = media.generate_character_images(
-                    image_prompts.character_descriptor(c), style)
+                    directed.get((c["name"] or "").strip().lower())
+                    or image_prompts.character_descriptor(c), style)
                 if not result:
                     continue
                 with db.get_conn() as conn:
@@ -187,19 +235,21 @@ def generate_images_for_game(gid: str) -> None:
             continue   # one character's failure never costs the others their portraits
 
 
-def generate_scene_image(gid: str, scene_id: str) -> None:
-    """Background: generate + persist art for one scene (skips if it already has an image)."""
+def generate_scene_image(gid: str, scene_id: str, prompt_override: str = "") -> None:
+    """Background: generate + persist art for one scene (skips if it already has an
+    image). `prompt_override` (the art director's main-image prompt, creation only)
+    wins outright; otherwise template, agentically rewritten when current."""
     with db.get_conn() as conn:
         sc = repo.get_scene_by_id(conn, scene_id)
         g = repo.get_game(conn, gid)
         if not sc or not g or sc["image_url"]:
             return
         style = g["art_style"] or g["tone"] or ""
-        prompt = image_prompts.scene_prompt(sc, style)
+        prompt = prompt_override or image_prompts.scene_prompt(sc, style)
         # agentic context only if this is still the CURRENT scene (this runs in the
         # background; the player may have moved on, and the context follows the player)
         context = image_prompts._image_context(conn, gid, include_chars=False) \
-            if settings.IMAGE_AGENTIC_PROMPTS \
+            if settings.IMAGE_AGENTIC_PROMPTS and not prompt_override \
             and sc["id"] == repo.current_scene(conn, gid)["id"] else ""
     if context:
         prompt = image_prompts._agentic_prompt(context, fallback=prompt)   # LLM call outside the DB conn
@@ -212,3 +262,24 @@ def generate_scene_image(gid: str, scene_id: str) -> None:
         url = storage._persist(gid, result.get("image_url"), f"scene-{scene_id}")
         repo.set_scene_image(conn, scene_id, url)
     events.publish(gid, "scene", scene_id=scene_id)
+
+
+def generate_creation_art(gid: str, scene_id: str) -> None:
+    """The whole first-sight art pass, one background task (both creation routes call
+    this). Order is the owner's law: the art director writes the prompts, then
+    portraits render FIRST (they are the identity references), then the seeded item
+    cards, then the main opening image. Every stage degrades gracefully - a dead
+    director or a failed render never costs the later stages."""
+    direction = art_direction(gid) if settings.IMAGE_ART_DIRECTOR else None
+    generate_images_for_game(gid, direction)
+    if settings.IMAGE_ITEMS:
+        # seeded possessions get their unlock card NOW: cards otherwise render only on
+        # the action route's new-item diff, and a turn-0 item is never "new" there
+        with db.get_conn() as conn:
+            if not repo.get_game(conn, gid):
+                return
+            seeded = [v["name"] for v in repo.visible_item_index(conn, gid).values()
+                      if not v.get("image_url")]
+        for name in seeded[: settings.IMAGE_MAX_ITEMS_PER_TURN]:
+            generate_item_image(gid, name)
+    generate_scene_image(gid, scene_id, prompt_override=(direction or {}).get("main_image", ""))

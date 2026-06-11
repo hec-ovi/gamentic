@@ -78,8 +78,11 @@ export function cardCorners() {
 }
 
 export function initials(name) {
-  return String(name || "?")
-    .split(/\s+/)
+  // articles never carry identity: "a heavy iron key" reads "HI", not "AH"
+  // (live find: an image-less pack item showed the letters "AH" in its slot)
+  const parts = String(name || "?").split(/\s+/).filter((p) => p);
+  const meaningful = parts.filter((p) => !/^(a|an|the)$/i.test(p));
+  return (meaningful.length ? meaningful : parts)
     .slice(0, 2)
     .map((part) => part[0] || "")
     .join("")

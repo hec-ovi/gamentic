@@ -118,23 +118,27 @@ def test_internal_questions_do_not_leak_into_beats(client, fake_llm):
 
 # ---------- the NEW-place signal in the narrator's context ----------
 
-def test_new_place_is_flagged_to_narrator(client, fake_llm):
+def test_new_place_is_flagged_then_established_by_its_narration(client, fake_llm):
     gid = _new(client, start="hall")
-    # move to a brand-new, undescribed scene
-    fake_llm.narrator = _nar(T("move_location", location="dungeon"))
-    client.post(f"/games/{gid}/action", json={"action": "I enter the dungeon."})
-    # next turn, the narrator's state block should flag the fresh scene as NEW
-    fake_llm.narrator = _nar(content="...")
-    client.post(f"/games/{gid}/action", json={"action": "I look."})
+    fake_llm.narrator = _nar(T("add_exit", label="the dungeon stair", target="dungeon"))
+    client.post(f"/games/{gid}/action", json={"action": "I look for a way down."})
+    # the router move runs BEFORE the narrator pass, so the pass that narrates the
+    # arrival sees the fresh scene flagged NEW
+    fake_llm.narrator = _nar(content=(
+        "Black stone swallows the torchlight. Water drips somewhere far below."))
+    client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "do", "text": "go to the dungeon stair"}]})
     sys = fake_llm.narrator_calls()[-1]["system"]
     assert "NEW PLACE" in sys and "dungeon" in sys
 
-    # once described, the NEW flag is gone (it is established)
-    fake_llm.narrator = _nar(T("describe_scene", description="A black stone cell."), content="...")
-    client.post(f"/games/{gid}/action", json={"action": "I study it."})
+    # the establishing narration IS the description now (owner playtest: a scene the
+    # narrator never furnished stayed a bare name forever - no card text, art prompted
+    # from the name alone): the scene is established and the flag is gone next turn
     fake_llm.narrator = _nar(content="...")
-    client.post(f"/games/{gid}/action", json={"action": "I wait."})
+    client.post(f"/games/{gid}/action", json={"action": "I look."})
     assert "NEW PLACE" not in fake_llm.narrator_calls()[-1]["system"]
+    st = client.get(f"/games/{gid}/state").json()
+    assert st["scene"]["description"].startswith("Black stone swallows")
 
 
 def test_characters_elsewhere_shown_to_narrator(client, fake_llm):
@@ -222,9 +226,15 @@ def test_images_not_scheduled_when_disabled(client, fake_llm, monkeypatch):
 
 
 def test_images_scheduled_when_enabled(client, fake_llm, monkeypatch):
+    # creation art is ONE composed pass now (jobs.generate_creation_art): director,
+    # portraits, seeded cards, opening image - patch the jobs-level stages it calls
+    from app.integrate import jobs
     calls = []
-    monkeypatch.setattr(integrate, "generate_images_for_game", lambda gid: calls.append("portraits"))
-    monkeypatch.setattr(integrate, "generate_scene_image", lambda gid, sid: calls.append("scene"))
+    monkeypatch.setattr(jobs, "art_direction", lambda gid: None)
+    monkeypatch.setattr(jobs, "generate_images_for_game",
+                        lambda gid, direction=None: calls.append("portraits"))
+    monkeypatch.setattr(jobs, "generate_scene_image",
+                        lambda gid, sid, prompt_override="": calls.append("scene"))
     monkeypatch.setattr(settings, "IMAGE_ENABLED", True)
     _new(client, chars=[{"name": "Mara", "persona": "a guard"}])
     assert "portraits" in calls and "scene" in calls

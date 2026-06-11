@@ -228,6 +228,7 @@ services:
       - IMAGE_VIEW_W=${IMAGE_VIEW_W:-1152}
       - IMAGE_VIEW_H=${IMAGE_VIEW_H:-768}
       - IMAGE_AGENTIC_PROMPTS=${IMAGE_AGENTIC_PROMPTS:-false}
+      - IMAGE_ART_DIRECTOR=${IMAGE_ART_DIRECTOR:-true}
       # item unlock cards + narrator-initiated image pacing
       - IMAGE_ITEMS=${IMAGE_ITEMS:-true}
       - IMAGE_ITEM_SIZE=${IMAGE_ITEM_SIZE:-320}

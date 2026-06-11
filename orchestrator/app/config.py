@@ -87,7 +87,7 @@ class Settings:
     SCENE_EXIT_CAP = int(os.getenv("SCENE_EXIT_CAP", "3"))
     SCENE_INVENTORY_CAP = int(os.getenv("SCENE_INVENTORY_CAP", "6"))
     CHAR_INVENTORY_CAP = int(os.getenv("CHAR_INVENTORY_CAP", "3"))
-    CHAR_ACTION_CAP = int(os.getenv("CHAR_ACTION_CAP", "3"))
+    CHAR_ACTION_CAP = int(os.getenv("CHAR_ACTION_CAP", "4"))   # 3 base + a rotating contextual offer (owner call 2026-06-11)
     CHAR_TRAIT_CAP = int(os.getenv("CHAR_TRAIT_CAP", "12"))   # unlocked traits per character
     SCENE_ACTION_CAP = int(os.getenv("SCENE_ACTION_CAP", "3"))
 
@@ -116,6 +116,10 @@ class Settings:
     # Adds one LLM call per image (a few seconds, and it shares the single llama.cpp
     # server with turns). Deterministic guards + template fallback still apply. A/B this.
     IMAGE_AGENTIC_PROMPTS = os.getenv("IMAGE_AGENTIC_PROMPTS", "false").lower() == "true"
+    # The creation-time art-director agent (owner direction 2026-06-11): one call that
+    # writes every character descriptor + the main opening image prompt from the whole
+    # world bible. Templates remain the fallback on any failure.
+    IMAGE_ART_DIRECTOR = os.getenv("IMAGE_ART_DIRECTOR", "true").lower() == "true"
     # Item unlock images: a small square card rendered when an item first becomes visible
     # (obtained, revealed, placed in view), shown as a system image beat and attached to
     # the item. Capped per turn so a loot shower doesn't queue a render storm.

@@ -147,6 +147,74 @@ def test_scene_prompt_anchors_on_the_place_not_the_cosmology(client, fake_llm, m
     assert integrate.NO_TEXT_GUARD in p
 
 
+def test_art_director_writes_the_first_sight_prompts(client, fake_llm, monkeypatch, tmp_path):
+    """Owner direction (2026-06-11): a dedicated art-director agent reads the whole
+    world bible at creation and writes the character descriptors and the main opening
+    image prompt - portraits render first, the main image last, both from ITS words."""
+    import json as _json
+    from app import llm
+    from app.config import settings
+    monkeypatch.setattr(settings, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "IMAGE_ART_DIRECTOR", True)
+    monkeypatch.setattr(settings, "GAMES_DATA_DIR", str(tmp_path))
+    fake_llm.artdirector = llm.LLMReply(content=_json.dumps({
+        "characters": [{"name": "Mara",
+                        "descriptor": "A red-haired woman in her thirties, paint-flecked apron, full body"}],
+        "main_image": "A sunlit painter's studio, one red-haired sitter in the center, warm window light",
+    }))
+    descriptors, scene_prompts = [], []
+    monkeypatch.setattr(media, "generate_character_images",
+                        lambda descriptor, style="", seed=None: descriptors.append(descriptor) or None)
+    monkeypatch.setattr(media, "generate_scene_image",
+                        lambda prompt, **k: scene_prompts.append(prompt) or None)
+    client.post("/games", json=WORLD)
+    assert descriptors and descriptors[0].startswith("A red-haired woman in her thirties")
+    assert scene_prompts and scene_prompts[-1].startswith("A sunlit painter's studio")
+    assert "no signage" in scene_prompts[-1]          # hardened: the no-text guard rides along
+
+
+def test_a_dead_art_director_costs_nothing(client, fake_llm, monkeypatch, tmp_path):
+    """Garbage from the director (or no reply at all) -> the deterministic templates
+    carry every render, exactly as before the agent existed."""
+    from app import llm
+    from app.config import settings
+    monkeypatch.setattr(settings, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "IMAGE_ART_DIRECTOR", True)
+    monkeypatch.setattr(settings, "GAMES_DATA_DIR", str(tmp_path))
+    fake_llm.artdirector = llm.LLMReply(content="I think the studio should feel warm...")
+    descriptors, scene_prompts = [], []
+    monkeypatch.setattr(media, "generate_character_images",
+                        lambda descriptor, style="", seed=None: descriptors.append(descriptor) or None)
+    monkeypatch.setattr(media, "generate_scene_image",
+                        lambda prompt, **k: scene_prompts.append(prompt) or None)
+    client.post("/games", json=WORLD)
+    assert descriptors and "red-haired woman" in descriptors[0]   # sheet template
+    assert scene_prompts and scene_prompts[-1].startswith("studio")  # name-led template
+
+
+def test_item_card_renders_for_article_led_names(client, fake_llm, monkeypatch, tmp_path):
+    """Live (owner playtest): 'a heavy iron key' sat imageless in the pack forever and
+    its slot showed bare initials. The visible-item index keys are article-blind
+    item_keys, but the card job looked itself up by norm_name (article kept), missed
+    its own entry and silently bailed - on the first render AND every self-heal sweep."""
+    from app import db, media
+    from app.config import settings
+    from app.integrate import jobs
+    from app.repo import players
+    monkeypatch.setattr(settings, "IMAGE_ENABLED", True)
+    monkeypatch.setattr(settings, "GAMES_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(media, "generate_scene_image",
+                        lambda *a, **k: {"image_url": "data:image/png;base64,aGk="})
+    gid = client.post("/games", json=WORLD).json()["game_id"]
+    with db.get_conn() as conn:
+        players.add_item(conn, gid, "a heavy iron key", "notched, cold")
+    beat = jobs.generate_item_image(gid, "a heavy iron key")
+    assert beat, "the card job must find the article-led item in its own index"
+    st = client.get(f"/games/{gid}/state").json()
+    key = next(i for i in st["player"]["inventory"] if "iron key" in i["name"])
+    assert key["image_url"]
+
+
 def test_scene_prompt_falls_back_to_background_when_description_is_empty():
     """Live-found (the verification run): a mid-game scene arrived with an empty
     description and the visual truth in `background` ('a cathedral of cooling magma...');

@@ -34,6 +34,10 @@ class FakeLLM:
         self.finalize = llm.LLMReply(content="", tool_calls=[])
         self.creator_text = llm.LLMReply(content="What kind of world do you imagine?")
         self.image_prompt = llm.LLMReply(content="Wide shot of a place. plain unmarked surfaces, no signage.")
+        # art director: default empty -> art_direction returns None and the templates
+        # carry the renders, so creation tests keep their pre-director behavior unless
+        # they script a direction explicitly
+        self.artdirector = llm.LLMReply(content="")
         # default: interpreter yields nothing -> engine falls back to the raw action text,
         # so existing free-text tests behave exactly as before
         self.interpret = llm.LLMReply(content="", tool_calls=[])
@@ -63,6 +67,8 @@ class FakeLLM:
             return self.resolve
         if sys.startswith("You write a single image-generation prompt"):  # agentic image prompt
             return self.image_prompt
+        if sys.startswith("You are the art director"):       # creation art direction
+            return self.artdirector
         if sys.startswith("You answer the player's tap"):    # tap-to-explain
             return self.explain
         if sys.startswith("You maintain the story recap"):   # rolling summary fold

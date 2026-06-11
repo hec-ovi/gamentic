@@ -146,7 +146,8 @@ export function downloadJson(data, filename) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  // optional-chained: the delayed revoke may outlive a DOM that never had it (jsdom)
+  setTimeout(() => URL.revokeObjectURL?.(url), 5000);
 }
 
 // Import a previously exported adventure (template or checkpoint): always a

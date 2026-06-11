@@ -25,6 +25,7 @@ from .storage import (  # noqa: F401
     _existing_char_urls, _persist, delete_all_media, delete_game_images,
 )
 from .jobs import (  # noqa: F401
-    _reference_url, generate_directed_image, generate_images_for_game,
-    generate_item_image, generate_scene_image, generate_view_snapshot,
+    _reference_url, art_direction, generate_creation_art, generate_directed_image,
+    generate_images_for_game, generate_item_image, generate_scene_image,
+    generate_view_snapshot,
 )

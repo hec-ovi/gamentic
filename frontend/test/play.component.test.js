@@ -1669,6 +1669,19 @@ test("an item media-ready event (SSE) refreshes state so the pack slot gains its
   }
 });
 
+test("an image-less pack slot abbreviates past the article (a heavy iron key reads HI, not AH)", async () => {
+  const u = user();
+  const key = { id: "i-key", name: "a heavy iron key", description: "notched, cold", qty: 1, image_url: null };
+  server.use(
+    http.get(`${API}/games/:id/state`, () =>
+      HttpResponse.json(makeState({ player: { life: 18, max_life: 20, points: 3, location: "the alley", inventory: [key], flags: {} } }))),
+  );
+  await gotoPlay(u);
+  const abbr = document.querySelector(".player-items .slot-abbr");
+  expect(abbr).toBeTruthy();
+  expect(abbr.textContent.trim()).toBe("HI");
+});
+
 test("whisper lines label the speaker with their square face, not a text name (owner)", async () => {
   const u = user();
   server.use(
