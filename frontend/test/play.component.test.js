@@ -525,7 +525,10 @@ test("whisper replies SPEAK with the character's voice through the speak pipelin
     http.get(`${API}/games/:id/state`, () => HttpResponse.json(voiced)),
     http.post(`${API}/games/:id/action`, () =>
       HttpResponse.json({
-        beats: [makeBeat({ kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "Hush now.", private_with: "c1" })],
+        beats: [
+          // private replies arrive with emotion "whisper" (the wire guarantee)
+          makeBeat({ kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "Hush now.", private_with: "c1", emotion: "whisper" }),
+        ],
         state: voiced,
       }),
     ),
@@ -546,7 +549,10 @@ test("whisper replies SPEAK with the character's voice through the speak pipelin
   await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
 
   await waitFor(() =>
-    expect(prepared).toHaveBeenCalledWith(expect.objectContaining({ text: "Hush now.", voiceId: "vx-jacker" })),
+    // the emotion must ride along to /voice/speak (work order item 12 [J])
+    expect(prepared).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Hush now.", voiceId: "vx-jacker", emotion: "whisper" }),
+    ),
   );
 }, 10000);
 
@@ -644,14 +650,18 @@ test("the speak button walks loading -> playing -> back to idle", async () => {
   expect(btn.getAttribute("aria-label")).toMatch(/play voice/i);
 });
 
-test("Look from the whisper panel: sends a look segment and the results mirror into the thread", async () => {
+test("Look from the whisper panel is PRIVATE: whisper mode:'look' on the wire, nothing leaks into the public story", async () => {
   const u = user();
   let body;
   server.use(
     http.post(`${API}/games/:id/action`, async ({ request }) => {
       body = await request.json();
+      // the echo and the prose come back PRIVATE (private_with set), per item K
       return HttpResponse.json({
-        beats: [makeBeat({ id: "lk-n", kind: "narration", text: "Her scar catches the light." })],
+        beats: [
+          makeBeat({ id: "lk-e", kind: "action", speaker: "player", text: "you quietly study Jacker", private_with: "c1" }),
+          makeBeat({ id: "lk-n", kind: "narration", text: "His scar catches the light.", private_with: "c1" }),
+        ],
         state: makeState(),
       });
     }),
@@ -664,13 +674,18 @@ test("Look from the whisper panel: sends a look segment and the results mirror i
   await waitFor(() => expect(within(profileEl()).getByRole("button", { name: /^look$/i })).toBeTruthy());
 
   await u.click(within(profileEl()).getByRole("button", { name: /^look$/i }));
-  await u.type(pmBox(/what you look at/i), "her scar");
+  await u.type(pmBox(/what you look at/i), "his scar");
   await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
   await waitFor(() => expect(body).toBeTruthy());
-  expect(body.segments).toEqual([{ type: "look", text: "her scar" }]);
+  // the spec'd PRIVATE wire shape (fe-work-order item 13 [K]), never a public look
+  expect(body.segments).toEqual([{ type: "whisper", mode: "look", target: "Jacker", text: "his scar" }]);
 
-  // the look's prose mirrors into the panel thread (it is public on the wire)
+  // the study renders in the thread...
   await waitFor(() => expect(within(document.querySelector("#pmThread")).getByText(/scar catches the light/)).toBeTruthy(), { timeout: 4000 });
+  // ...and NEVER in the public story (neither the prose nor the player echo)
+  const story = document.querySelector("#storyStream");
+  expect(within(story).queryByText(/scar catches the light/)).toBeNull();
+  expect(within(story).queryByText(/quietly study/)).toBeNull();
 }, 10000);
 
 test("the profile composer's Do mode whispers a discreet private action (mode: do)", async () => {
@@ -1283,4 +1298,200 @@ test("deleting a game from the library asks to confirm, then removes it", async 
   await u.click(screen.getByRole("button", { name: /^delete$/i }));
   // gone
   await waitFor(() => expect(screen.queryByText("Test Adventure")).toBeNull());
+});
+
+// ---------------------------------------------------------------------------
+// round 3.2 audit batch: turn pacing, the never-expiring look hint, failure
+// recovery, typed-input preservation, error surfacing
+// ---------------------------------------------------------------------------
+
+test("turn pacing: the two selects PATCH turn_voices / turn_acts; Default sends 0", async () => {
+  const u = user();
+  const patches = [];
+  server.use(
+    http.patch(`${API}/games/:id/settings`, async ({ request }) => {
+      const body = await request.json();
+      patches.push(body);
+      return HttpResponse.json({
+        settings: {
+          narrator_gender: "", difficulty: "normal", history_beats: 80, summary_every: 10,
+          context_tokens: 0, turn_voices: 2, turn_acts: 1, ...body,
+        },
+        narrator_voice_id: "af_alloy",
+      });
+    }),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /^menu$/i }));
+
+  const voices = await screen.findByRole("combobox", { name: /voices per turn/i });
+  // the select shows the EFFECTIVE value from state (fixture: 2)
+  expect(voices.value).toBe("2");
+  await u.selectOptions(voices, "3");
+  await waitFor(() => expect(patches).toContainEqual({ turn_voices: 3 }));
+  // wait for the post-PATCH re-render to settle (the echo is the new truth)
+  await waitFor(() => expect(screen.getByRole("combobox", { name: /voices per turn/i }).value).toBe("3"));
+
+  const acts = screen.getByRole("combobox", { name: /acts per voice/i });
+  await u.selectOptions(acts, "0"); // the Default option
+  await waitFor(() => expect(patches).toContainEqual({ turn_acts: 0 }));
+});
+
+test("a look's rendering hint NEVER expires: it outlives the 45s window, polling backs off, and the image swaps in", async () => {
+  const u = user();
+  const realSetTimeout = globalThis.setTimeout;
+  const realTick = (ms = 10) => new Promise((r) => realSetTimeout(r, ms));
+  const polls = [];
+  let lateImage = null;
+  server.use(
+    http.post(`${API}/games/:id/action`, () =>
+      HttpResponse.json({
+        beats: [makeBeat({ id: "lk1", text: "You peer into the wreck.", turn_index: 7 })],
+        state: makeState({ images_enabled: true }),
+      }),
+    ),
+    http.get(`${API}/games/:id/beats`, ({ request }) => {
+      const url = new URL(request.url);
+      if (!url.searchParams.has("since")) {
+        return HttpResponse.json({ beats: [makeBeat({ id: "open", text: "Rain hammers the window of The Last Breath." })] });
+      }
+      polls.push(url.searchParams.get("since"));
+      return HttpResponse.json({ beats: lateImage ? [lateImage] : [] });
+    }),
+  );
+  const app = await mountApp();
+  await u.click(await screen.findByRole("button", { name: /enter your saved worlds/i }));
+  await u.click(await screen.findByRole("button", { name: /^enter$/i }));
+  await screen.findAllByText("The Last Breath");
+  app.destroy(); // stop the real-clock pollers from the open before faking time
+
+  vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval"] });
+  try {
+    // fire the look natively (user-event sleeps don't mix with a fake clock)
+    document.querySelector('[data-act="cmp-mode"][data-mode="look"]').click();
+    document.querySelector("#cmpInput").textContent = "the wreck";
+    document.querySelector('[data-form="action"]').dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await realTick(30); // let the POST resolve through MSW
+    expect(document.querySelector(".render-hint")).toBeTruthy();
+
+    const drain = async (fakeMs) => {
+      for (let t = 0; t < fakeMs; t += 3000) {
+        await vi.advanceTimersByTimeAsync(3000);
+        await realTick(5); // let each tick's fetch land
+      }
+    };
+
+    // past the old 45s cliff: the hint MUST survive (the image is guaranteed)
+    await drain(48000);
+    expect(document.querySelector(".render-hint")).toBeTruthy();
+
+    // after ~60s the poll backs off to every 3rd tick (~9s)
+    await drain(15000); // through the 60s mark
+    const atBackoff = polls.length;
+    await drain(30000); // 30s inside the backoff zone: ~3-4 polls, not 10
+    const inBackoff = polls.length - atBackoff;
+    expect(inBackoff).toBeGreaterThanOrEqual(2);
+    expect(inBackoff).toBeLessThanOrEqual(5);
+    expect(document.querySelector(".render-hint")).toBeTruthy();
+
+    // the render finally lands: the placeholder swaps for the image
+    lateImage = makeBeat({
+      id: "lk-img", kind: "image", speaker: "narrator", turn_index: 8,
+      image_url: "/media/g-test/look.png", text: "The wreck up close, hull torn open.",
+    });
+    await drain(12000);
+    expect(document.querySelector(".render-hint")).toBeNull();
+    expect(document.querySelector('#storyStream [data-beat-id="lk-img"] img')).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
+}, 20000);
+
+test("optimistic echo error restore: a failed SAY returns the typed line to the main composer in say mode", async () => {
+  const u = user();
+  server.use(http.post(`${API}/games/:id/action`, () => new HttpResponse(null, { status: 502 })));
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /^say$/i }));
+  await u.type(cmpBox(), "hello there");
+  await u.click(screen.getByRole("button", { name: /^send$/i }));
+
+  // pending bubble shows, then the failed turn takes it back
+  await waitFor(() => expect(document.querySelector('[data-beat-id^="pending-"]')).toBeNull());
+  // the typed line is back in the composer, still in say mode, nothing lost
+  await waitFor(() => expect(document.querySelector("#cmpInput").textContent).toBe("hello there"));
+  expect(screen.getByRole("button", { name: /^say$/i }).classList.contains("active")).toBe(true);
+  expect(document.querySelector(".toast")).toBeTruthy();
+});
+
+test("a failed game open returns to the library with a toast instead of stranding on the loading screen", async () => {
+  const u = user();
+  server.use(http.get(`${API}/games/:id/state`, () => HttpResponse.json({ detail: "Unknown game" }, { status: 404 })));
+  await mountApp();
+  await u.click(await screen.findByRole("button", { name: /enter your saved worlds/i }));
+  await u.click(await screen.findByRole("button", { name: /^enter$/i }));
+
+  // back in the library (the cards are live), not on "Loading the adventure..."
+  expect(await screen.findByRole("button", { name: /^enter$/i })).toBeTruthy();
+  expect(screen.queryByText(/loading the adventure/i)).toBeNull();
+  await waitFor(() => expect(document.querySelector(".toast")).toBeTruthy());
+  expect(document.querySelector(".toast").textContent).toMatch(/unknown game/i);
+});
+
+test("a background re-render never erases a half-typed composer line", async () => {
+  const u = user();
+  await gotoPlay(u);
+  await u.type(cmpBox(), "I was still typing th");
+  // any full re-render stands in for the late-beat / art-poll renders here:
+  // opening and closing a profile rebuilds the whole DOM twice
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await u.click(within(profileEl()).getByRole("button", { name: /back to the scene/i }));
+  await waitFor(() => expect(document.querySelector("#cmpInput").textContent).toBe("I was still typing th"));
+});
+
+test("a 422 on a settings PATCH toasts the human validation message, not [object Object]", async () => {
+  const u = user();
+  server.use(
+    http.patch(`${API}/games/:id/settings`, () =>
+      HttpResponse.json(
+        { detail: [{ loc: ["body", "summary_every"], msg: "value is not a valid cadence", type: "value_error" }] },
+        { status: 422 },
+      ),
+    ),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /^menu$/i }));
+  const cadence = await screen.findByRole("spinbutton", { name: /auto-summarize/i });
+  await u.clear(cadence);
+  await u.type(cadence, "25");
+  cadence.blur();
+  await waitFor(() => expect(document.querySelector(".toast")).toBeTruthy());
+  expect(document.querySelector(".toast").textContent).toMatch(/not a valid cadence/i);
+  expect(document.querySelector(".toast").textContent).not.toMatch(/object Object/);
+});
+
+test("story memory: below-minimum values mark invalid and never PATCH (all three controls)", async () => {
+  const u = user();
+  const patches = [];
+  server.use(
+    http.patch(`${API}/games/:id/settings`, async ({ request }) => {
+      patches.push(await request.json());
+      return HttpResponse.json({ settings: {}, narrator_voice_id: null });
+    }),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /^menu$/i }));
+  const cases = [
+    [/memory depth/i, "7"],
+    [/auto-summarize/i, "1"],
+    [/context budget/i, "3999"],
+  ];
+  for (const [label, bad] of cases) {
+    const field = await screen.findByRole("spinbutton", { name: label });
+    await u.clear(field);
+    await u.type(field, bad);
+    field.blur();
+    await waitFor(() => expect(field.classList.contains("invalid")).toBe(true));
+  }
+  expect(patches).toEqual([]);
 });

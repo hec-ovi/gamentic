@@ -38,6 +38,7 @@ export async function wipeEverything() {
     stopPolling();
     stopLateWatch();
     voice.stop();
+    voice.flush();
     state.active = null;
     state.confirm = null;
     state.exportChoice = null;
@@ -88,6 +89,8 @@ export async function openGame(gameId) {
     revealedArt: new Set(), // art urls already card-revealed (the effect plays once)
   };
   state.view = "play";
+  voice.stop(); // the previous game must not keep talking over this one
+  voice.flush();
   render();
   try {
     const [rawState, rawBeats] = await Promise.all([api.getState(gameId), api.getBeats(gameId)]);
@@ -96,8 +99,16 @@ export async function openGame(gameId) {
     state.active.lastTurnIndex = lastTurnIndexOf(state.active.beats);
     state.backendOnline = true;
   } catch (err) {
-    state.backendOnline = false;
-    state.backendError = err.message || "unreachable";
+    // never strand the player on the dead loading screen (it has no controls):
+    // back to the library with the reason, retry from there
+    if (err.status === 0) {
+      state.backendOnline = false;
+      state.backendError = err.message || "unreachable";
+    }
+    state.active = null;
+    state.view = "library";
+    showToast(err.message || "Could not open that adventure.");
+    refreshLibrary();
   } finally {
     if (state.active) state.active.generating = false;
     render();
@@ -108,10 +119,10 @@ export async function openGame(gameId) {
 
 // Export an adventure card: fetch the JSON, hand it to the browser as a download.
 export async function exportGame(gameId, kind, title) {
-  if (!gameId) return;
+  if (!gameId || state.exporting) return; // one export at a time
+  state.exporting = true;
   try {
     const data = await api.exportGame(gameId, kind);
-    render(); // the choice modal is gone; reflect it
     const slug =
       String(title || "adventure")
         .toLowerCase()
@@ -120,8 +131,9 @@ export async function exportGame(gameId, kind, title) {
     downloadJson(data, `${slug}-${kind}.json`);
     showToast(kind === "template" ? "Adventure exported - share the file." : "This moment is saved.");
   } catch (err) {
-    render();
     showToast(err.message || "Could not export this adventure.");
+  } finally {
+    state.exporting = false;
   }
 }
 
@@ -199,21 +211,27 @@ export function maybePollForArt() {
   if (!g || !g.state || !artMissing(g.state)) return;
 
   let tries = 0;
-  pollTimer = setInterval(async () => {
+  const timer = setInterval(async () => {
+    // peeking at settings PAUSES the poll (the game is live behind it)
+    if (state.active === g && state.view === "settings") return;
     tries += 1;
-    if (!state.active || state.view !== "play" || tries > 16) return stopPolling();
+    if (state.active !== g || state.view !== "play" || tries > 16) return stopPolling();
+    if (g.generating) return; // the turn's own response carries fresher state
     try {
-      const mapped = mapGameState(await api.getState(state.active.id));
-      const prev = state.active.state;
+      const mapped = mapGameState(await api.getState(g.id));
+      // a turn resolved (or the user left) while we awaited: this snapshot is
+      // STALE and must never clobber the fresh post-turn state
+      if (pollTimer !== timer || state.active !== g || g.generating) return;
+      const prev = g.state;
       const gainedPortrait = mapped.characters.some((c) => {
         const p = prev.characters.find((x) => x.id === c.id) || {};
         return (c.faceUrl && !p.faceUrl) || (c.bodyUrl && !p.bodyUrl);
       });
       const gainedScene = mapped.scene && mapped.scene.imageUrl && !(prev.scene && prev.scene.imageUrl);
-      state.active.state = mapped;
+      g.state = mapped;
       // don't yank the DOM out from under a running typewriter; the art shows
       // on the next natural render
-      if ((gainedPortrait || gainedScene) && state.view === "play" && !state.active.revealing) {
+      if ((gainedPortrait || gainedScene) && state.view === "play" && !g.revealing) {
         render();
         if (gainedScene) {
           const art = root.querySelector("#storyStream .prose-art img");
@@ -225,6 +243,7 @@ export function maybePollForArt() {
       /* keep trying */
     }
   }, 2500);
+  pollTimer = timer;
 }
 
 // Card-reveal: any [data-art] image not yet seen this session gets the

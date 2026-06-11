@@ -74,6 +74,10 @@ export function mapGameState(state = {}) {
       historyBeats: num(state.settings && state.settings.history_beats),
       summaryEvery: num(state.settings && state.settings.summary_every),
       contextTokens: num(state.settings && state.settings.context_tokens),
+      // turn pacing: voices the narrator may pull into ONE turn, acts each may
+      // take before it ends (effective values; 0 was "server default" on send)
+      turnVoices: num(state.settings && state.settings.turn_voices),
+      turnActs: num(state.settings && state.settings.turn_acts),
     },
     // prompt-token usage -> the header context meter (green -> amber -> red)
     context: mapContext(state.context),
@@ -209,13 +213,21 @@ export function voiceForBeat(beat, mappedState) {
   return null; // action / system are silent
 }
 
+// Mirror of the backend's norm_name (underscore/space collapse): the ONE
+// location-equality rule, shared by the story's scene anchor, the presence
+// checks and the whisper guard (strict equality drifted between them before).
+export function sameLocation(a, b) {
+  const norm = (v) => String(v || "").toLowerCase().replace(/[_\s]+/g, " ").trim();
+  return norm(a) === norm(b);
+}
+
 // Characters whose card appears this scene: present, co-located with the player,
 // and alive. The scene shows up to 3 (the backend cap).
 export function presentCharacters(mappedState) {
   if (!mappedState) return [];
   const here = mappedState.player.location;
   return (mappedState.characters || [])
-    .filter((c) => c.present && c.alive && (!here || c.location === here))
+    .filter((c) => c.present && c.alive && (!here || sameLocation(c.location, here)))
     .slice(0, 3);
 }
 

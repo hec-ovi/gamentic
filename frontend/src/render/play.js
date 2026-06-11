@@ -6,7 +6,9 @@ import { escapeHtml, help, holoFx, initials, titleCase } from "./common.js";
 import { renderInspectModal } from "./inspect.js";
 import { renderProfile } from "./profile.js";
 import { renderStory } from "./story.js";
-import { contextMeter, exitBtn, renderComposer, renderStack, sceneActionBtn, sceneItemSlot, slotGrid } from "./widgets.js";
+import { contextMeter, exitBtn, renderComposer, renderStack, renderViewPending, sceneActionBtn, sceneItemSlot, slotGrid } from "./widgets.js";
+
+export { renderViewPending };
 
 // ---------------------------------------------------------------------------
 // Play
@@ -37,7 +39,7 @@ export function renderPlay(state) {
         <main class="story" id="storyStream" data-help-anchor role="log" aria-live="polite" aria-relevant="additions" aria-label="Story">
           <div class="story-help-row">${help("story")}</div>
           ${renderStory(g)}
-          ${g.pendingView ? renderViewPending() : ""}
+          ${g.pendingView && !g.lastVia ? renderViewPending() : ""}
           ${locked ? renderNarrating() : ""}
         </main>
 
@@ -52,13 +54,6 @@ export function renderPlay(state) {
       ${g.inspect ? renderInspectModal(s, g) : ""}
       ${g.profile ? renderProfile(s, g) : ""}
     </div>`;
-}
-
-// A look turn's image (when the narrator grants one) renders in the background
-// and lands seconds later; this subtle hint marks the wait. It disappears when
-// the beat arrives or the polling window expires (no image is normal too).
-export function renderViewPending() {
-  return `<div class="render-hint" role="status"><span class="art-scan" aria-hidden="true"></span><em>rendering the view...</em></div>`;
 }
 
 // Give-picker: choose an item from the player's inventory to hand to a character.

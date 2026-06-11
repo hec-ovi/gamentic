@@ -24,9 +24,13 @@ export function updateSetting(el) {
 // game settings (PATCH /games/{id}/settings) + export / import
 // ---------------------------------------------------------------------------
 
+// Keys whose wire value is an integer (selects deliver strings; 0 = default).
+export const NUMERIC_GAME_SETTINGS = new Set(["turn_voices", "turn_acts"]);
+
 export async function patchGameSettings(key, value) {
   const g = state.active;
   if (!g || !g.state || g.settingsSaving) return;
+  if (NUMERIC_GAME_SETTINGS.has(key)) value = Number(value) || 0;
   g.settingsSaving = true;
   render();
   try {
@@ -38,6 +42,8 @@ export async function patchGameSettings(key, value) {
         historyBeats: Number(res.settings.history_beats) || 0,
         summaryEvery: Number(res.settings.summary_every) || 0,
         contextTokens: Number(res.settings.context_tokens) || 0,
+        turnVoices: Number(res.settings.turn_voices) || 0,
+        turnActs: Number(res.settings.turn_acts) || 0,
       };
     }
     // a narrator_gender change redesigns the narrator voice from the next line

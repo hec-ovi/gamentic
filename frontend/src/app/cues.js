@@ -68,8 +68,15 @@ export function showNotices(notices) {
   });
 }
 
+// tracked so repeated clicks on the same dot never stack document listeners
+let helpDismiss = null;
+
 export function showHelp(el) {
   document.querySelectorAll(".help-pop").forEach((p) => p.remove());
+  if (helpDismiss) {
+    document.removeEventListener("click", helpDismiss);
+    helpDismiss = null;
+  }
   const pop = document.createElement("div");
   pop.className = "help-pop";
   pop.textContent = HELP[el.dataset.help] || "Part of the game.";
@@ -81,8 +88,10 @@ export function showHelp(el) {
     if (ev.target !== el) {
       pop.remove();
       document.removeEventListener("click", close);
+      if (helpDismiss === close) helpDismiss = null;
     }
   };
+  helpDismiss = close;
   setTimeout(() => document.addEventListener("click", close), 0);
 }
 

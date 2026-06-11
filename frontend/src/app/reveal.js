@@ -31,6 +31,11 @@ export function reducedMotion() {
 
 export async function startReveal(g) {
   if (!g || g.revealing || !g.revealQueue || !g.revealQueue.length) return;
+  // exactly one drain loop per game: a new turn's beats are appended to (or
+  // replace) g.revealQueue and the live loop picks them up. The owner token
+  // keeps a loop that exits while a NEWER loop already started (game switched
+  // back and forth) from zeroing the new loop's queue behind its back.
+  const owner = (g.revealOwner = (g.revealOwner || 0) + 1);
   g.revealing = true;
   try {
     while (g.revealQueue && g.revealQueue.length && state.active === g && state.view === "play") {
@@ -39,9 +44,11 @@ export async function startReveal(g) {
       g.revealQueue.shift();
     }
   } finally {
-    if (g.revealQueue) g.revealQueue.length = 0;
-    g.revealing = false;
-    g.skipReveal = false;
+    if (g.revealOwner === owner) {
+      if (g.revealQueue) g.revealQueue.length = 0;
+      g.revealing = false;
+      g.skipReveal = false;
+    }
   }
 }
 

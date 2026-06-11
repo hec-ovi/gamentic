@@ -9,7 +9,8 @@
 
 import { state, voice, root, setRoot } from "./app/ctx.js";
 import { render } from "./app/ui.js";
-import { refreshLibrary } from "./app/game.js";
+import { refreshLibrary, stopPolling } from "./app/game.js";
+import { stopLateWatch } from "./app/turns.js";
 import { resetCreator } from "./app/creatorctl.js";
 import { maybeOpenLightbox, retryFailedImage } from "./app/media.js";
 
@@ -32,7 +33,18 @@ export function init(opts = {}) {
   resetCreator();
   render();
   refreshLibrary();
-  return { state, voice };
+  return {
+    state,
+    voice,
+    // tear an instance fully down (tests mount many per file; without this a
+    // finished test's pollers keep firing into the next one's network)
+    destroy() {
+      stopPolling();
+      stopLateWatch();
+      voice.stop();
+      voice.flush();
+    },
+  };
 }
 
 if (typeof document !== "undefined" && document.querySelector("#app")) {

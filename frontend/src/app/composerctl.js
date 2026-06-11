@@ -1,6 +1,7 @@
 // The composer controllers: Do/Say/Look modes, the current line as a wire
 // segment, stacking, and the public/private execute paths.
 
+import { sameLocation } from "../adapters.js";
 import { buildSegment, clearComposer, serializeComposer } from "../composer.js";
 import { root, state } from "./ctx.js";
 import { takeTurn } from "./turns.js";
@@ -115,12 +116,14 @@ export function executePrivate() {
   // render for the absent/dead; this guard covers anything that slips through)
   const pc = (g.state.characters || []).find((x) => x.id === g.profile.charId);
   const here = g.state.player && g.state.player.location;
-  if (!pc || !pc.alive || !pc.present || (here && pc.location !== here)) return;
+  if (!pc || !pc.alive || !pc.present || (here && !sameLocation(pc.location, here))) return;
   const pf = g.profile;
   const segments = [...pf.stack];
   const seg = currentSegment("pm");
   if (seg) segments.push(seg);
-  else if (pf.mode === "look" && !segments.length) segments.push({ type: "look", text: "" });
+  // an empty look from the panel is still a PRIVATE study of them (work order
+  // item K): echo and image stay in the whisper thread, never the public story
+  else if (pf.mode === "look" && !segments.length) segments.push({ type: "whisper", mode: "look", target: pf.name, text: "" });
   if (!segments.length) return;
   pf.stack = [];
   takeTurn(segments, pf.charId); // results mirror into this character's panel

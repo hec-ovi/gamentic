@@ -1,6 +1,13 @@
-import { test } from "vitest";
+import { test, afterEach } from "vitest";
 import assert from "node:assert/strict";
-import { createApi } from "../src/api.js";
+import { ApiError, createApi } from "../src/api.js";
+
+// every test stubs globalThis.fetch; put the real one back so this file can
+// never poison MSW's patched fetch if vitest isolation is ever relaxed
+const realFetch = globalThis.fetch;
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
 
 function stubFetch(calls) {
   return async (url, opts) => {
@@ -38,4 +45,38 @@ test("takeAction with an array sends { segments } (tagged buttons)", async () =>
   const segments = [{ type: "say", text: "hello", target: "Jacker" }];
   await createApi("http://x:8000").takeAction("g1", segments);
   assert.deepEqual(JSON.parse(calls[0].opts.body), { segments });
+});
+
+test("a hung request rejects with a friendly timeout ApiError instead of busy-locking forever", async () => {
+  const { vi } = await import("vitest");
+  vi.useFakeTimers();
+  try {
+    globalThis.fetch = () => new Promise(() => {}); // never settles
+    const promise = createApi("http://x:8000").listGames();
+    const rejected = assert.rejects(promise, (err) => {
+      assert.ok(err instanceof ApiError);
+      assert.equal(err.status, 0);
+      assert.match(err.message, /taking too long/i);
+      return true;
+    });
+    await vi.advanceTimersByTimeAsync(21000); // past the read budget
+    await rejected;
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a FastAPI 422 detail array flattens to its human messages (never [object Object])", async () => {
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 422,
+    statusText: "Unprocessable Entity",
+    text: async () =>
+      JSON.stringify({ detail: [{ loc: ["body", "history_beats"], msg: "ensure this value is at most 400", type: "value_error" }] }),
+  });
+  await assert.rejects(createApi("http://x:8000").patchSettings("g1", { history_beats: 9999 }), (err) => {
+    assert.equal(err.status, 422);
+    assert.equal(err.message, "ensure this value is at most 400");
+    return true;
+  });
 });

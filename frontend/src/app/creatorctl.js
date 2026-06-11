@@ -58,8 +58,10 @@ export async function enterCreator() {
     }));
     if (history.length) c.messages = [...c.messages, ...history];
     c.restored = history.length > 0;
-  } catch {
-    clearCreatorSession(); // unknown/expired session: start clean
+  } catch (err) {
+    // only a backend that genuinely no longer knows the session clears it; a
+    // network blip / 5xx keeps the pointer so the next entry retries
+    if (err.status === 404 || err.status === 410) clearCreatorSession();
   } finally {
     c.busy = false;
     if (state.view === "creator") render();

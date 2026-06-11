@@ -10,6 +10,16 @@ export function makeState(over = {}) {
     scene_status: "tense",
     current_goal: "Find the brass key",
     narrator_voice_id: "af_alloy",
+    settings: {
+      narrator_gender: "",
+      difficulty: "normal",
+      history_beats: 80,
+      summary_every: 10,
+      context_tokens: 0,
+      turn_voices: 2,
+      turn_acts: 1,
+      ...(over.settings || {}),
+    },
     context: { used: 12000, max: 131072 },
     images_enabled: false,
     time: { minutes: 95, day: 1, hour: 9, part: "morning", label: "Day 1, morning" },
@@ -78,7 +88,8 @@ export function makeState(over = {}) {
 
 function stripScene(over) {
   // top-level overrides except the nested ones we already merged
-  const { scene, player, quests, characters, ...rest } = over;
+  const { scene, player, quests, characters, settings, ...rest } = over;
+  void settings;
   return rest;
 }
 

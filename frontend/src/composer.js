@@ -85,18 +85,20 @@ export function clearComposer(editor) {
 // Build the wire segment for one composed line.
 //   mode: "say" | "do" | "look"
 //   channel: null (public scene) | { kind: "whisper", target } (the private channel)
-// Whisper is the private channel, where "do" becomes a discreet private action
-// via whisper mode:"do". Look is a real story action: study the scene (empty
-// text) or something specific; the narrator decides whether it earns an image.
+// Whisper is the private channel: "do" becomes a discreet private action via
+// whisper mode:"do", and "look" a quiet PRIVATE study (whisper mode:"look") -
+// its echo and resulting image land in the thread, never the public story, and
+// no reply comes back (a gaze isn't an address). A public look is a real story
+// action: study the scene (empty text) or something specific.
 export function buildSegment({ mode, text, refs, channel }) {
   const base = refs && refs.length ? { refs } : {};
-  if (mode === "look") {
-    // a look is a look wherever it is typed (the whisper composer offers it
-    // too); chip names are already inline in the text
-    return { type: "look", text };
-  }
   if (channel && channel.kind === "whisper") {
-    return { type: "whisper", text, target: channel.target, mode: mode === "do" ? "do" : "say", ...base };
+    const m = mode === "do" ? "do" : mode === "look" ? "look" : "say";
+    return { type: "whisper", text, target: channel.target, mode: m, ...base };
+  }
+  if (mode === "look") {
+    // chip names are already inline in the text
+    return { type: "look", text };
   }
   if (mode === "say") {
     const target = channel ? channel.target : undefined;
@@ -111,12 +113,15 @@ export function describeSegment(seg) {
     seg.type === "whisper"
       ? seg.mode === "do"
         ? "Discreetly"
-        : "Whisper"
+        : seg.mode === "look"
+          ? "Study"
+          : "Whisper"
       : seg.type === "look"
         ? "Look"
         : seg.type === "say"
           ? "Say"
           : "Do";
   const target = seg.target ? ` -> ${seg.target}` : "";
-  return `${verb}${target}: ${seg.type === "look" && !seg.text ? "the whole scene" : seg.text}`;
+  const fallback = seg.type === "look" ? "the whole scene" : seg.type === "whisper" && seg.mode === "look" ? "them, quietly" : "";
+  return `${verb}${target}: ${seg.text || fallback}`;
 }

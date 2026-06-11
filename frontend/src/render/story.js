@@ -1,7 +1,10 @@
 // The story log: beats by kind, player speech parsing, scene-art anchoring.
 
+import { sameLocation } from "../adapters.js";
 import { icon } from "../icons.js";
 import { escapeHtml, initials, stripWrappingQuotes } from "./common.js";
+
+export { sameLocation };
 
 // The story log. Only public beats (private_with == null) ever render here;
 // private exchanges live in the private modal. The current scene's art is mixed
@@ -55,12 +58,6 @@ export function renderStory(g) {
   });
   if (anchorIdx === -1 && artCard) parts.splice(visitStart, 0, artCard);
   return trim + parts.join("");
-}
-
-// Mirror of the backend's norm_location (underscore/space collapse).
-export function sameLocation(a, b) {
-  const norm = (v) => String(v || "").toLowerCase().replace(/[_\s]+/g, " ").trim();
-  return norm(a) === norm(b);
 }
 
 // The scene image as a collectible card living inside the prose. Loader rule:

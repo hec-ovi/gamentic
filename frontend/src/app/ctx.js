@@ -69,7 +69,10 @@ export function loadSettings() {
 
 export function saveSettings() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.settings));
+    // _return is navigation state (where settings was opened from), not a setting
+    const { _return, ...persisted } = state.settings;
+    void _return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
   } catch {
     /* ignore quota */
   }

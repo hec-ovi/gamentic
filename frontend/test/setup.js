@@ -25,9 +25,24 @@ export const defaultHandlers = [
   http.post(`${API}/games/:id/continue`, () =>
     HttpResponse.json({ beats: [makeBeat({ text: "The story drifts forward." })], state: makeState() }),
   ),
-  http.patch(`${API}/games/:id/settings`, () =>
-    HttpResponse.json({ settings: { narrator_gender: "", difficulty: "normal" }, narrator_voice_id: "af_alloy" }),
-  ),
+  // echo the request body merged over the full live-settings shape, like the
+  // real orchestrator (a partial echo would silently zero the other settings)
+  http.patch(`${API}/games/:id/settings`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    return HttpResponse.json({
+      settings: {
+        narrator_gender: "",
+        difficulty: "normal",
+        history_beats: 80,
+        summary_every: 10,
+        context_tokens: 0,
+        turn_voices: 2,
+        turn_acts: 1,
+        ...body,
+      },
+      narrator_voice_id: "af_alloy",
+    });
+  }),
   http.get(`${API}/games/:id/characters/:cid/profile`, () => HttpResponse.json(makeProfile())),
   http.post(`${API}/voice/speak`, () => HttpResponse.json({ audio_url: "/audio/x.wav" })),
   // swallow anything else (media etc.) so a stray request never hard-fails a test
@@ -41,12 +56,22 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 // Mount the app fresh against a given DOM root. Resets module state so each test
-// gets its own controller instance.
+// gets its own controller instance. The PREVIOUS instance's pollers are stopped
+// first: vi.resetModules() alone leaves their intervals firing into later tests.
+let lastApp = null;
+
 export async function mountApp() {
+  if (lastApp && typeof lastApp.destroy === "function") lastApp.destroy();
   document.body.innerHTML = '<div id="app" class="app-shell"></div>';
   localStorage.clear();
   const { vi } = await import("vitest");
   vi.resetModules();
   const mod = await import("../src/app.js");
-  return mod.init({ root: document.querySelector("#app") });
+  lastApp = mod.init({ root: document.querySelector("#app") });
+  return lastApp;
 }
+
+afterEach(() => {
+  if (lastApp && typeof lastApp.destroy === "function") lastApp.destroy();
+  lastApp = null;
+});

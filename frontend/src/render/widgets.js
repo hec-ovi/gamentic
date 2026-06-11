@@ -30,6 +30,15 @@ export function contextMeter(ctx, { mini = false, label = "Story memory" } = {})
     </div>`;
 }
 
+// A look turn's image is GUARANTEED but renders in the background and lands
+// seconds (sometimes minutes) later; this hint marks the wait until the image
+// beat swaps in. It never expires on a timer (the poll backs off instead).
+// Renders in the public story for a composer look, inside the whisper thread
+// for a private study (whisper mode:"look").
+export function renderViewPending() {
+  return `<div class="render-hint" role="status"><span class="art-scan" aria-hidden="true"></span><em>rendering the view...</em></div>`;
+}
+
 // --- fixed-slot grids (caps are maximums; empty slots show capacity) ---
 export function slotGrid(items, total, cls, cellFn = filledSlot) {
   let cells = "";

@@ -304,7 +304,7 @@ export function renderSettings(state) {
           <label class="set-row">
             <span class="set-label">Master volume<small>Overall loudness</small></span>
             <span class="holo-range">
-              <input type="range" min="0" max="1" step="0.05" data-setting="masterVolume" value="${st.masterVolume}" />
+              <input type="range" min="0" max="1" step="0.05" data-setting="masterVolume" value="${Number(st.masterVolume) || 0}" />
               <span class="range-val">${pct}%</span>
             </span>
           </label>
@@ -412,5 +412,29 @@ export function renderGameSettings(g) {
         ${radio("narrator_gender", "male", gs.narratorGender, "Male", "Takes effect on the next spoken line")}
       </fieldset>
 
+      <fieldset class="set-group" data-group="turn_pacing">
+        <legend class="set-legend">Turn pacing</legend>
+        <p class="set-note">How crowded a single turn can get: how many characters the narrator may pull into one turn, and how many times each of them may act before the turn ends. Default lets the narrator pace itself.</p>
+        ${pacingSelect("turn_voices", gs.turnVoices, "Voices per turn", "Characters who may speak or act in one turn (1-4).", 4, saving)}
+        ${pacingSelect("turn_acts", gs.turnActs, "Acts per voice", "Times each of those may act before the turn ends (1-3).", 3, saving)}
+      </fieldset>
+
     </section>`;
+}
+
+// One turn-pacing select: Default (sends 0, back to the narrator's own pace)
+// plus the explicit 1..max values. Shows the EFFECTIVE value from state.
+function pacingSelect(key, value, label, sub, max, saving) {
+  const options = [];
+  for (let v = 1; v <= max; v++) {
+    options.push(`<option value="${v}" ${Number(value) === v ? "selected" : ""}>${v}</option>`);
+  }
+  return `
+    <label class="set-row">
+      <span class="set-label">${escapeHtml(label)}<small>${escapeHtml(sub)}</small></span>
+      <select class="holo-input pace-select" data-game-setting="${key}" aria-label="${escapeHtml(label)}" ${saving}>
+        <option value="0">Default</option>
+        ${options.join("")}
+      </select>
+    </label>`;
 }

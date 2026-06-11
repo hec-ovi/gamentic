@@ -1094,6 +1094,8 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 /* story-memory numeric controls */
 .set-note { margin: 0 0 0.4rem; font-size: 0.78rem; color: var(--holo-dim); line-height: 1.5; }
 .mem-input { width: 7.5rem; text-align: right; font-variant-numeric: tabular-nums; }
+/* turn-pacing selects ride the same control sizing */
+.pace-select { width: 7.5rem; }
 .mem-input.invalid { border-color: var(--rose); color: var(--rose); box-shadow: 0 0 8px rgba(217, 95, 123, 0.4); }
 .memory-settings .ctx-meter { margin-top: 0.6rem; }
 

@@ -955,3 +955,46 @@ test("character deeds in the whisper thread are plain lines (pm-deed), speech st
   assert.equal(speech.classList.contains("pm-deed"), false, "speech stays a bubble");
   assert.ok(speech.classList.contains("pm-them"));
 });
+
+test("settings: the turn-pacing selects render the effective values plus a Default option", () => {
+  const st = mapGameState({ settings: { turn_voices: 3, turn_acts: 1 } });
+  const el = parse(renderApp({
+    view: "settings",
+    settings: { voiceEnabled: true, autoplayNarrator: false, autoplayCharacters: false, masterVolume: 0.7 },
+    active: { id: "g2", state: st, beats: [], generating: false },
+  }));
+  const voices = el.querySelector('select[data-game-setting="turn_voices"]');
+  const acts = el.querySelector('select[data-game-setting="turn_acts"]');
+  assert.ok(voices, "voices-per-turn select");
+  assert.ok(acts, "acts-per-voice select");
+  assert.ok(voices.querySelector('option[value="3"]').hasAttribute("selected"), "effective voices value selected");
+  assert.ok(acts.querySelector('option[value="1"]').hasAttribute("selected"), "effective acts value selected");
+  assert.equal(voices.querySelector('option[value="0"]').textContent, "Default", "Default option sends 0");
+  assert.equal(voices.querySelectorAll("option").length, 5, "Default + 1..4");
+  assert.equal(acts.querySelectorAll("option").length, 4, "Default + 1..3");
+  assert.ok(/how crowded a single turn can get/i.test(el.querySelector(".game-settings").textContent), "the copy explains the dial");
+});
+
+test("origin empty state: no 'Their past' section, but the grow note still shows for a fresh character", () => {
+  const fresh = { ...PROFILE_DATA, traits: [], moments: [], memories: [], origin: [] };
+  const el = parse(renderApp(profileOpen(fresh)));
+  const screenEl = el.querySelector(".profile-screen");
+  assert.equal(/Their past/.test(screenEl.textContent), false, "no origin section when nothing is learned");
+  assert.ok(/grow from your interactions/.test(screenEl.textContent), "the grow note shows");
+});
+
+test("a memory whose image is still rendering (image_url null) is skipped, never a broken img", () => {
+  const data = {
+    ...PROFILE_DATA,
+    moments: [],
+    memories: [
+      { image_url: null, caption: "still rendering", turn_index: 9 },
+      { image_url: "/media/g2/done.png", caption: "a finished one", turn_index: 8 },
+    ],
+  };
+  const el = parse(renderApp(profileOpen(data, { tab: "memory" })));
+  const imgs = [...el.querySelectorAll(".memory-strip img")];
+  assert.equal(imgs.length, 1, "only the ready memory renders");
+  assert.equal(imgs[0].getAttribute("src"), "/media/g2/done.png");
+  assert.equal(/still rendering/.test(el.textContent), false, "the pending one is absent entirely");
+});

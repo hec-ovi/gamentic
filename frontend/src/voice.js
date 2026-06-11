@@ -32,6 +32,9 @@ export class Voice {
     this._cache = new Map();
     // FIFO synthesis queue: the next render starts only when the previous done.
     this._queue = Promise.resolve();
+    // Generation token: flush() bumps it so queued-but-unstarted jobs from an
+    // abandoned game resolve null instead of occupying the single GPU.
+    this._gen = 0;
   }
 
   applySettings(settings = {}) {
@@ -57,7 +60,9 @@ export class Voice {
     const hit = this._cache.get(key);
     if (hit) return Promise.resolve(hit);
 
+    const gen = this._gen;
     const job = this._queue.then(async () => {
+      if (gen !== this._gen) return null; // flushed while queued (game switch)
       const again = this._cache.get(key); // a queued duplicate may have landed
       if (again) return again;
       try {
@@ -104,6 +109,13 @@ export class Voice {
     if (!this._Audio) return prepared.audioUrl; // headless: report intent
     this.playUrl(prepared.audioUrl, speakerId);
     return prepared.audioUrl;
+  }
+
+  // Abandon every queued-but-unstarted synthesis job (a left game's lines must
+  // not delay the next game's first voiced beat). The cache survives.
+  flush() {
+    this._gen += 1;
+    this._queue = Promise.resolve();
   }
 
   stop() {

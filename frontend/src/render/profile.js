@@ -1,9 +1,10 @@
 // The full-screen character profile: tabs, panes, the whisper channel.
 
+import { sameLocation } from "../adapters.js";
 import { icon } from "../icons.js";
 import { escapeHtml, holoFx, initials, stripWrappingQuotes, titleCase } from "./common.js";
 import { playerSpeech, speakBtn } from "./story.js";
-import { charActionBtn, contextMeter, renderComposer, renderStack, slotGrid } from "./widgets.js";
+import { charActionBtn, contextMeter, renderComposer, renderStack, renderViewPending, slotGrid } from "./widgets.js";
 
 // A character can be CONSULTED even when absent or dead: the profile stays
 // readable everywhere; only the INTERACTIVE parts (whisper composer, action
@@ -12,7 +13,7 @@ export function profilePresence(s, d) {
   const c = (s.characters || []).find((x) => x.id === d.id) || null;
   const here = s.player && s.player.location;
   const alive = d.alive !== false && (!c || c.alive !== false);
-  const present = Boolean(alive && c && c.present && (!here || c.location === here));
+  const present = Boolean(alive && c && c.present && (!here || sameLocation(c.location, here)));
   return { stateChar: c, alive, present };
 }
 
@@ -199,14 +200,17 @@ export function profileTraitsPane(d) {
 // moment's CONCEPT now), then the pivotal-event TIMELINE. Moments are curated
 // events with a story-clock stamp, never chat transcript.
 export function profileMemoryPane(d) {
-  if (!d.moments.length && !d.memories.length) {
+  // a memory whose render is still in the background has image_url null:
+  // skip it rather than show a broken <img> (it fills in on a later refetch)
+  const ready = d.memories.filter((m) => m.imageUrl);
+  if (!d.moments.length && !ready.length) {
     return `<p class="profile-empty muted">Nothing shared yet. The moments you live together will gather here.</p>`;
   }
-  const memories = d.memories.length
+  const memories = ready.length
     ? `<section class="profile-sec">
          <h4 class="profile-sec-head">${icon("eye")}<span>Memories</span></h4>
          <div class="memory-strip">
-           ${d.memories
+           ${ready
              .map(
                (m) =>
                  `<figure class="memory"><img src="${escapeHtml(m.imageUrl)}" alt="${escapeHtml(m.caption || "A remembered moment")}" loading="lazy" />${m.caption ? `<figcaption>${escapeHtml(m.caption)}</figcaption>` : ""}</figure>`,
@@ -265,6 +269,9 @@ export function renderWhisperChannel(s, g, d, locked) {
       ? `<div class="narrating pm-thinking" role="status" aria-live="polite"><span class="dot"></span><span class="dot"></span><span class="dot"></span><em>${escapeHtml(name)} considers...</em></div>`
       : "";
 
+  // a private study's guaranteed image lands HERE, in the thread (item K)
+  const pendingLook = g.pendingView && g.lastVia === pf.charId ? renderViewPending() : "";
+
   const channel = presence.present
     ? `${renderStack(pf.stack, "pm")}
        <form class="pm-form" data-form="private">
@@ -287,7 +294,7 @@ export function renderWhisperChannel(s, g, d, locked) {
     <section class="profile-sec whisper-sec">
       <h4 class="profile-sec-head">${icon("mic")}<span>Whisper</span></h4>
       ${presence.present ? `<p class="pm-hint">Only ${escapeHtml(name)} will ever know this.</p>` : ""}
-      <div class="pm-thread" id="pmThread">${thread}${thinking}</div>
+      <div class="pm-thread" id="pmThread">${thread}${pendingLook}${thinking}</div>
       ${channel}
     </section>`;
 }

@@ -22,6 +22,60 @@ import { continueStory, stopLateWatch, takeTurn } from "./turns.js";
 // read as a "refresh".
 const KEEP_SCROLL = [".char-column", ".set-main", ".profile-main"];
 
+// In-progress typed input must SURVIVE a full rebuild too: background renders
+// (a late image beat landing, the art poll, a profile refetch) fire exactly in
+// the post-turn typing window and would otherwise erase a half-typed line.
+const KEEP_INPUT = ["#cmpInput", "#pmInput"];
+
+function snapshotInputs() {
+  const focused = typeof document !== "undefined" ? document.activeElement : null;
+  const kept = [];
+  for (const sel of KEEP_INPUT) {
+    const el = root.querySelector(sel);
+    // chips are markup, so preserve innerHTML, not textContent
+    if (el && el.innerHTML) kept.push({ sel, html: el.innerHTML, focus: el === focused });
+  }
+  const creator = root.querySelector('[name="creatorText"]');
+  if (creator && creator.value) kept.push({ sel: '[name="creatorText"]', value: creator.value, focus: creator === focused });
+  return kept;
+}
+
+function restoreInputs(kept) {
+  for (const s of kept) {
+    const el = root.querySelector(s.sel);
+    if (!el) continue;
+    if (s.value != null) {
+      if (!el.value) el.value = s.value;
+    } else if (!el.innerHTML) {
+      el.innerHTML = s.html;
+    }
+    if (s.focus) {
+      el.focus();
+      placeCaretAtEnd(el);
+    }
+  }
+}
+
+// Typing continues from the end of the restored line (chip-aware caret
+// offsets are not worth their complexity; the end is where typing happens).
+function placeCaretAtEnd(el) {
+  if (el.isContentEditable === false && el.setSelectionRange) {
+    try {
+      el.setSelectionRange(el.value.length, el.value.length);
+    } catch {
+      /* non-text input */
+    }
+    return;
+  }
+  if (typeof window === "undefined" || !window.getSelection || !el.isContentEditable) return;
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  range.collapse(false);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
 export function render() {
   closeTagger();
   // chat scroll rule: keep the reader's place across rebuilds; pin to the
@@ -33,9 +87,11 @@ export function render() {
     const el = root.querySelector(sel);
     return el && el.scrollTop ? [sel, el.scrollTop] : null;
   }).filter(Boolean);
+  const keptInputs = snapshotInputs();
   root.dataset.view = state.view;
   root.innerHTML = renderApp(state);
   bind();
+  restoreInputs(keptInputs);
   kept.forEach(([sel, top]) => {
     const el = root.querySelector(sel);
     if (el) el.scrollTop = top;
@@ -150,6 +206,8 @@ export function onAction(act, el) {
     case "go-menu":
       stopPolling();
       stopLateWatch();
+      voice.stop(); // the story must not keep talking over the menu
+      voice.flush();
       state.view = "menu";
       render();
       refreshLibrary();
@@ -157,6 +215,8 @@ export function onAction(act, el) {
     case "go-library":
       stopPolling();
       stopLateWatch();
+      voice.stop();
+      voice.flush();
       state.view = "library";
       render();
       refreshLibrary();
@@ -265,6 +325,7 @@ export function onAction(act, el) {
       break;
     case "export-game":
       state.exportChoice = null;
+      render(); // close the choice modal NOW, not when the fetch resolves
       exportGame(gameId, el.dataset.kind, el.dataset.gameTitle);
       break;
     case "ask-wipe":

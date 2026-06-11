@@ -5,7 +5,7 @@ import { mapBeats, mapGameState } from "../adapters.js";
 import { diffState } from "../transitions.js";
 import { api, root, state } from "./ctx.js";
 import { applyTransitions, showToast } from "./cues.js";
-import { maybePollForArt } from "./game.js";
+import { maybePollForArt, stopPolling } from "./game.js";
 import { refreshProfile } from "./profilectl.js";
 import { startReveal } from "./reveal.js";
 import { withVoice } from "./speech.js";
@@ -26,7 +26,9 @@ export async function takeTurn(input, via = null) {
   const empty = Array.isArray(input) ? !input.length : !String(input || "").trim();
   if (empty) return;
   const wish = captureWish(g);
-  const look = Array.isArray(input) && input.some((s) => s.type === "look");
+  // a private study (whisper mode:"look") earns its guaranteed image too -
+  // it just lands in the thread instead of the public story
+  const look = Array.isArray(input) && input.some((s) => s.type === "look" || (s.type === "whisper" && s.mode === "look"));
   await resolveTurn(g, () => api.takeAction(g.id, input, wish), { look, echo: echoBeats(g, input, via), restore: input, wish, via });
 }
 
@@ -63,21 +65,38 @@ export function echoBeats(g, input, via = null) {
       const cid = pf && (pf.name === seg.target || pf.charId === seg.target) ? pf.charId : seg.target;
       beats.push(
         mk(
-          seg.mode === "do" ? `you discreetly: ${seg.text}` : `you whisper to ${seg.target}: "${seg.text}"`,
+          seg.mode === "do"
+            ? `you discreetly: ${seg.text}`
+            : seg.mode === "look"
+              ? `you quietly study ${seg.target}${seg.text ? ` - ${seg.text}` : ""}`
+              : `you whisper to ${seg.target}: "${seg.text}"`,
           cid,
         ),
       );
     } else if (seg.type === "look") {
       beats.push(mk(seg.text ? `you look at ${seg.text}` : "you study the scene"));
     } else if (seg.type === "attack") {
-      beats.push(mk(`you attack ${seg.target}`));
+      beats.push(mk(`you attack ${displayName(g, seg.target)}`));
     } else if (seg.type === "give") {
-      beats.push(mk(`you offer ${seg.item} to ${seg.target}`));
+      beats.push(mk(`you offer ${itemName(g, seg.item)} to ${displayName(g, seg.target)}`));
     } else if (seg.text) {
       beats.push(mk(seg.text));
     }
   }
   return beats;
+}
+
+// The echoed line always shows NAMES, never raw ids (segments built from
+// buttons carry ids; the wire prefers them, but the player must not read them).
+function displayName(g, target) {
+  const ch = ((g.state && g.state.characters) || []).find((c) => c.id === target);
+  return (ch && ch.name) || target;
+}
+
+function itemName(g, item) {
+  const inv = (g.state && g.state.player && g.state.player.inventory) || [];
+  const it = inv.find((i) => i.id === item || i.name === item);
+  return (it && it.name) || item;
 }
 
 // "Continue": the narrator advances the story with no player input. Same
@@ -109,6 +128,7 @@ export async function resolveTurn(g, send, { look = false, echo = null, restore 
   g.generating = true;
   g.skipReveal = true; // fast-forward any reveal still running from last turn
   stopLateWatch(); // the new turn supersedes the previous watch window
+  stopPolling(); // an in-flight /state art poll must never clobber the fresh state
   if (echo && echo.length) g.beats = [...g.beats, ...echo];
   render();
   let failed = false;
@@ -203,26 +223,34 @@ export function lastTurnIndexOf(beats, fallback = 0) {
 
 export const LATE_BEAT_INTERVAL = 3000;
 
-export const LATE_BEAT_TICKS = 15; // ~45s window
+export const LATE_BEAT_TICKS = 15; // ~45s window for NON-look turns
+
+// A LOOK turn ALWAYS produces exactly one image beat (narrator framing or the
+// server's snapshot fallback), so its placeholder must NEVER expire on a timer:
+// renders queue behind other GPU work and can lag minutes. After ~60s the poll
+// just backs off to every 3rd tick (~9s) and keeps waiting for the swap-in.
+export const LATE_BEAT_BACKOFF_AFTER = 20; // ticks (~60s)
+
+export const LATE_BEAT_BACKOFF_EVERY = 3; // then poll every 3rd tick (~9s)
 
 export function watchLateBeats(g) {
   stopLateWatch();
   if (!g || !Number.isInteger(g.lastTurnIndex)) return;
   let ticks = 0;
-  lateTimer = setInterval(async () => {
+  const timer = setInterval(async () => {
+    // peeking at settings PAUSES the watch (the game is live behind it);
+    // only leaving the game ends it
+    if (state.active === g && state.view === "settings") return;
     ticks += 1;
-    if (state.active !== g || state.view !== "play" || ticks > LATE_BEAT_TICKS) {
-      stopLateWatch();
-      // the window expired without an image: that is normal (the narrator may
-      // decide no image); just drop the hint
-      if (g.pendingView) {
-        g.pendingView = false;
-        if (state.active === g && state.view === "play") render();
-      }
-      return;
-    }
+    if (state.active !== g || state.view !== "play") return stopLateWatch();
+    // the generic window applies only when no image is owed (a spontaneous
+    // image is a maybe); a pending look image keeps the watch alive
+    if (ticks > LATE_BEAT_TICKS && !g.pendingView) return stopLateWatch();
+    if (ticks > LATE_BEAT_BACKOFF_AFTER && ticks % LATE_BEAT_BACKOFF_EVERY !== 0) return;
     try {
       const res = await api.getBeats(g.id, g.lastTurnIndex);
+      // a new turn superseded this watch, or the user left, while we awaited
+      if (lateTimer !== timer || state.active !== g || state.view !== "play") return;
       const seen = new Set(g.beats.map((b) => b.id));
       const fresh = mapBeats((res && res.beats) || [])
         .filter((b) => !seen.has(b.id))
@@ -241,6 +269,7 @@ export function watchLateBeats(g) {
       /* keep watching */
     }
   }, LATE_BEAT_INTERVAL);
+  lateTimer = timer;
 }
 
 export function stopLateWatch() {
