@@ -236,7 +236,7 @@ services:
       - INTERPRET_FREE_TEXT=${INTERPRET_FREE_TEXT:-true}
       - CHARACTER_MAX_TOKENS=${CHARACTER_MAX_TOKENS:-0}
       # A/B knob for the 26B: request-level enable_thinking on the narrator call only
-      - NARRATOR_THINKING=${NARRATOR_THINKING:-false}
+      - NARRATOR_THINKING=${NARRATOR_THINKING:-true}
       # whole-story memory: generous verbatim window + rolling facts-only recap
       - HISTORY_BEATS=${HISTORY_BEATS:-80}
       - SUMMARY_ENABLED=${SUMMARY_ENABLED:-true}
