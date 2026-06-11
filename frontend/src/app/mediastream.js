@@ -1,8 +1,10 @@
 // Media-ready PUSH: one EventSource per open game on GET /games/{gid}/events.
 // The backend announces the moment background media persists - scene art, a
 // portrait, an item card, a late image beat - and we re-fetch the cheap
-// endpoint that owns it: /state for scene/portrait, /beats?since= for
-// item/beat. This replaces the blind polling timers (a 40s poll ceiling once
+// endpoint that owns it: /state for scene/portrait, /beats?since= for beats,
+// and BOTH for items (the unlock card is a beat, but the slot thumbnail lives
+// in state's inventories - live: the card landed while the pack slot kept its
+// initials). This replaces the blind polling timers (a 40s poll ceiling once
 // lost a scene render that landed at +47s; only F5 recovered it).
 // EventSource reconnects itself (the server sends retry: 3000); after a drop
 // we owe one catch-up fetch of both. A slow 60s sweep stays as the fallback
@@ -37,7 +39,10 @@ export function watchMedia(g) {
         return; // keepalive noise / malformed line
       }
       if (ev.kind === "scene" || ev.kind === "portrait") refreshArt(g);
-      else if (ev.kind === "item" || ev.kind === "beat") pullBeats(g);
+      else if (ev.kind === "item") {
+        refreshArt(g); // the slot thumbnail (pack/scene/carrying) lives in /state
+        pullBeats(g); // the unlock card is a beat
+      } else if (ev.kind === "beat") pullBeats(g);
     };
     es.onopen = () => {
       if (stream !== es || state.active !== g) return;
@@ -79,10 +84,23 @@ export async function refreshArt(g) {
       return (c.faceUrl && !p.faceUrl) || (c.bodyUrl && !p.bodyUrl);
     });
     const gainedScene = mapped.scene && mapped.scene.imageUrl && !(prev.scene && prev.scene.imageUrl);
+    // an item thumbnail gain re-renders too: the unlock card may already sit in
+    // the stream while the slot still shows initials (every inventory counts -
+    // the pack, the scene grid, a character's carrying row)
+    const itemArt = (st) => {
+      const m = new Map();
+      const take = (items) => (items || []).forEach((it) => it && it.id && m.set(it.id, it.imageUrl));
+      take(st.player && st.player.inventory);
+      take(st.scene && st.scene.items);
+      (st.characters || []).forEach((c) => take(c.inventory));
+      return m;
+    };
+    const prevItems = itemArt(prev);
+    const gainedItemArt = [...itemArt(mapped)].some(([id, url]) => url && !prevItems.get(id));
     g.state = mapped;
     // don't yank the DOM out from under a running typewriter; the art shows
     // on the next natural render
-    if ((gainedPortrait || gainedScene) && state.view === "play" && !g.revealing) {
+    if ((gainedPortrait || gainedScene || gainedItemArt) && state.view === "play" && !g.revealing) {
       render();
       if (gainedScene) {
         const art = root.querySelector("#storyStream .prose-art img");

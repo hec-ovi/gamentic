@@ -1629,3 +1629,30 @@ test("focus returns to the WHISPER composer when a whisper turn resolves", async
   await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
   await waitFor(() => expect(document.activeElement).toBe(document.querySelector("#pmInput")), { timeout: 4000 });
 });
+
+test("an item media-ready event (SSE) refreshes state so the pack slot gains its thumbnail", async () => {
+  const u = user();
+  vi.stubGlobal("EventSource", FakeEventSource);
+  try {
+    const deck = { id: "i-deck", name: "Neural Interface Deck", description: "a cracked deck", qty: 1 };
+    const pending = makeState({ images_enabled: true, player: { life: 18, max_life: 20, points: 3, location: "the alley", inventory: [{ ...deck, image_url: null }], flags: {} } });
+    const ready = makeState({ images_enabled: true, player: { life: 18, max_life: 20, points: 3, location: "the alley", inventory: [{ ...deck, image_url: "/media/g/item-deck.png" }], flags: {} } });
+    let calls = 0;
+    server.use(
+      http.get(`${API}/games/:id/state`, () => {
+        calls += 1;
+        return HttpResponse.json(calls > 1 ? ready : pending);
+      }),
+    );
+    await gotoPlay(u);
+    // the pack slot starts as initials (live: it stayed that way after the card landed)
+    expect(document.querySelector(".player-items .slot-abbr")).toBeTruthy();
+    expect(document.querySelector('.player-items img[src="/media/g/item-deck.png"]')).toBeFalsy();
+    const es = FakeEventSource.instances[FakeEventSource.instances.length - 1];
+    es.open();
+    es.emit({ kind: "item", name: "Neural Interface Deck" });
+    await waitFor(() => expect(document.querySelector('.player-items img[src="/media/g/item-deck.png"]')).toBeTruthy());
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
