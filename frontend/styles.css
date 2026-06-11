@@ -920,6 +920,17 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 .moment-when { font-family: var(--font-display); font-size: 0.6rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-muted); }
 .moment-event .moment-text { color: var(--ink); font-size: 0.88rem; line-height: 1.45; }
 
+/* the whole figure is the lightbox trigger now - caption plate included */
+figure.prose-art, figure.beat-image, .pm-image figure { cursor: zoom-in; }
+figure.prose-art.art-loading { cursor: default; }
+
+/* character names wear the display type, like the image titles (owner) */
+.bubble-name, .char-name, .cast-name {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
 /* the scene name opens the scene's inspect sheet */
 .scene-name-btn { background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
 .scene-name-btn:hover { color: var(--accent); text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 40%, transparent); }
@@ -1119,18 +1130,6 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 .beat-image + .veil-wrap .beat-image,
 .veil-wrap + .veil-wrap .beat-image,
 .veil-wrap + .beat-image { margin-top: 1.6rem; }
-
-/* "new image below" affordance (reader is up the log; never yank them) */
-.new-image-chip {
-  position: sticky; bottom: 0.6rem; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 0.45rem; padding: 0.4rem 0.9rem;
-  background: color-mix(in srgb, var(--surface-modal-2) 95%, transparent); border: 1px solid var(--accent); color: var(--accent);
-  font-family: var(--font-display); font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;
-  clip-path: polygon(calc(var(--chamfer) * 8px) 0, 100% 0, 100% calc(100% - calc(var(--chamfer) * 8px)), calc(100% - calc(var(--chamfer) * 8px)) 100%, 0 100%, 0 calc(var(--chamfer) * 8px));
-  box-shadow: 0 8px 26px color-mix(in srgb, var(--shadow-tint) 50%, transparent), 0 0 14px color-mix(in srgb, var(--accent) 30%, transparent);
-  animation: pop 0.4s var(--ease-pop) both; z-index: 5;
-}
-.new-image-chip svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; }
 
 /* ---- image lightbox: stored files are larger than their slots ---- */
 .lightbox-overlay {
