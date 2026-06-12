@@ -278,6 +278,80 @@ export function mapProfile(p = {}) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Unread whisper tracking. Characters can whisper the player unprompted, so a
+// private beat the player has not yet read needs a visible alert. "Seen" = the
+// character's Whisper tab is open/rendered. The seen marker is the ordinal of
+// the newest private beat from that character at the moment the tab was last
+// shown; anything newer than it is unread. The SAME computed count feeds the
+// card dot AND the tab badge, so the two surfaces can never disagree.
+// ---------------------------------------------------------------------------
+
+// A monotonic, comparable ordinal for a beat (turnIndex outranks seq). Pending
+// optimistic echoes carry no turnIndex and never count as unread anyway.
+export function beatOrdinal(beat) {
+  if (!beat || !Number.isInteger(beat.turnIndex)) return -1;
+  return beat.turnIndex * 100000 + (Number(beat.seq) || 0);
+}
+
+// The private beats a CHARACTER has spoken to the player (their dialogue /
+// narration / actions in the 1:1 thread) - never the player's own echoes and
+// never pending optimistic lines. These are what "unread" is measured against.
+function characterPmBeats(g, charId) {
+  return (g.beats || []).filter(
+    (b) => b.privateWith === charId && !b.pending && b.speaker !== "player",
+  );
+}
+
+export function pmSeenKey(gameId, charId) {
+  return `gamentic.pmseen.${gameId}.${charId}`;
+}
+
+// The persisted seen marker (the newest private-beat ordinal the player has
+// seen for this character). -1 when nothing has been seen / storage is empty.
+export function loadPmSeen(gameId, charId) {
+  try {
+    const raw = localStorage.getItem(pmSeenKey(gameId, charId));
+    const n = Number(raw);
+    return Number.isFinite(n) && raw != null ? n : -1;
+  } catch {
+    return -1;
+  }
+}
+
+function savePmSeen(gameId, charId, ordinal) {
+  try {
+    localStorage.setItem(pmSeenKey(gameId, charId), String(ordinal));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+// How many of a character's private beats are NEWER than the seen marker.
+// Card dot and Whisper-tab badge both read THIS number.
+export function unreadPmCount(g, charId) {
+  if (!g || !g.id) return 0;
+  const seen = loadPmSeen(g.id, charId);
+  let count = 0;
+  for (const b of characterPmBeats(g, charId)) {
+    if (beatOrdinal(b) > seen) count += 1;
+  }
+  return count;
+}
+
+// Mark every private beat currently in hand for this character as seen (called
+// while their Whisper tab is open/rendered). Idempotent: it only ever advances
+// the marker, so re-renders while the tab stays open keep it caught up.
+export function markPmSeen(g, charId) {
+  if (!g || !g.id) return;
+  let newest = loadPmSeen(g.id, charId);
+  for (const b of characterPmBeats(g, charId)) {
+    const o = beatOrdinal(b);
+    if (o > newest) newest = o;
+  }
+  if (newest >= 0) savePmSeen(g.id, charId, newest);
+}
+
 function num(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;

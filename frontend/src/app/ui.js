@@ -3,10 +3,11 @@
 // re-renders never re-wire anything).
 
 import { Idiomorph } from "../../vendor/idiomorph.esm.js";
+import { markPmSeen } from "../adapters.js";
 import { renderApp } from "../render.js";
 import { executeComposer, executePrivate, setComposerMode, stackSegment, unstackSegment } from "./composerctl.js";
 import { beginAdventure, clearCreatorSession, enterCreator, resetCreator, sendCreatorMessage } from "./creatorctl.js";
-import { root, state, storyNearBottom, voice } from "./ctx.js";
+import { root, state, storyNearBottom, torn, voice } from "./ctx.js";
 import { showHelp } from "./cues.js";
 import { exportGame, importGameFile, markArtReveals, openGame, refreshLibrary, removeGame, wipeEverything } from "./game.js";
 import { stopMediaWatch } from "./mediastream.js";
@@ -77,6 +78,7 @@ function placeCaretAtEnd(el) {
 }
 
 export function render() {
+  if (torn || !root) return; // a torn-down instance must not touch the DOM/globals
   delegate();
   closeTagger();
   // chat scroll rule: pin to the bottom only when the reader was already
@@ -85,6 +87,14 @@ export function render() {
   const stick = !story || storyNearBottom(story);
   const keptInputs = snapshotInputs();
   root.dataset.view = state.view;
+  // While a character's Whisper tab is the open pane, every private beat in
+  // hand counts as SEEN. Mark BEFORE building the HTML so the cast-card dot and
+  // the tab badge (which both read the seen marker) render already-cleared this
+  // same pass - no separate timer, no one-render lag.
+  if (state.view === "play" && state.active && state.active.profile) {
+    const pf = state.active.profile;
+    if (pf.tab === "whisper") markPmSeen(state.active, pf.charId);
+  }
   // MORPH, don't rebuild: idiomorph diffs the real DOM against the fresh
   // HTML and patches in place, so unchanged nodes keep their identity -
   // focus, caret, scroll positions and mid-flight animations all survive a

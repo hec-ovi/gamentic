@@ -14,6 +14,15 @@ export function setRoot(el) {
   root = el;
 }
 
+// A destroyed controller must stop touching the DOM and shared globals
+// (localStorage seen-markers, render): deferred reveals / profile refetches can
+// still fire after teardown (tests mount many instances per file; in prod a
+// torn instance is simply gone). render() bails when this is set.
+export let torn = false;
+export function setTorn(v) {
+  torn = v;
+}
+
 export const state = {
   view: "menu", // menu | library | creator | play | settings
   games: [], // raw library entries from GET /games

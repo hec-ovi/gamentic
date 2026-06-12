@@ -10,12 +10,26 @@ from ..config import settings
 from . import parsing
 
 
-def _display(s: dict, key: str) -> str:
+def _display(s: dict, key: str, conn=None, gid: str | None = None, item: bool = False) -> str:
     """The human name for an id carried by this segment's entity chips (refs). Chips send
-    {kind, id, name}, so the readable action text never leaks raw ids to the model/player."""
+    {kind, id, name}, so the readable action text never leaks raw ids to the model/player.
+    When the chip refs DON'T carry the key (the give/attack picker sends a bare id with no
+    refs - live: 'you give 408f0801a83d to Sera'), fall back to resolving it against the
+    DB: an item key -> the pack item's stored name, a target key -> a character's name (the
+    character resolver already accepts ids). The wire contract says echoes show names,
+    never ids; this seam is where a bare id is caught before it reaches the public echo."""
     for r in s.get("refs") or []:
         if r.get("id") and r["id"] == key and r.get("name"):
             return r["name"]
+    if conn is not None and gid is not None and key:
+        if item:
+            name = repo.player_item_name(conn, gid, key)
+            if name:
+                return name
+        else:
+            kind_t, row = repo.resolve_target(conn, gid, key)
+            if kind_t == "character" and row and row["name"]:
+                return row["name"]
     return key
 
 
@@ -34,8 +48,10 @@ def _sane_amount(v):
     return min(n, settings.DAMAGE_CAP)
 
 
-def _compose(segments) -> tuple[str, list[dict]]:
-    """Render tagged segments into a readable action string + the directed actions to apply."""
+def _compose(segments, conn=None, gid: str | None = None) -> tuple[str, list[dict]]:
+    """Render tagged segments into a readable action string + the directed actions to apply.
+    conn/gid let _display resolve a bare id (no entity chip) against the DB, so the give
+    picker's {item:'<id>', target:'<name>'} echoes the item NAME, never the raw id."""
     parts, directed = [], []
     for s in segments:
         t = (s.get("type") or "do").lower()
@@ -51,7 +67,7 @@ def _compose(segments) -> tuple[str, list[dict]]:
                             None)
                 if chip:
                     target = chip.get("id") or chip.get("name")
-            parts.append(f'you say "{text}"' + (f" to {_display(s, target)}" if target else ""))
+            parts.append(f'you say "{text}"' + (f" to {_display(s, target, conn, gid)}" if target else ""))
             if target:
                 directed.append({"tool": "_address", "args": {"target": target}})
         elif t == "attack":
@@ -59,19 +75,20 @@ def _compose(segments) -> tuple[str, list[dict]]:
             # "you attack Mira" and the narrator invented a bloody slap - the player's
             # stated force never reached the echo or the adjudication line)
             how = f": {text}" if text else ""
-            parts.append(f"you attack {_display(s, target) if target else 'them'}{how}")
+            tdisp = _display(s, target, conn, gid) if target else "them"
+            parts.append(f"you attack {tdisp}{how}")
             # _sane_amount HERE covers every client path at once: composer segments,
             # raw API segments, and the interpreter all flow through this compose, and
             # default-accept + _attempt_amount both read these args downstream
             directed.append({"tool": "attack", "args": {"target": target,
                                                         "amount": _sane_amount(s.get("amount"))},
-                             "display": {"target": _display(s, target) if target else "them",
-                                         "how": text}})
+                             "display": {"target": tdisp, "how": text}})
         elif t == "give":
-            parts.append(f"you give {_display(s, item)} to {_display(s, target) if target else 'them'}")
+            idisp = _display(s, item, conn, gid, item=True)
+            tdisp = _display(s, target, conn, gid) if target else "them"
+            parts.append(f"you give {idisp} to {tdisp}")
             directed.append({"tool": "give_item", "args": {"item": item, "target": target},
-                             "display": {"item": _display(s, item),
-                                         "target": _display(s, target) if target else "them"}})
+                             "display": {"item": idisp, "target": tdisp}})
         elif t == "look":
             # a look IS a story action (it can trigger reactions and discoveries), not
             # just an image request; the narrator decides whether the view earns a picture
@@ -152,18 +169,24 @@ def _match_exit(texts, exits) -> dict | None:
     return None
 
 
-def _character_reply(conn, gid, ch, emit, private_with=None):
+def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None):
     """Run one character turn (POV + tools). Returns the reaction targets to enqueue.
     Each character agent has its OWN context; its prompt size feeds ONLY its own meter
     (state.characters[].context). The global meter tracks the narrator's story context,
-    so small character calls never make the global number bounce around."""
+    so small character calls never make the global number bounce around.
+
+    private_with forces the WHOLE reply into one private thread (the whisper channel, and
+    a gift's forced reply). impulse is a directed prompt line prepended for this call only
+    (mirrors the whisper channel's directed reply): the forced gift reply hands the model
+    'the player just gave you <item>' so X always has something to answer."""
     segs: list[tuple[str, str]] = []
     creply = llm.LLMReply(content="")
     for _ in range(2):
         # one retry: a character occasionally returns nothing usable (live: spoken to,
         # no reply), and a silent addressed character reads as a bug, not a choice
         creply = llm.chat(
-            prompts.build_character_messages(conn, gid, ch, settings.CHAR_HISTORY_BEATS),
+            prompts.build_character_messages(conn, gid, ch, settings.CHAR_HISTORY_BEATS,
+                                             impulse=impulse),
             tools=tools.CHARACTER_TOOLS, tool_choice="auto",
             temperature=settings.CHARACTER_TEMPERATURE, max_tokens=settings.CHARACTER_MAX_TOKENS,
         )
@@ -178,12 +201,15 @@ def _character_reply(conn, gid, ch, emit, private_with=None):
         if segs or creply.tool_calls:
             break
     for kind, txt, emotion in segs:
-        # [say] -> dialogue (speech bubble); [do] -> action (a character's physical action).
-        # A private reply with no stated emotion is spoken as a whisper by nature.
-        if kind == "say" and private_with and not emotion:
+        # [say] -> dialogue (speech bubble); [do] -> action (a character's physical action);
+        # [whisper] -> dialogue meant for the player alone (ALWAYS private, even on a public
+        # turn - owner: 'characters should be able to also whisper'). A private reply with no
+        # stated emotion is spoken as a whisper by nature.
+        seg_private = private_with or (ch["id"] if kind == "whisper" else None)
+        if kind in ("say", "whisper") and seg_private and not emotion:
             emotion = "whisper"
-        emit(ch["id"], ch["name"], "dialogue" if kind == "say" else "action", txt,
-             private_with=private_with, emotion=emotion)
+        emit(ch["id"], ch["name"], "dialogue" if kind in ("say", "whisper") else "action", txt,
+             private_with=seg_private, emotion=emotion)
     reactions = []
     # memory marks written as text count exactly like real calls (live: the 26B
     # narrates its tool use - '{piece: "..."}' inside a [do] - instead of calling;
@@ -316,7 +342,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
 
     # ---- public turn (narrator + cascade) ----
     if has_public:
-        action_text, directed = _compose(public) if public else (action_text, [])
+        action_text, directed = _compose(public, conn, gid) if public else (action_text, [])
         if not continue_story:
             # the player's echo is THEIR words: typed input echoes verbatim (echo_text);
             # the composed rendition is for the narrator, never put in the player's mouth.
@@ -539,6 +565,19 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             if out["kind"] == "state" and out["text"]:
                 state_notes.append(out["text"])
             enqueue(out["reactions"])
+        # A gift's reply is a private whisper from the receiving character (owner: "when i
+        # give item a private whisper comes from that character... that must be forced").
+        # Every give that landed (not rejected, not refused) maps the receiver to the item;
+        # the public receipt stays public (a mechanical fact), but the receiver's reaction
+        # is owed to the player alone. Resolved AFTER default-accept so it covers both the
+        # narrator's explicit give_item and a defaulted give. A refused give never makes it
+        # here (it never became a pending attempt), so it forces no private reply.
+        gift_receivers: dict[str, str] = {}
+        for p in pending:
+            if p["family"] == "give" and not p["rejected"] and p["tid"] \
+                    and p["tid"] != "player":
+                gift_receivers[p["tid"]] = (p["d"].get("display", {}).get("item")
+                                            or p["d"]["args"].get("item") or "it")
         # Intra-reply retry: each invalid call gets ONE deterministic second chance, in
         # order, now that the whole reply has applied (live: set_disposition fired BEFORE
         # its spawn_character in the same reply). Still-invalid reasons become the
@@ -593,6 +632,11 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         steps = 0
         while queue and steps < settings.TURN_MAX_ACTOR_STEPS:
             cid = queue.popleft()["id"]
+            # a gift receiver answers PRIVATELY below, never in the public cascade: their
+            # whole reply this turn is owed to the player alone, so they are pulled out of
+            # the open reaction loop (give_item enqueued them; this is where that is undone)
+            if cid in gift_receivers:
+                continue
             ch = repo.get_character(conn, cid)
             if not ch or not ch["alive"] or not ch["present"] or ch["location"] != location:
                 continue
@@ -601,6 +645,18 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             acted[cid] = acted.get(cid, 0) + 1
             steps += 1
             enqueue(_character_reply(conn, gid, ch, emit))
+
+        # The forced private reply: every gift receiver answers in the private thread,
+        # GUARANTEED, even when the narrator cued nobody. The directed impulse names the
+        # gift outright so the model always has the moment to answer (mirrors the whisper
+        # channel's directed reply). Other characters' public reactions already ran above.
+        for cid, item_name in gift_receivers.items():
+            ch = repo.get_character(conn, cid)
+            if not ch or not ch["alive"] or not ch["present"] or ch["location"] != location:
+                continue
+            _character_reply(conn, gid, ch, emit, private_with=cid,
+                             impulse=f"The player just gave you {item_name}. "
+                                     f"React to the gift, just to them.")
 
     # ---- private channel (1:1; other characters never see it) ----
     # The private modal stacks say AND do segments at one character. Consecutive private

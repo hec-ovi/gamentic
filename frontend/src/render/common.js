@@ -94,3 +94,15 @@ export function titleCase(value) {
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (l) => l.toUpperCase());
 }
+
+// The unread-whisper alert: a small count badge for a character with private
+// beats the player has not yet read. Zero renders nothing. `cls` lets the cast
+// card (a floating dot) and the Whisper tab (an inline pill) style it apart
+// while reading the SAME count. A real number for screen readers; 9+ caps the
+// glyph width.
+export function unreadBadge(count, cls = "") {
+  const n = Number(count) || 0;
+  if (n < 1) return "";
+  const label = n === 1 ? "1 unread whisper" : `${n} unread whispers`;
+  return `<span class="pm-unread${cls ? ` ${cls}` : ""}" role="status" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${n > 9 ? "9+" : n}</span>`;
+}

@@ -57,6 +57,19 @@ def player_has_item(conn, gid: str, key: str) -> bool:
     return any(items._item_matches(it, key) for it in db.loads(p["inventory"], []))
 
 
+def player_item_name(conn, gid: str, key: str) -> str | None:
+    """The STORED name of a pack item addressed by id (or name). Returns None when the
+    player holds no such item. The give picker sends the raw inventory item id with no
+    entity chip, so the compose path resolves it here before it ever reaches the public
+    echo (live: 'you give 408f0801a83d to Sera' - the id leaked because _display only
+    knows chip refs)."""
+    p = get_player(conn, gid)
+    for it in db.loads(p["inventory"], []):
+        if items._item_matches(it, key):
+            return it["name"]
+    return None
+
+
 def near_pack_item(conn, gid: str, name: str):
     """Peek: the SINGLE pack record sharing the request's final token, or None when
     zero or several qualify (see items.near_match for the live incident). The caller

@@ -5,6 +5,7 @@ import { presentCharacters } from "../adapters.js";
 import { insertChip } from "../composer.js";
 import { icon } from "../icons.js";
 import { api, root, state } from "./ctx.js";
+import { openWhisper } from "./profilectl.js";
 import { takeTurn } from "./turns.js";
 import { render } from "./ui.js";
 
@@ -72,11 +73,21 @@ export async function doExplain() {
   }
 }
 
-export function doGive(item, target) {
+export async function doGive(item, target) {
   const g = state.active;
   if (!g) return;
+  // remember WHO is receiving (id for routing, name for the open) before the
+  // picker state is cleared - the give modal carries both.
+  const recipient = g.give ? { charId: g.give.charId, name: g.give.name } : null;
   g.give = null;
-  takeTurn([{ type: "give", item, target }]);
+  const ok = await takeTurn([{ type: "give", item, target }]);
+  // the turn resolved (the backend answered the give with private beats from
+  // the receiver): drop the player straight into that character's whisper
+  // thread, scrolled to the newest line (owner request). Only on success and
+  // only if we are still on this game's play screen.
+  if (ok && recipient && recipient.charId && state.active === g && state.view === "play") {
+    openWhisper(recipient.charId, recipient.name);
+  }
 }
 
 // document-level dismiss listener for the tagger popover (tracked so a stale

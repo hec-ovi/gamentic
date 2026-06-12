@@ -4,6 +4,12 @@ Notable changes to gamentic, newest first. No version numbers yet: this moves fa
 
 ## 2026-06-11
 
+### Gifts answer in whispers (owner playtest, round three: the give flow becomes intimate)
+- The public echo leaked a raw inventory id ("you give 408f0801a83d to Sera"): the give picker rightly sends the item ID, but the echo only knew entity-chip names. The compose seam now resolves bare ids against the DB (pack item id to its stored name, character id to their name), so echoes show names whatever a client sends.
+- An accepted give is answered PRIVATELY now: the mechanical receipt stays public, but the receiver's whole reaction lands in their whisper thread, and it is GUARANTEED, not hoped for: a receiver the narrator never cued gets a forced directed reply ("the player just gave you X"), mirroring the whisper channel. The frontend rides along: when a give resolves, you are redirected straight into that character's Whisper tab, scrolled to their reply.
+- Characters can whisper FIRST now: a [whisper]...[/whisper] span in any reply (public turns included) becomes a private dialogue beat for the player alone, with whisper emotion; the prompt teaches the tag. The overloaded inner [whisper] (the voice-tone idiom inside a say) still reads as tone, never as a private span.
+- Unseen whispers announce themselves: a gold unread badge on the character's cast card and on their profile's Whisper tab, counting their private lines newer than the last time you opened the thread (seen markers per game + character in localStorage; cleared the moment the thread renders). No new timers: badges update on the same turn-response and SSE-refetch paths everything else uses.
+
 ### The buttons learn common sense (owner playtest, round two)
 - "Give..." only exists while the pack holds anything to give (an empty-handed player was offered a gift menu into nothing), and a character already walking with you offers "Ask to stay" instead of "Ask to follow" - both deterministic, both in the affordance composer, so the frontend keeps rendering state instead of inventing rules.
 - The give picker speaks the pack's slot-grid language now: each item shows its unlock-card thumbnail with its name captioned beneath, and the empty slots show as gaps - not a column of bare text buttons. Same wire, same controller, richer skin.

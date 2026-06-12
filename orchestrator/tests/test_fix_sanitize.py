@@ -366,3 +366,36 @@ def test_separator_only_lines_are_never_prose():
     # so an all-separator reply reaches _scrub_narration as "" and the resolve pass fires
     emotion, text = parsing._scrub_narration(parsing.clean_prose("---"))
     assert text == ""
+
+
+# ---- 5. the [whisper] span vs the legacy inner-whisper emotion tone ----
+# [whisper] is OVERLOADED (owner: "characters should be able to also whisper"). A
+# top-level [whisper]...[/whisper] is a private span (kind 'whisper'); an INNER [whisper]
+# (the Maya1 idiom [say]"[whisper] ..." or [do][sigh] [whisper] "...") is just the
+# emotion tone the extractor lifts. The parser must keep the two apart by nesting.
+
+def test_top_level_whisper_span_parses_as_a_whisper_kind():
+    segs = parsing.parse_character_output(
+        '[say]"All is well."[/say][whisper]They listen. Say nothing.[/whisper]')
+    assert segs == [("say", "All is well.", ""),
+                    ("whisper", "They listen. Say nothing.", "")]
+
+
+def test_inner_whisper_inside_quotes_stays_a_say_with_whisper_tone():
+    # the old idiom: [whisper] sits INSIDE the say's quotes -> it is the tone, not a span
+    segs = parsing.parse_character_output('[say]"[whisper] Not here. Follow me."[/say]')
+    assert segs == [("say", "Not here. Follow me.", "whisper")]
+
+
+def test_inner_whisper_after_another_tone_in_a_do_stays_a_say():
+    # [do][sigh] [whisper] "..." -> reclassified say, first tone wins, no private span
+    segs = parsing.parse_character_output(
+        '[do][sigh] [whisper] "Do not waste your breath."[/do]')
+    assert segs == [("say", "Do not waste your breath.", "sigh")]
+
+
+def test_two_whisper_spans_in_a_row_both_parse_as_whispers():
+    segs = parsing.parse_character_output(
+        '[whisper]The bridge is a trap.[/whisper][whisper]Wait for my signal.[/whisper]')
+    assert segs == [("whisper", "The bridge is a trap.", ""),
+                    ("whisper", "Wait for my signal.", "")]

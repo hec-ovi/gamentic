@@ -1720,3 +1720,162 @@ test("joining a game seats you at the keyboard (composer focused)", async () => 
   await gotoPlay(u);
   await waitFor(() => expect(document.activeElement && document.activeElement.id).toBe("cmpInput"));
 });
+
+// ---------------------------------------------------------------------------
+// Give -> the receiver's whisper thread (owner: "once i give an item send me
+// to the whisper of that person ... i am redirected there")
+// ---------------------------------------------------------------------------
+
+test("after a GIVE resolves, the player lands in the receiver's whisper thread with the private reply", async () => {
+  const u = user();
+  const carrying = makeState({
+    player: { inventory: [{ id: "inv1", name: "credstick", description: "42 creds", qty: 1 }] },
+  });
+  server.use(
+    http.get(`${API}/games/:id/state`, () => HttpResponse.json(carrying)),
+    // the backend answers a give with PRIVATE beats from the receiver
+    http.post(`${API}/games/:id/action`, () =>
+      HttpResponse.json({
+        beats: [
+          makeBeat({ id: "give-echo", turn_index: 2, seq: 0, kind: "action", speaker: "player", text: "you offer credstick to Jacker", private_with: "c1" }),
+          makeBeat({ id: "give-reply", turn_index: 2, seq: 1, kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "I owe you for this.", private_with: "c1" }),
+        ],
+        state: carrying,
+      }),
+    ),
+  );
+  await gotoPlay(u);
+  // Give lives in the profile's Actions section
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getByRole("button", { name: /give/i })).toBeTruthy());
+  await u.click(within(profileEl()).getByRole("button", { name: /give/i }));
+  // pick the item from the slot-grid picker
+  await u.click(await screen.findByRole("button", { name: /^credstick$/i }));
+
+  // the turn resolves and we are REDIRECTED into Jacker's whisper thread:
+  // the profile dialog is open, the Whisper tab is selected...
+  await waitFor(() => {
+    const active = within(profileEl()).getByRole("tab", { selected: true });
+    expect(active.textContent).toMatch(/whisper/i);
+  }, { timeout: 4000 });
+  // ...and the private reply is visible in the thread
+  await waitFor(() => expect(within(document.querySelector("#pmThread")).getByText("I owe you for this.")).toBeTruthy(), { timeout: 4000 });
+}, 10000);
+
+// ---------------------------------------------------------------------------
+// unread-whisper badges (owner: "i want a message alert on their character
+// view like unseen messages")
+// ---------------------------------------------------------------------------
+
+test("an unprompted private beat from a character raises an unread badge on their card", async () => {
+  const u = user();
+  vi.stubGlobal("EventSource", FakeEventSource);
+  try {
+    server.use(
+      http.get(`${API}/games/:id/beats`, ({ request }) => {
+        const since = new URL(request.url).searchParams.get("since");
+        if (since === null)
+          return HttpResponse.json({ beats: [makeBeat({ id: "open", turn_index: 1, text: "Rain hammers the window." })] });
+        // the unprompted whisper lands on the post-event refetch
+        return HttpResponse.json({
+          beats: [makeBeat({ id: "ping", turn_index: 2, seq: 0, kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "Psst. Over here.", private_with: "c1" })],
+        });
+      }),
+    );
+    await gotoPlay(u);
+    // no whisper outstanding yet: no badge on the card
+    const col = document.querySelector('.char-col[data-char-id="c1"]');
+    expect(col.querySelector(".pm-unread")).toBeNull();
+
+    // the backend announces a new private beat; the app refetches /beats
+    const es = FakeEventSource.instances[FakeEventSource.instances.length - 1];
+    es.emit({ kind: "beat", private_with: "c1" });
+
+    // the card now carries the unread alert (count 1)
+    await waitFor(() => {
+      const badge = document.querySelector('.char-col[data-char-id="c1"] .pm-unread');
+      expect(badge).toBeTruthy();
+      expect(badge.textContent).toBe("1");
+    }, { timeout: 4000 });
+  } finally {
+    vi.unstubAllGlobals();
+    FakeEventSource.instances.length = 0;
+  }
+});
+
+test("opening the Whisper tab clears the unread badge, and the cleared state survives a re-render", async () => {
+  const u = user();
+  server.use(
+    http.get(`${API}/games/:id/beats`, ({ request }) =>
+      new URL(request.url).searchParams.has("since")
+        ? HttpResponse.json({ beats: [] })
+        : HttpResponse.json({
+            beats: [
+              makeBeat({ id: "open", turn_index: 1, text: "Rain hammers the window." }),
+              // an unread private line already in the log when the game opens
+              makeBeat({ id: "ping", turn_index: 1, seq: 5, kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "We need to talk.", private_with: "c1" }),
+            ],
+          }),
+    ),
+  );
+  await gotoPlay(u);
+  // the card shows the unread badge for the waiting whisper
+  await waitFor(() => expect(document.querySelector('.char-col[data-char-id="c1"] .pm-unread')).toBeTruthy());
+  // the Whisper tab label carries the SAME alert (one count, two surfaces)
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => {
+    const tab = within(profileEl()).getByRole("tab", { name: /whisper/i });
+    expect(tab.querySelector(".pm-unread")).toBeTruthy();
+  });
+
+  // opening the Whisper tab marks the thread seen: both badges clear
+  await u.click(within(profileEl()).getByRole("tab", { name: /whisper/i }));
+  await waitFor(() => expect(within(document.querySelector("#pmThread")).getByText("We need to talk.")).toBeTruthy());
+  expect(within(profileEl()).getByRole("tab", { name: /whisper/i }).querySelector(".pm-unread")).toBeNull();
+  expect(document.querySelector('.char-col[data-char-id="c1"] .pm-unread')).toBeNull();
+
+  // the cleared state PERSISTS: a free re-render (a no-op turn) keeps it clear
+  await u.click(within(profileEl()).getByRole("tab", { name: /profile/i }));
+  expect(within(profileEl()).getByRole("tab", { name: /whisper/i }).querySelector(".pm-unread")).toBeNull();
+  expect(document.querySelector('.char-col[data-char-id="c1"] .pm-unread')).toBeNull();
+}, 10000);
+
+test("the seen marker is namespaced per game: clearing one game's whispers does not touch another's", async () => {
+  // game A: open its Jacker whisper to clear it, then check storage namespacing
+  const u = user();
+  server.use(
+    http.get(`${API}/games/:id/beats`, ({ request }) =>
+      new URL(request.url).searchParams.has("since")
+        ? HttpResponse.json({ beats: [] })
+        : HttpResponse.json({
+            beats: [
+              makeBeat({ id: "open", turn_index: 1, text: "Rain." }),
+              makeBeat({ id: "ping", turn_index: 1, seq: 5, kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "Game A whisper.", private_with: "c1" }),
+            ],
+          }),
+    ),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await u.click(await within(profileEl()).findByRole("tab", { name: /whisper/i }));
+  await waitFor(() => expect(within(document.querySelector("#pmThread")).getByText("Game A whisper.")).toBeTruthy());
+
+  // game A's marker was written under its own game id; no other game's key exists
+  await waitFor(() => expect(localStorage.getItem("gamentic.pmseen.g-test.c1")).not.toBeNull());
+  const keys = Object.keys(localStorage).filter((k) => k.startsWith("gamentic.pmseen."));
+  expect(keys).toEqual(["gamentic.pmseen.g-test.c1"]);
+
+  // a DIFFERENT game's unread count reads its OWN (empty) marker: not cleared by
+  // game A's mark. Drive the pure helper with a stand-in game state.
+  const { unreadPmCount } = await import("../src/adapters.js");
+  const otherGame = {
+    id: "g-other",
+    beats: [{ id: "o1", turnIndex: 1, seq: 0, kind: "dialogue", speaker: "c1", text: "Game B whisper.", privateWith: "c1", pending: false }],
+  };
+  expect(unreadPmCount(otherGame, "c1")).toBe(1); // still unread in game B
+  // and game A, having been seen, reports zero for the same character id
+  const seenGame = { id: "g-test", beats: [{ id: "ping", turnIndex: 1, seq: 5, kind: "dialogue", speaker: "c1", text: "x", privateWith: "c1", pending: false }] };
+  expect(unreadPmCount(seenGame, "c1")).toBe(0);
+}, 10000);

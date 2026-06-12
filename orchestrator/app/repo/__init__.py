@@ -42,7 +42,7 @@ from .lore import match_lore  # noqa: F401
 from .providers import get_provider_overrides, set_provider_override  # noqa: F401
 from .players import (  # noqa: F401
     add_item, add_points, get_player, near_pack_item, player_dict, player_has_item,
-    remove_item, set_flag, set_life,
+    player_item_name, remove_item, set_flag, set_life,
 )
 from .quests import (  # noqa: F401
     get_objectives, get_quests, objective_text, quest_dict, quest_title,

@@ -29,7 +29,7 @@ export async function takeTurn(input, via = null) {
   // a private study (whisper mode:"look") earns its guaranteed image too -
   // it just lands in the thread instead of the public story
   const look = Array.isArray(input) && input.some((s) => s.type === "look" || (s.type === "whisper" && s.mode === "look"));
-  await resolveTurn(g, () => api.takeAction(g.id, input, wish), { look, echo: echoBeats(g, input, via), restore: input, wish, via });
+  return resolveTurn(g, () => api.takeAction(g.id, input, wish), { look, echo: echoBeats(g, input, via), restore: input, wish, via });
 }
 
 // Optimistic echo: the player's own line shows the moment they send it (the
@@ -170,6 +170,7 @@ export async function resolveTurn(g, send, { look = false, echo = null, restore 
     if (g.profile) refreshProfile(g); // the open profile reflects the new turn
     refocusComposer(g); // the lock lifted: hand the keyboard straight back
   }
+  return !failed;
 }
 
 // The reply landed and the composer unlocked: focus the active input so the

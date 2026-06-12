@@ -832,7 +832,7 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 
 /* cast roster: who exists and where, when not standing in the scene */
 .cast-roster { display: flex; flex-direction: column; gap: 0.35rem; }
-.cast-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.4rem; border: 1px solid var(--line-soft); border-left: 2px solid var(--speaker); background: color-mix(in srgb, var(--surface-story) 40%, transparent);
+.cast-row { position: relative; display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.4rem; border: 1px solid var(--line-soft); border-left: 2px solid var(--speaker); background: color-mix(in srgb, var(--surface-story) 40%, transparent);
   clip-path: polygon(calc(var(--chamfer) * 6px) 0, 100% 0, 100% 100%, 0 100%, 0 calc(var(--chamfer) * 6px)); }
 .cast-row.dead { opacity: 0.5; filter: grayscale(0.7); }
 .cast-portrait { width: 28px; height: 28px; flex: 0 0 auto; border: 1px solid var(--speaker); overflow: hidden; display: grid; place-items: center; border-radius: 4px; }
@@ -907,6 +907,17 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 .disp-hostile { color: var(--danger); border-color: var(--danger-border); }
 .disp-unknown { color: var(--ink-muted); border-color: var(--line-soft); }
 .char-hp { margin-top: 0.15rem; }
+
+/* unread-whisper alert: a gold count badge (gold == the whisper channel). One
+   helper, three placements - a floating dot on the cast card, a corner pip on
+   an elsewhere row, an inline pill on the Whisper tab. Same count everywhere. */
+.pm-unread { display: inline-grid; place-items: center; min-width: 1.05rem; height: 1.05rem; padding: 0 0.22rem;
+  font-family: var(--font-display); font-size: 0.6rem; font-weight: 800; line-height: 1; letter-spacing: 0.02em;
+  color: var(--ink-inverse); background: var(--gold); border: 1px solid color-mix(in srgb, var(--surface-page) 65%, transparent);
+  border-radius: 999px; box-shadow: 0 0 8px color-mix(in srgb, var(--gold) 70%, transparent); pointer-events: none; }
+.pm-unread.on-card { position: absolute; top: 0.45rem; right: 0.45rem; z-index: 3; }
+.pm-unread.on-row { position: absolute; top: 0.25rem; right: 0.3rem; z-index: 2; }
+.pm-unread.on-tab { margin-left: 0.35rem; }
 .hp-track { height: 5px; background: color-mix(in srgb, var(--surface-well) 85%, transparent); border: 1px solid var(--line-soft); overflow: hidden; }
 .hp-fill { height: 100%; background: linear-gradient(90deg, var(--danger), var(--danger-soft)); transition: width 0.4s; }
 .char-desc { margin: 0.6rem 0 0.5rem; font-size: 0.8rem; color: var(--ink-muted); line-height: 1.4; }

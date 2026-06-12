@@ -1,8 +1,8 @@
 // The play screen: the deck, character columns, the action bar, give modal.
 
-import { presentCharacters } from "../adapters.js";
+import { presentCharacters, unreadPmCount } from "../adapters.js";
 import { icon } from "../icons.js";
-import { cardCorners, escapeHtml, help, holoFx, initials, titleCase } from "./common.js";
+import { cardCorners, escapeHtml, help, holoFx, initials, titleCase, unreadBadge } from "./common.js";
 import { renderInspectModal } from "./inspect.js";
 import { renderProfile } from "./profile.js";
 import { renderStory } from "./story.js";
@@ -172,7 +172,7 @@ export function renderCharacters(s, locked, g = {}) {
   const roster = elsewhere.length
     ? `<div class="cast-roster">
          <div class="col-head sub">${icon("eye")}<span>Elsewhere</span></div>
-         ${elsewhere.map(castRow).join("")}
+         ${elsewhere.map((c) => castRow(c, g)).join("")}
        </div>`
     : "";
 
@@ -185,16 +185,18 @@ export function renderCharacters(s, locked, g = {}) {
 // the FULL-SCREEN profile; the card just hints at it ("expand to interact").
 export function renderCharColumn(c, s, locked, g = {}) {
   void locked;
-  void g;
   const hp =
     c.life != null && c.maxLife
       ? hpBar(c.life, c.maxLife, { cls: "char-hp", title: `${c.life}/${c.maxLife}` })
       : "";
+  // unseen private messages from this character get a count dot on their card
+  const unread = unreadBadge(unreadPmCount(g, c.id), "on-card");
   return `
     <article class="char-col${c.alive ? "" : " dead"}" data-char-id="${escapeHtml(c.id)}" style="--speaker:${escapeHtml(c.color)}">
       <button type="button" class="col-art" data-act="open-profile" data-char-id="${escapeHtml(c.id)}" data-char-name="${escapeHtml(c.name)}" title="Open ${escapeHtml(c.name)}'s profile" aria-label="Open ${escapeHtml(c.name)}'s profile">
         ${bodyArt(c, s)}
         <div class="col-grad" aria-hidden="true"></div>
+        ${unread}
         <span class="col-badges">
           ${dispositionBadges(c)}
         </span>
@@ -228,7 +230,7 @@ export function bodyArt(c, s) {
           </div>`;
 }
 
-export function castRow(c) {
+export function castRow(c, g = {}) {
   const avatar = avatarOrInitials({ url: c.faceUrl, name: c.name, color: c.color, fallbackCls: "cast-fallback" });
   let where;
   if (!c.alive) where = "fallen";
@@ -236,9 +238,13 @@ export function castRow(c) {
   else if (c.present === false) where = "gone";
   else if (c.location) where = `at ${titleCase(c.location)}`;
   else where = "elsewhere";
+  // an absent character can still whisper the player: their row carries the
+  // same unread alert as a present card
+  const unread = unreadBadge(unreadPmCount(g, c.id), "on-row");
   return `<button type="button" class="cast-row${c.alive ? "" : " dead"}" data-act="open-profile" data-char-id="${escapeHtml(c.id)}" data-char-name="${escapeHtml(c.name)}" style="--speaker:${escapeHtml(c.color)}" title="${escapeHtml(c.name)} - ${escapeHtml(where)}">
             <span class="cast-portrait">${avatar}</span>
             <span class="cast-id"><span class="cast-name">${escapeHtml(c.name)}</span><span class="cast-where">${escapeHtml(where)}</span></span>
+            ${unread}
           </button>`;
 }
 

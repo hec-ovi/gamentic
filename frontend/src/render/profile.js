@@ -1,8 +1,8 @@
 // The full-screen character profile: tabs, panes, the whisper channel.
 
-import { sameLocation } from "../adapters.js";
+import { sameLocation, unreadPmCount } from "../adapters.js";
 import { icon } from "../icons.js";
-import { escapeHtml, holoFx, initials, stripWrappingQuotes, titleCase } from "./common.js";
+import { escapeHtml, holoFx, initials, stripWrappingQuotes, titleCase, unreadBadge } from "./common.js";
 import { playerSpeech, speakBtn } from "./story.js";
 import { avatarOrInitials, artImg, charActionBtn, contextMeter, dispositionBadges, hpBar, narratingDots, renderComposer, renderStack, renderViewPending, secHead, slotGrid, traitLi, veilWrap } from "./widgets.js";
 
@@ -78,12 +78,15 @@ export function profileBody(s, g, d) {
     ? artImg({ url: d.bodyUrl || d.faceUrl, alt: d.name, caption: artCaption, cls: "profile-art" })
     : `<div class="profile-art fallback" role="img" aria-label="${escapeHtml(d.name)}"><span class="col-initial">${escapeHtml(initials(d.name))}</span></div>`;
 
+  // the Whisper tab carries the same unread alert as the cast card (one count,
+  // two surfaces): a character who whispered while another tab was open shows it
+  const unread = unreadBadge(unreadPmCount(g, pf.charId), "on-tab");
   const tabBar = `
     <div class="profile-tabs" role="tablist" aria-label="Character view">
       ${PROFILE_TABS.map(
         (t) =>
           `<button type="button" role="tab" class="profile-tab${tab === t.id ? " active" : ""}" aria-selected="${tab === t.id}"
-                   data-act="profile-tab" data-tab="${t.id}">${icon(t.icon)}<span>${t.label}</span></button>`,
+                   data-act="profile-tab" data-tab="${t.id}">${icon(t.icon)}<span>${t.label}</span>${t.id === "whisper" ? unread : ""}</button>`,
       ).join("")}
     </div>`;
 

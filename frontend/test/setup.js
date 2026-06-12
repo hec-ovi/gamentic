@@ -75,7 +75,16 @@ export async function mountApp() {
   return lastApp;
 }
 
-afterEach(() => {
+afterEach(async () => {
   if (lastApp && typeof lastApp.destroy === "function") lastApp.destroy();
+  // Mark the just-finished instance torn: deferred reveals / profile refetches
+  // can still fire on its module after the test ends; a torn render() no-ops, so
+  // they cannot scribble on the NEXT test's DOM or shared localStorage markers.
+  try {
+    const { setTorn } = await import("../src/app/ctx.js");
+    setTorn(true);
+  } catch {
+    /* module not loaded in non-component tests */
+  }
   lastApp = null;
 });

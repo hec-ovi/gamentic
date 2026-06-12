@@ -1,6 +1,9 @@
-import { test } from "vitest";
+import { test, beforeEach } from "vitest";
 import assert from "node:assert/strict";
-import { mapGameState, mapBeat, mapBeats, voiceForBeat, presentCharacters } from "../src/adapters.js";
+import {
+  mapGameState, mapBeat, mapBeats, voiceForBeat, presentCharacters,
+  unreadPmCount, markPmSeen, beatOrdinal, pmSeenKey,
+} from "../src/adapters.js";
 
 // Real-shaped payload captured from the live orchestrator.
 const RAW_STATE = {
@@ -150,6 +153,55 @@ test("tolerates missing fields without throwing", () => {
   assert.equal(s.narratorVoiceId, null);
   assert.deepEqual(s.characters, []);
   assert.equal(s.player.life, 0);
+});
+
+// ---- unread-whisper tracking (the shared count for card dot + tab badge) ----
+
+beforeEach(() => localStorage.clear());
+
+function pmGame(beats) {
+  return { id: "g-x", beats };
+}
+function pm(over) {
+  return { id: "p", turnIndex: 1, seq: 0, kind: "dialogue", speaker: "c1", privateWith: "c1", pending: false, ...over };
+}
+
+test("beatOrdinal: turn index outranks seq; missing turn index sorts below everything", () => {
+  assert.ok(beatOrdinal({ turnIndex: 2, seq: 0 }) > beatOrdinal({ turnIndex: 1, seq: 99 }));
+  assert.ok(beatOrdinal({ turnIndex: 1, seq: 1 }) > beatOrdinal({ turnIndex: 1, seq: 0 }));
+  assert.equal(beatOrdinal({ turnIndex: null, seq: 3 }), -1);
+  assert.equal(beatOrdinal(null), -1);
+});
+
+test("unreadPmCount counts only a CHARACTER's private beats, never the player's own or pending echoes", () => {
+  const g = pmGame([
+    pm({ id: "a", speaker: "c1" }),                          // from the character: counts
+    pm({ id: "b", speaker: "player", seq: 1 }),              // player's own echo: never
+    pm({ id: "c", speaker: "c1", seq: 2, pending: true }),   // optimistic pending: never
+    { id: "d", turnIndex: 1, seq: 3, kind: "dialogue", speaker: "c1", privateWith: null }, // public: never
+  ]);
+  assert.equal(unreadPmCount(g, "c1"), 1);
+});
+
+test("markPmSeen clears the count, and only newer beats reopen it", () => {
+  const g = pmGame([pm({ id: "a", turnIndex: 1, seq: 0 })]);
+  assert.equal(unreadPmCount(g, "c1"), 1);
+  markPmSeen(g, "c1");
+  assert.equal(unreadPmCount(g, "c1"), 0); // seen
+  g.beats.push(pm({ id: "b", turnIndex: 2, seq: 0 }));
+  assert.equal(unreadPmCount(g, "c1"), 1); // a newer whisper is unread again
+  markPmSeen(g, "c1");
+  assert.equal(unreadPmCount(g, "c1"), 0);
+});
+
+test("the seen marker is namespaced per game id (no cross-talk)", () => {
+  const a = { id: "game-a", beats: [pm({ id: "a", turnIndex: 3, seq: 0 })] };
+  const b = { id: "game-b", beats: [pm({ id: "b", turnIndex: 3, seq: 0 })] };
+  markPmSeen(a, "c1"); // only game-a's marker is written
+  assert.equal(localStorage.getItem(pmSeenKey("game-a", "c1")), "300000");
+  assert.equal(localStorage.getItem(pmSeenKey("game-b", "c1")), null);
+  assert.equal(unreadPmCount(a, "c1"), 0); // seen in game-a
+  assert.equal(unreadPmCount(b, "c1"), 1); // still unread in game-b
 });
 
 test("a character keeps four action buttons (3 base + the rotating offer); scene actions stay capped at 3", () => {

@@ -300,7 +300,8 @@ def _felt_hp(c) -> str:
     return "a little roughed up" if frac > 2 / 3 else ("hurt" if frac > 1 / 3 else "badly wounded")
 
 
-def build_character_messages(conn, gid: str, character, history_limit: int) -> list[dict]:
+def build_character_messages(conn, gid: str, character, history_limit: int,
+                             impulse: str | None = None) -> list[dict]:
     location = repo.get_player(conn, gid)["location"]
     # the verbatim window is what THEY witnessed (stamped per beat), not the location's
     # log: a follower keeps the scenes it lived through, a late arrival starts blank
@@ -380,8 +381,14 @@ def build_character_messages(conn, gid: str, character, history_limit: int) -> l
     # Trait anchor (recency): the top traits restated as the LAST thing the model reads,
     # the evidence-backed lever against persona drift over a long scene.
     anchor = f" - {'; '.join(traits[:3])}" if traits else ""
+    # A directed impulse (the forced gift reply): the gift already landed as a public
+    # beat in the scene window, but the narrator never cued this character to respond, so
+    # the prompt names the moment outright - 'the player just gave you <item>' - and the
+    # character always has something to answer (mirrors the whisper channel's prompt line).
+    impulse_block = f"({impulse.strip()})\n\n" if (impulse or "").strip() else ""
     user = render("character.user.md", location=location, scene=_transcript(scene),
-                  name=character["name"], memory_block=memory_block, anchor=anchor)
+                  name=character["name"], memory_block=memory_block, anchor=anchor,
+                  impulse_block=impulse_block)
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
