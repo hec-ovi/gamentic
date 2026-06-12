@@ -514,11 +514,17 @@ def _anna_view() -> dict:
     """The Anna preset for the panel: same write-only key discipline as the
     modalities. The plain-words notes carry what flipping the boolean means."""
     anna = anna_config()
-    notes = ["text and image are served by Anna's cloud endpoints while this is on",
-             "voice is off in Anna mode (Anna has no voice API); the game plays text-only",
+    notes = ["text is served through the Anna agent (anna-api adapter) while this is "
+             "on; a cloud gateway URL here or in .env bypasses the agent",
+             "image degrades to text-only play unless the gateway serves "
+             "/v1/images/generations (the agent's local API does not)",
+             "voice is off in Anna mode (Anna has no voice API)",
              "the GPU containers are skipped at compose-up when ANNA=true in .env; "
-             "a stack that is ALREADY running keeps running - run `docker compose "
-             "down` BEFORE flipping ANNA in .env (down only sees the active profile)"]
+             "a stack that is ALREADY running keeps running - ./up.sh handles the "
+             "flip, or run `docker compose down` BEFORE flipping ANNA in .env "
+             "(down only sees the active profile)",
+             "the agent must be signed in once at http://localhost:19001 (Web UI); "
+             "sign-in persists on the anna-data volume"]
     if anna.enabled and not anna.base_url:
         notes.insert(0, "base URL is EMPTY: set it (env ANNA_BASE_URL or here) "
                         "before the next game call")

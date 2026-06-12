@@ -65,15 +65,15 @@ function annaCard(cfg) {
   const notes = (cfg.notes || []).map(n => `<li>${esc(n)}</li>`).join("");
   return `<div class="card" id="card-anna" style="${cfg.enabled ? "border-color: var(--accent);" : ""}">
     <h2>Anna <span style="color:${cfg.enabled ? "var(--ok)" : "var(--dim)"}; font-size:12px;">${cfg.enabled ? "ON" : "off"}</span></h2>
-    <label>Anna mode (cloud text + image, voice off)</label>
+    <label>Anna mode (text via the Anna agent or a cloud gateway, voice off)</label>
     <select id="anna-enabled">
       <option value="false" ${cfg.enabled ? "" : "selected"}>no</option>
       <option value="true" ${cfg.enabled ? "selected" : ""}>yes</option>
     </select>
     <label>API key ${cfg.api_key ? "(one is set; leave blank to keep it)" : "(none set)"}</label>
     <input id="anna-api_key" type="password" placeholder="${cfg.api_key ? "unchanged" : ""}" autocomplete="new-password">
-    <label>Base URL (one URL; /v1 optional, normalized per modality)</label>
-    <input id="anna-base_url" value="${esc(cfg.base_url)}" spellcheck="false" placeholder="https://...">
+    <label>Base URL (one URL; /v1 optional, normalized per modality; blank = the in-stack anna-api adapter)</label>
+    <input id="anna-base_url" value="${esc(cfg.base_url)}" spellcheck="false" placeholder="http://gamentic-anna-api:9100">
     <label>Text model</label>
     <input id="anna-text_model" value="${esc(cfg.text_model)}" spellcheck="false">
     <label>Image model (blank = gpt-image-2)</label>

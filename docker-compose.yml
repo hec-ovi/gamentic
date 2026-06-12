@@ -11,17 +11,21 @@ name: gamentic
 # Config lives in .env. Models are mounted read-only from MODELS_DIR.
 #
 # ANNA MODE (one boolean in .env): the five local-inference services above carry the
-# profile "local-inference-anna-${ANNA}", and .env pins
-# COMPOSE_PROFILES=local-inference-anna-false. So with ANNA=false the profile names
-# match and the full local stack runs; with ANNA=true they don't, and `docker compose
-# up` brings up ONLY orchestrator + frontend (text + image go to Anna's cloud, voice
-# is off). Nothing GPU or inference-shaped starts. Flip ANNA back and the same
-# command restores the local stack: expansion, not restriction.
-# Two rules of the trick: (1) ANNA takes the LITERAL values true/false only (any
-# other value reads as true on both layers; the app mirrors compose's exact string
-# match on 'false'); (2) when switching modes on a RUNNING stack, `docker compose
-# down` BEFORE flipping ANNA in .env - down only sees the active profile, so a
-# flip-first leaves the old containers running.
+# profile "local-inference-anna-${ANNA}", the two Anna services (anna-agent,
+# anna-api) carry "anna-agent-anna-${ANNA}", and .env pins
+# COMPOSE_PROFILES=local-inference-anna-false,anna-agent-anna-true. So with
+# ANNA=false the local profile names match and the full local stack runs; with
+# ANNA=true they don't, and `docker compose up` brings up orchestrator + frontend
+# + anna-agent + anna-api (text goes through the Anna agent, image degrades to
+# text-only play, voice is off). Nothing GPU or inference-shaped starts. Flip ANNA
+# back and the same command restores the local stack: expansion, not restriction.
+# ./up.sh wraps all of this including the mode-flip cleanup.
+# Two rules of the trick: (1) ANNA takes the LITERAL values true/false only: the
+# app reads any other set value as on, but compose profiles match only the
+# literals, so a value like ANNA=1 starts NO inference services at all (up.sh
+# refuses such values loudly); (2) when switching modes on a RUNNING stack,
+# `docker compose down` BEFORE flipping ANNA in .env - down only sees the active
+# profile, so a flip-first leaves the old containers running.
 
 services:
   llm-text:
@@ -227,6 +231,70 @@ services:
     networks:
       - gamentic
 
+  # anna-agent: the vendor's Anna CLI agent in its own container (the hackathon
+  # "fit with Anna" requirement). Runs ONLY in Anna mode via the inverted profile
+  # trick: "anna-agent-anna-${ANNA}" matches the pinned constant when ANNA=true.
+  # Sign in once at http://localhost:19001 (Web UI); credentials persist on the
+  # named volume, which is shared with the standalone infra/anna-agent compose
+  # project (do not run both at once: same port, same job).
+  anna-agent:
+    build:
+      context: ./infra/anna-agent
+    image: anna-agent:1.1.0-beta.17
+    pull_policy: build
+    container_name: gamentic-anna-agent
+    profiles: ["anna-agent-anna-${ANNA:-false}"]
+    restart: unless-stopped
+    volumes:
+      - anna-data:/data
+    ports:
+      - "127.0.0.1:19001:19001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:19001/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - gamentic
+
+  # anna-api: thin REST adapter giving the Anna agent an OpenAI-compatible face
+  # (/v1/chat/completions, /v1/models) so the orchestrator's Anna mode can use the
+  # agent as its text backend with zero orchestrator changes. No GPU. Image
+  # requests answer 501 and the game absorbs them (text-only play by design).
+  anna-api:
+    build:
+      context: ./infra/anna-api
+    image: gamentic-anna-api:latest
+    pull_policy: build
+    container_name: gamentic-anna-api
+    profiles: ["anna-agent-anna-${ANNA:-false}"]
+    restart: unless-stopped
+    depends_on:
+      anna-agent:
+        condition: service_healthy
+    environment:
+      - ANNA_AGENT_URL=http://gamentic-anna-agent:19001
+      # the agent's state volume (below, read-only): the adapter exchanges the
+      # signed-in profile's refresh token for a local session, so no credentials
+      # live in the environment
+      - ANNA_AGENT_STATE_DIR=/agent-data/.matrix
+      - ANNA_AGENT_USERNAME=${ANNA_AGENT_USERNAME:-}
+      - ANNA_AGENT_PASSWORD=${ANNA_AGENT_PASSWORD:-}
+      - ANNA_IMAGE_VIA_COPILOT=${ANNA_IMAGE_VIA_COPILOT:-false}
+    volumes:
+      - anna-data:/agent-data:ro
+    ports:
+      - "127.0.0.1:${ANNA_API_PORT:-9100}:9100"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://localhost:9100/health')\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - gamentic
+
   # The game brain. Talks to llm-text (required) and image-api/voice-api (optional,
   # best-effort) by container name. State persists in ./orchestrator/data.
   orchestrator:
@@ -237,9 +305,13 @@ services:
     container_name: gamentic-orchestrator
     restart: unless-stopped
     depends_on:
-      # required: false makes the wait optional: in Anna mode llm-text is profiled
-      # out of the project and the orchestrator starts on its own.
+      # required: false makes both waits optional: each mode profiles the other
+      # mode's backend out of the project and the orchestrator only waits for the
+      # one that is actually in play.
       llm-text:
+        condition: service_healthy
+        required: false
+      anna-api:
         condition: service_healthy
         required: false
     environment:
@@ -305,11 +377,13 @@ services:
       # silently skipping every local inference service (profiles are opt-in:
       # without the pinned constant nothing GPU-shaped would start and turns
       # would die against absent containers with no clue why).
-      - ANNA_COMPOSE_GUARD=${COMPOSE_PROFILES:?missing from .env - copy the Anna block from .env.example, at minimum COMPOSE_PROFILES=local-inference-anna-false, or the local inference services will not start}
+      - ANNA_COMPOSE_GUARD=${COMPOSE_PROFILES:?missing from .env - copy the Anna block from .env.example, at minimum COMPOSE_PROFILES=local-inference-anna-false,anna-agent-anna-true, or the local inference services will not start}
       - ANNA=${ANNA:-false}
       - ANNA_API_KEY=${ANNA_API_KEY:-}
-      - ANNA_BASE_URL=${ANNA_BASE_URL:-}
-      - ANNA_TEXT_MODEL=${ANNA_TEXT_MODEL:-}
+      # default = the in-stack anna-api adapter in front of the Anna agent; set a
+      # real cloud gateway URL in .env (or the admin card) to bypass the agent
+      - ANNA_BASE_URL=${ANNA_BASE_URL:-http://gamentic-anna-api:9100}
+      - ANNA_TEXT_MODEL=${ANNA_TEXT_MODEL:-anna-copilot}
       - ANNA_IMAGE_MODEL=${ANNA_IMAGE_MODEL:-}
     volumes:
       - ./orchestrator/data:/data
@@ -344,3 +418,10 @@ services:
 networks:
   gamentic:
     driver: bridge
+
+volumes:
+  # the Anna agent's state/config. The explicit name adopts the volume created by
+  # the standalone infra/anna-agent compose project, so a sign-in done in either
+  # place carries over to the other.
+  anna-data:
+    name: anna-agent_anna-data

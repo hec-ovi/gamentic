@@ -64,8 +64,13 @@ Requires Docker (with GPU access for the model and the image service) and local 
 
 ```bash
 cp .env.example .env           # then set MODELS_DIR and the model file paths
-docker compose up -d --build   # from the repo root
+./up.sh                        # or: docker compose up -d --build (from the repo root)
 ```
+
+`./up.sh` reads `ANNA` from `.env` and starts the matching stack: the full local
+one by default, or the four-container Anna stack (see Anna mode below), cleaning
+up the other mode's leftovers when the boolean was flipped. `./up.sh down` stops
+everything.
 
 | Service | URL | Tech stack |
 |---|---|---|
@@ -127,36 +132,48 @@ implemented against their published schemas and pinned by contract tests, but ha
 been verified against the paid live services. If you hold a key, the TEST button is the
 verification, and reports are welcome.
 
-### Anna mode (cloud-only, no GPU)
+### Anna mode (no local inference, no GPU)
 
-One boolean on top of the provider layer for running the whole game against a single
-OpenAI-compatible cloud gateway, nothing local, no GPU anywhere. In `.env`:
+One boolean on top of the provider layer for running the game with zero local
+inference: no Vulkan text model, no ComfyUI, no voice containers. In `.env`, set
+`ANNA=true` and run `./up.sh` (or `docker compose up -d --build`). That starts
+exactly four containers: the orchestrator, the frontend, the **Anna agent**
+(the vendor's CLI agent in a container, `infra/anna-agent/`) and **anna-api**
+(`infra/anna-api/`, a thin adapter that gives the agent an OpenAI-compatible
+face: `/v1/chat/completions` in, copilot ask out, tool calls wrapped in a JSON
+contract). Sign the agent in once at `http://localhost:19001`; the sign-in
+persists on a named volume.
+
+Text is served through the agent. Image degrades to text-only play (the agent's
+local API has no image endpoint; the orchestrator absorbs the failure by
+design). Voice is off. If the hackathon organizers hand out a real
+OpenAI-compatible gateway instead, point `ANNA_BASE_URL` at it (with
+`ANNA_API_KEY` and model names) and the agent container is bypassed without any
+other change.
 
 ```bash
-ANNA=true
-ANNA_API_KEY=sk-...
-ANNA_BASE_URL=https://...   # the gateway base, with or without /v1
-ANNA_TEXT_MODEL=...         # ANNA_IMAGE_MODEL too; blank image = gpt-image-2
+ANNA=true                   # flip, then ./up.sh
+ANNA_BASE_URL=              # blank = the in-stack anna-api adapter
+ANNA_TEXT_MODEL=            # blank = anna-copilot; image blank = gpt-image-2
 ```
 
-With `ANNA=true`, `docker compose up` starts only the orchestrator and the frontend:
-the five local inference services (text model, ComfyUI, the image adapter and the two
-voice services) are profiled out entirely. Text and image are served by the gateway; voice is off (the
-game plays text-only, by design). The `/admin` panel carries the same boolean for
-runtime flips without a restart, with the key write-only as always. Flip `ANNA=false`
-and the same command brings the full local stack back, byte for byte: it is an
-expansion, not a restriction.
+The `/admin` panel carries the same boolean for runtime flips without a restart,
+with the key write-only as always. Flip `ANNA=false` and the same command brings
+the full local stack back, byte for byte: it is an expansion, not a restriction.
 
 Three rules keep the switch honest:
 
-- `ANNA` takes the literal values `true` or `false` only; anything else reads as
-  true on both layers.
-- When switching modes on a running stack, `docker compose down` BEFORE flipping
-  `ANNA` in `.env`, then `up -d` after. Down only sees the active profile, so a
+- `ANNA` takes the literal values `true` or `false` only. The app reads anything
+  non-`false` as on, but compose profiles match only the literals, so a value
+  like `ANNA=1` would start no inference services at all; `./up.sh` refuses such
+  values with the reason.
+- `./up.sh` handles mode flips on a running stack (it stops the other mode's
+  leftovers first). With raw compose, `docker compose down` BEFORE flipping
+  `ANNA` in `.env`, then `up -d` after: down only sees the active profile, so a
   flip-first leaves the old containers running.
-- If you carry an `.env` from before Anna mode existed, copy the new Anna block from
-  `.env.example`: compose refuses to start without the `COMPOSE_PROFILES` line and
-  says exactly what to add.
+- If you carry an `.env` from before Anna mode existed, copy the new Anna block
+  from `.env.example`: compose refuses to start without the `COMPOSE_PROFILES`
+  line and says exactly what to add.
 
 ## Status and limits
 
