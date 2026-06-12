@@ -373,6 +373,28 @@ _MEMORY_ARG = {"share_past": "piece", "admit_trait": "trait", "mark_moment": "ev
 _MEMORY_BRACKET = re.compile(
     r"\[\s*(share_past|admit_trait|mark_moment)\b\s*[,:(]?\s*([^\[\]]*)\]?", re.I)
 
+# Live (2026-06-12, "Shadows of the Eternal Night" turn 10): a whispered request for a
+# weapon got a flawless in-prose handover - 'pulls out a heavy, blackened iron
+# revolver... slides it across the table' - and NO give_item call: the pack never
+# changed while the character believed the deal was done. The same intent also arrives
+# as mark text, so give marks lift exactly like memory marks: a real call and a mark in
+# prose land identically. The tool NAME is required (give_item / {give_item: ...}) -
+# bare prose like "[gives him the key]" is narration, never a mark, and stays text.
+# Target defaults to the hero ('player'); a payload written "X to <name>" routes to <name>.
+_GIVE_BRACE = re.compile(r"\{\s*give(?:_item)?\s*:\s*\"?([^\"{}]+?)\"?\s*\}", re.I)
+_GIVE_BRACKET = re.compile(r"\[\s*give_item\b\s*[,:(]?\s*([^\[\]]*)\]?", re.I)
+
+
+def _give_args(raw: str) -> dict | None:
+    value = _mark_value(raw)
+    if not value:
+        return None
+    item, target = value, "player"
+    if " to " in value:
+        item, target = value.rsplit(" to ", 1)
+    item = item.strip(" ,").strip()
+    return {"item": item, "target": target.strip()} if item else None
+
 
 def _mark_value(raw: str) -> str:
     value = (raw or "").strip().strip('"“”').rstrip(")").strip()
@@ -382,9 +404,10 @@ def _mark_value(raw: str) -> str:
 
 
 def extract_memory_marks(text: str) -> tuple[str, list[tuple[str, dict]]]:
-    """(clean_text, [(tool_name, args), ...]): lift every memory mark - brace or
-    bracket form - out of a character segment and hand back the matching self-tool
-    applications. The marks never reach the display text."""
+    """(clean_text, [(tool_name, args), ...]): lift every tool mark the model wrote as
+    text - memory marks and give marks, brace or bracket form - out of a character
+    segment and hand back the matching tool applications. The marks never reach the
+    display text."""
     marks: list[tuple[str, dict]] = []
 
     def _take(m):
@@ -392,8 +415,16 @@ def extract_memory_marks(text: str) -> tuple[str, list[tuple[str, dict]]]:
         if value:
             marks.append((tool, {_MEMORY_ARG[tool]: value}))
         return ""
+
+    def _take_give(m):
+        args = _give_args(m.group(1))
+        if args:
+            marks.append(("give_item", args))
+        return ""
     cleaned = _MEMORY_MARK.sub(_take, text or "")
     cleaned = _MEMORY_BRACKET.sub(_take, cleaned)
+    cleaned = _GIVE_BRACE.sub(_take_give, cleaned)
+    cleaned = _GIVE_BRACKET.sub(_take_give, cleaned)
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     return cleaned.strip(), marks
 

@@ -36,14 +36,14 @@ def test_narrator_can_evolve_the_relation_freely(client, fake_llm, world):
                              content="Something is settled between you.")
     d = client.post(f"/games/{gid}/action", json={"action": "I offer her my hand."}).json()
     # article-aware wording (live: 'Tamsin is now your stranger.' read broken)
-    assert any(b["text"] == "Mara now sees you as a sworn ally." for b in d["beats"]
+    assert any(b["text"] == "Mara is a sworn ally to you now." for b in d["beats"]
                if b["kind"] == "system")
     mara = _mara(client, gid)
     assert mara["relation"] == "sworn ally"
     assert mara["disposition"] in ("friendly", "neutral", "hostile", "unknown")  # axis intact
     # the change is itself a pivotal moment
     prof = client.get(f"/games/{gid}/characters/{mara['id']}/profile").json()
-    assert "Came to see the player as a sworn ally" in [m["text"] for m in prof["moments"]]
+    assert "Became a sworn ally to the player" in [m["text"] for m in prof["moments"]]
     # re-setting the same relation is silent
     fake_llm.narrator = _nar(T("set_relation", name="Mara", relation="Sworn Ally"),
                              content="Nothing changes.")

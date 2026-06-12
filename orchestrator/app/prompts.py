@@ -342,6 +342,19 @@ def build_character_messages(conn, gid: str, character, history_limit: int,
     rel = repo.character_relation(character)
     if rel:
         gender_line += f" To the one you are with, you are their {rel}."
+    # WHO IS HERE: the present cast, stated outright (structural who-is-who). Live
+    # ("Shadows of the Eternal Night"): the hero's words were credited to another guest
+    # and a private apology was answered with a speech to the room - the agent needs
+    # the roster told, not inferred from prose. Worded without "the player" (it leaks).
+    def _other(c):
+        g = repo.character_gender(c)
+        return f"{c['name']} ({g})" if g else c["name"]
+    others = "; ".join(_other(c) for c in repo.present_characters(conn, gid, location)
+                       if c["id"] != character["id"])
+    present_block = ("\nWITH YOU IN THE SCENE: the hero you speak with ('you' in your "
+                     "reply)" + (f", and these others, each speaking only for themselves: "
+                                 f"{others}." if others else ", and no one else.")
+                     + f" None of them is ever you: you are only {character['name']}.")
     # Trait-in-action (Ali:Chat lite): a demonstration of the reply FORMAT holds persona
     # better than instruction, but the trait must never sit inside the spoken line - the
     # old example spliced the raw trait prose into a literal [say] and characters recited
@@ -362,6 +375,7 @@ def build_character_messages(conn, gid: str, character, history_limit: int,
         origin_block=origin_block,
         traits_block=traits_block,
         state_block=state_block,
+        present_block=present_block,
         example_block=example_block,
     )
     # WHAT YOU REMEMBER rides the user message ABOVE the scene window (the narrator's

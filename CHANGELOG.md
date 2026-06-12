@@ -2,6 +2,14 @@
 
 Notable changes to gamentic, newest first. No version numbers yet: this moves fast, so entries are dated and the README always describes the current state.
 
+## 2026-06-12
+
+### Who is who (owner live finds in "Shadows of the Eternal Night")
+- A whispered request for a weapon got a flawless in-prose handover ("pulls out a heavy, blackened iron revolver... slides it across the table") and the pack never changed: the character narrated give_item instead of calling it. The ability was always there (a character can produce a plausible item on the fly and hand it to the player, whisper channel included, receipt private); now the prompt demands the call with the same force as attack (prose never moves an object), shows a worked give example, and give marks written as TEXT ("[give_item, a worn brass key", "{give_item: a coin to Bron}") lift exactly like memory marks - a real call and a mark in prose land identically. Bare prose in brackets stays narration; nothing is ever invented from description alone (owner rule: the game does it, not a hard fix).
+- The hero's words were credited to another guest ("The Inspector is quite correct" - right after the PLAYER said it), and a private apology was answered with a speech to the room ("Inspector, if you are quite finished..." inside a whisper thread). Every character call now states the roster outright - WITH YOU IN THE SCENE: the hero, then every other present character by name, none of them ever you - and the prompt pins the two channel truths: a PLAYER line is the hero speaking in their own voice whoever it names, and in a private exchange EVERY word stays inside it (the room hears nothing and cannot be addressed).
+- The relation was announced INVERTED: Leyla, the acquaintance, was shown as "came to see the player as an acquaintance" - her bond pinned on the hero. An old grammar rewording had flipped the direction of both the receipt and the recorded moment (which then fed the character's own memory ever after). Direction-true now: "Leyla is an acquaintance to you now." / "Became an acquaintance to the player", and set_relation's contract says plainly it is the bond toward the player, never the character's own title (the same slip had set a politician's relation to "respected politician").
+- The deck sleeps while the narrator works (owner call): the scene name, the goal/quest chip and every item slot lock during a turn alongside the action buttons; the lightbox and profiles stay live. A deliberate reversal of the old "read-only stays live everywhere" rule, for the deck taps only.
+
 ## 2026-06-11
 
 ### Every file dies with its adventure (owner rule: no timers, ownership only)

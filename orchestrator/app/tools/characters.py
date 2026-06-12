@@ -191,8 +191,10 @@ def note_trait(conn, gid, args, actor):
     "name": "set_relation",
     "description": "Set what a character IS to the player as the story defines it: one or "
                    "two words, your free choice (stranger, ally, friend, sister, boss, rival, "
-                   "mentor, sworn enemy...). This is the narrative bond; disposition stays the "
-                   "mood dial. Update it when the relationship truly changes.",
+                   "mentor, sworn enemy...). Always the BOND from the character toward the "
+                   "player - never the character's own job or title. This is the narrative "
+                   "bond; disposition stays the mood dial. Update it when the relationship "
+                   "truly changes.",
     "parameters": {"type": "object", "properties": {
         "name": {"type": "string"},
         "relation": {"type": "string", "description": "One or two words."},
@@ -214,9 +216,13 @@ def set_relation(conn, gid, args, actor):
         # your stranger.' plus a fake 'Became the player's stranger' pivotal moment
         # from this exact non-event); record the label, stage nothing
         return _result("state")
-    # article-aware grammar (live: 'Tamsin is now your stranger.' read broken)
-    repo.add_moment(conn, ch["id"], f"Came to see the player as {_a_or_an(rel)}")
-    return _result("state", f"{ch['name']} now sees you as {_a_or_an(rel)}.")
+    # article-aware grammar (live: 'Tamsin is now your stranger.' read broken), and
+    # DIRECTION-true: relation is what the CHARACTER is to the hero. The grammar
+    # rewording ('X now sees you as...' / 'Came to see the player as...') had silently
+    # flipped the meaning (live: Leyla, the acquaintance, was announced as seeing the
+    # PLAYER as one) - and the flipped moment fed the agent's own memory ever after.
+    repo.add_moment(conn, ch["id"], f"Became {_a_or_an(rel)} to the player")
+    return _result("state", f"{ch['name']} is {_a_or_an(rel)} to you now.")
 
 
 @tool({"type": "function", "function": {

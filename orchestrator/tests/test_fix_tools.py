@@ -180,11 +180,11 @@ def test_relation_receipt_and_moment_are_article_aware(client, fake_llm, world):
     gid = client.post("/games", json=world).json()["game_id"]
     fake_llm.narrator = _nar(T("set_relation", name="Mara", relation="old friend"))
     d = client.post(f"/games/{gid}/action", json={"action": "We embrace."}).json()
-    assert "Mara now sees you as an old friend." in _systems(d)
-    assert "Came to see the player as an old friend" in [m["text"] for m in _profile(client, gid)["moments"]]
+    assert "Mara is an old friend to you now." in _systems(d)
+    assert "Became an old friend to the player" in [m["text"] for m in _profile(client, gid)["moments"]]
     fake_llm.narrator = _nar(T("set_relation", name="Mara", relation="sworn enemy"))
     d = client.post(f"/games/{gid}/action", json={"action": "I betray her."}).json()
-    assert "Mara now sees you as a sworn enemy." in _systems(d)
+    assert "Mara is a sworn enemy to you now." in _systems(d)
 
 
 # ---------- fix 7: note_moment / note_trait need the character here and alive ----------

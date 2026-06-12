@@ -141,16 +141,21 @@ test("PARTIAL lock: mutating surfaces block mid-turn, but the lightbox and inspe
   expect(box.querySelector("img").getAttribute("src")).toBe("/media/g-test/jacker-face.png");
   await u.keyboard("{Escape}");
 
-  // ...and tap-to-inspect + "ask what this is" answer mid-turn too
+  // ...while the deck's scene/quest/item taps are locked (owner 2026-06-12: nothing
+  // on the deck invites a click while the narrator works)
+  expect(document.querySelector(".scene-name-btn").disabled).toBe(true);
+  await u.click(screen.getByRole("button", { name: /inspect credstick/i })).catch(() => {});
+  expect(screen.queryByRole("dialog", { name: /credstick/i })).toBeNull();
+
+  // after: unlocked, only the one POST went out, and tap-to-inspect works again
+  await waitFor(composerLive);
+  expect(posts).toBe(1);
+  expect(document.querySelector(".scene-name-btn").disabled).toBe(false);
   await u.click(screen.getByRole("button", { name: /inspect credstick/i }));
   const modal = await screen.findByRole("dialog", { name: /credstick/i });
   await u.click(within(modal).getByRole("button", { name: /ask what this is/i }));
   expect(await screen.findByText(/forty-two creds/i)).toBeTruthy();
   await u.click(within(modal).getByRole("button", { name: /^close$/i }));
-
-  // after: unlocked, and only the one POST went out
-  await waitFor(composerLive);
-  expect(posts).toBe(1);
 });
 
 test("tagging an entity chips it into the line and sends segments with refs", async () => {

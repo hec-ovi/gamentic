@@ -1110,9 +1110,13 @@ figure.prose-art.art-loading { cursor: default; }
 .absence-line { margin: 0; padding: 0.55rem 0.75rem; border: 1px dashed var(--line-soft);
   font-size: 0.86rem; font-style: italic; color: var(--ink-muted); }
 
-/* ---- PARTIAL busy-lock: only mutating surfaces lock (they render disabled);
-   reading, inspecting, the lightbox and profiles stay live, so no veil ---- */
+/* ---- PARTIAL busy-lock: mutating surfaces and the deck's scene/quest/item taps
+   lock while the narrator works (the dispatcher blocks their acts too);
+   reading, the lightbox and profiles stay live, so no veil ---- */
 .play-stage.generating .play-actionbar .composer, .play-stage.generating .turn-aux { opacity: 0.75; }
+.play-stage.generating .slot.filled,
+.play-stage.generating .scene-name-btn,
+.play-stage.generating .hud-goal { pointer-events: none; opacity: 0.55; }
 
 /* adjudication: rejected attempt / narrator veto */
 .system-badge.veto { color: var(--danger); border-color: var(--danger-border); border-style: dashed; background: color-mix(in srgb, var(--danger-border) 18%, transparent); }

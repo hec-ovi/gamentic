@@ -112,7 +112,7 @@ export function renderPlayDeck(s, locked, g = {}) {
           ${mood ? `<span class="mood-badge mood-${escapeHtml(mood)}">${escapeHtml(mood)}</span>` : ""}
           ${s.time ? `<span class="time-chip" title="Story time, not yours">${icon("clock")}<span>${escapeHtml(s.time.label)}</span></span>` : ""}
         </div>
-        <h2 class="scene-name"><button type="button" class="scene-name-btn" data-act="inspect-scene" title="What this place is">${escapeHtml(name)}</button>${help("scene")}</h2>
+        <h2 class="scene-name"><button type="button" class="scene-name-btn" data-act="inspect-scene" title="What this place is" ${dis}>${escapeHtml(name)}</button>${help("scene")}</h2>
         ${desc ? `<p class="scene-desc">${escapeHtml(desc)}</p>` : ""}
       </div>
 
@@ -150,7 +150,7 @@ export function renderPlayDeck(s, locked, g = {}) {
           ${help("hud")}
         </div>
         ${contextMeter(s.context)}
-        ${s.currentGoal ? `<button type="button" class="hud-goal" data-act="inspect-goal" title="Current goal - tap for the quest log">${icon("compass")}<span>${escapeHtml(s.currentGoal)}</span></button>` : ""}
+        ${s.currentGoal ? `<button type="button" class="hud-goal" data-act="inspect-goal" title="Current goal - tap for the quest log" ${dis}>${icon("compass")}<span>${escapeHtml(s.currentGoal)}</span></button>` : ""}
       </div>
 
       <div class="deck-nav">

@@ -421,10 +421,11 @@ export function onAction(act, el) {
   }
 }
 
-// PARTIAL busy-lock: while a turn is in flight, only state-MUTATING acts are
-// blocked (their buttons also render disabled - this guard covers anything left
-// clickable). Read-only interactions (inspect, /explain, lightbox, profiles,
-// settings, scrolling) stay live.
+// PARTIAL busy-lock: while a turn is in flight, these acts are blocked (their
+// buttons also render disabled - this guard covers anything left clickable).
+// The deck's scene/quest/item taps lock too (owner 2026-06-12: nothing on the
+// deck should invite a click while the narrator works); lightbox, profiles,
+// settings and scrolling stay live.
 export const MUTATING_ACTS = new Set([
   "scene-action",
   "exit",
@@ -440,6 +441,10 @@ export const MUTATING_ACTS = new Set([
   "open-tagger",
   "go-library",
   "go-menu",
+  "inspect-scene",
+  "inspect-goal",
+  "inspect-item",
+  "inspect-quest",
 ]);
 
 // Pin a scroll container to the bottom. Runs on the next frame so it measures
