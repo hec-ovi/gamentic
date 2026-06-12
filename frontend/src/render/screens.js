@@ -268,6 +268,7 @@ export function renderSettings(state) {
         ${help("settings")}
       </header>
       <main class="set-main">
+        <div class="set-col">
         <section class="holo-panel">
           ${cardCorners()}
           ${secHead("h3", "panel-head", "mic", "Audio")}
@@ -296,9 +297,11 @@ export function renderSettings(state) {
           </label>
         </section>
 
-        ${state.active && state.active.state ? renderGameSettings(state.active) : ""}
         ${state.active && state.active.state ? renderMemorySettings(state.active) : ""}
+        </div>
 
+        <div class="set-col">
+        ${state.active && state.active.state ? renderGameSettings(state.active) : ""}
         <section class="holo-panel danger-zone">
           ${cardCorners()}
           ${secHead("h3", "panel-head", "flame", "Danger")}
@@ -307,6 +310,7 @@ export function renderSettings(state) {
             <button type="button" class="holo-btn danger" data-act="ask-wipe">${icon("trash")}<span>Wipe all memory</span></button>
           </div>
         </section>
+        </div>
 
         <p class="set-foot">${icon("radio")}<span>Game server linked automatically // media via same-origin proxy</span></p>
       </main>
