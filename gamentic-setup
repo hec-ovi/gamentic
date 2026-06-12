@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Gamentic setup launcher: host python3 if present, else the project's required docker.
+cd "$(dirname "$0")" || exit 1
+command -v python3 >/dev/null 2>&1 && exec python3 infra/setup/cli.py "$@"
+exec docker run -it --rm -v "$PWD":/work -w /work python:3.12-slim python infra/setup/cli.py "$@"

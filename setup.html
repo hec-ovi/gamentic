@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en" data-theme="hightech">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gamentic setup</title>
+  <!-- Double-click me. Runs from file:// with no server, no build and no network;
+       everything you type stays on this machine. -->
+  <link rel="stylesheet" href="frontend/themes/hightech.css">
+  <link rel="stylesheet" href="infra/setup/setup.css">
+</head>
+<body class="setup-body">
+  <main id="setup-root" class="setup-root"></main>
+  <noscript><p>This wizard needs JavaScript. It still runs fully offline.</p></noscript>
+  <script src="infra/setup/schema.js"></script>
+  <script src="infra/setup/setup.js"></script>
+  <script>
+    window.GamenticSetup.mount(document.getElementById("setup-root"), window.GAMENTIC_SETUP_SCHEMA);
+  </script>
+</body>
+</html>

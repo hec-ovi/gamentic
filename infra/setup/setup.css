@@ -1,0 +1,356 @@
+/* Gamentic setup wizard. Structure lives here; color, type and shape ride the
+   hightech theme tokens (frontend/themes/hightech.css) with plain fallbacks so
+   the page still reads if the theme file is missing. Everything is scoped under
+   .setup-* so nothing leaks if a future page ever includes both stylesheets. */
+
+.setup-body {
+  margin: 0;
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 40px 16px 64px;
+  display: flex;
+  justify-content: center;
+  background:
+    radial-gradient(1100px 520px at 50% -8%, var(--surface-well, #0a1424), transparent 70%),
+    var(--surface-page, #05080f);
+  color: var(--ink, #dff3ff);
+  font-family: var(--font-body, system-ui, sans-serif);
+  line-height: 1.5;
+}
+
+.setup-root {
+  width: 100%;
+  max-width: 700px;
+}
+
+.setup-header {
+  margin-bottom: 18px;
+}
+
+.setup-title {
+  margin: 0;
+  font-family: var(--font-display, sans-serif);
+  font-size: 22px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--highlight, #ffffff);
+  text-shadow: 0 0 16px color-mix(in srgb, var(--accent, #2fe6ff) 55%, transparent);
+}
+
+/* ---- panels and the chamfered hightech silhouette ---- */
+
+.setup-panel,
+.setup-btn,
+.setup-mode-card,
+.setup-dropzone {
+  --setup-cut: calc(var(--chamfer, 1) * 12px);
+  clip-path: polygon(
+    var(--setup-cut) 0, 100% 0,
+    100% calc(100% - var(--setup-cut)),
+    calc(100% - var(--setup-cut)) 100%,
+    0 100%, 0 var(--setup-cut)
+  );
+}
+
+.setup-panel {
+  background: linear-gradient(180deg, var(--surface-panel, #102034), var(--surface-page-2, #070e1a));
+  border: 1px solid var(--line, rgba(47, 230, 255, 0.3));
+  padding: 22px 26px 26px;
+}
+
+.setup-h2 {
+  margin: 0 0 10px;
+  font-family: var(--font-display, sans-serif);
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--accent, #2fe6ff);
+}
+
+.setup-h3 {
+  margin: 18px 0 6px;
+  font-family: var(--font-display, sans-serif);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-muted, #6f93ad);
+}
+
+.setup-step-caption {
+  margin: 0 0 4px;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-muted, #6f93ad);
+}
+
+.setup-intro {
+  margin: 0 0 16px;
+  color: var(--ink, #dff3ff);
+}
+
+/* ---- welcome: the .env drop zone ---- */
+
+.setup-dropzone {
+  --setup-cut: calc(var(--chamfer, 1) * 8px);
+  display: block;
+  width: 100%;
+  padding: 18px 16px;
+  background: var(--surface-page-2, #070e1a);
+  border: 1px dashed var(--line, rgba(47, 230, 255, 0.3));
+  color: var(--ink-muted, #6f93ad);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.setup-dropzone:hover,
+.setup-dropzone-over {
+  border-color: var(--accent, #2fe6ff);
+  color: var(--ink, #dff3ff);
+}
+
+.setup-loaded {
+  margin: 12px 0 0;
+  color: var(--gold, #f2b84b);
+  font-size: 14px;
+}
+
+/* ---- mode cards ---- */
+
+.setup-mode-card {
+  display: block;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, var(--surface-panel, #102034), var(--surface-page-2, #070e1a));
+  border: 1px solid var(--line, rgba(47, 230, 255, 0.3));
+  color: var(--ink, #dff3ff);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.setup-mode-card:hover,
+.setup-mode-card:focus-visible {
+  border-color: var(--accent, #2fe6ff);
+  background: linear-gradient(180deg, var(--surface-hover, #1a3656), var(--surface-hover-2, #0a1628));
+}
+
+.setup-mode-label {
+  display: block;
+  font-family: var(--font-display, sans-serif);
+  letter-spacing: 0.08em;
+  color: var(--accent, #2fe6ff);
+}
+
+.setup-mode-help {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--ink-muted, #6f93ad);
+}
+
+/* ---- question fields ---- */
+
+.setup-field {
+  margin: 0 0 16px;
+}
+
+.setup-field-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.setup-prompt {
+  font-weight: 600;
+}
+
+.setup-help-btn {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line, rgba(47, 230, 255, 0.3));
+  border-radius: 50%;
+  background: transparent;
+  color: var(--accent, #2fe6ff);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.setup-help-btn:hover {
+  border-color: var(--accent, #2fe6ff);
+}
+
+.setup-help {
+  margin: 8px 0 0;
+  padding: 6px 10px;
+  border-left: 2px solid var(--accent, #2fe6ff);
+  background: var(--surface-page-2, #070e1a);
+  color: var(--ink-muted, #6f93ad);
+  font-size: 14px;
+}
+
+.setup-input {
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px 10px;
+  box-sizing: border-box;
+  background: var(--surface-page-2, #070e1a);
+  border: 1px solid var(--line, rgba(47, 230, 255, 0.3));
+  border-radius: 0;
+  color: var(--ink, #dff3ff);
+  font: inherit;
+}
+
+.setup-input:focus {
+  outline: none;
+  border-color: var(--accent, #2fe6ff);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent, #2fe6ff) 35%, transparent);
+}
+
+.setup-secret {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.setup-show-btn {
+  flex: none;
+  margin-top: 6px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid var(--line, rgba(47, 230, 255, 0.3));
+  color: var(--ink-muted, #6f93ad);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.setup-show-btn:hover {
+  color: var(--ink, #dff3ff);
+  border-color: var(--accent, #2fe6ff);
+}
+
+.setup-bool {
+  display: flex;
+  gap: 18px;
+  margin-top: 6px;
+}
+
+.setup-bool-option {
+  cursor: pointer;
+}
+
+.setup-bool-option input {
+  accent-color: var(--accent, #2fe6ff);
+}
+
+.setup-error {
+  margin: 6px 0 0;
+  color: var(--danger, #d95f7b);
+  font-size: 14px;
+}
+
+.setup-field-invalid .setup-input {
+  border-color: var(--danger, #d95f7b);
+}
+
+/* ---- review ---- */
+
+.setup-review-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 2fr;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line-soft, rgba(47, 230, 255, 0.14));
+}
+
+.setup-review-key {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--ink-muted, #6f93ad);
+}
+
+.setup-review-value {
+  overflow-wrap: anywhere;
+}
+
+.setup-review-note {
+  margin: 14px 0 0;
+  font-size: 14px;
+  color: var(--ink-muted, #6f93ad);
+}
+
+/* ---- done ---- */
+
+.setup-done-message {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  background: var(--surface-page-2, #070e1a);
+  border: 1px solid var(--line, rgba(47, 230, 255, 0.3));
+  font-family: ui-monospace, monospace;
+  font-size: 14px;
+  color: var(--ink-prose, #e7e0d2);
+}
+
+.setup-done-note {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--ink-muted, #6f93ad);
+}
+
+/* ---- navigation ---- */
+
+.setup-nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.setup-btn {
+  --setup-cut: calc(var(--chamfer, 1) * 8px);
+  padding: 10px 22px;
+  background: transparent;
+  border: 1px solid var(--line, rgba(47, 230, 255, 0.3));
+  color: var(--ink, #dff3ff);
+  font-family: var(--font-display, sans-serif);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+}
+
+.setup-btn:hover {
+  border-color: var(--accent, #2fe6ff);
+}
+
+.setup-btn-primary {
+  background: linear-gradient(180deg, var(--accent, #2fe6ff), var(--accent-2, #1b9fff));
+  border: none;
+  color: var(--ink-inverse, #100f13);
+  font-weight: 700;
+}
+
+.setup-btn-primary:hover {
+  filter: brightness(1.1);
+}
+
+.setup-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.setup-btn:focus-visible,
+.setup-mode-card:focus-visible,
+.setup-dropzone:focus-visible,
+.setup-help-btn:focus-visible,
+.setup-show-btn:focus-visible {
+  outline: 2px solid var(--accent, #2fe6ff);
+  outline-offset: 2px;
+}
