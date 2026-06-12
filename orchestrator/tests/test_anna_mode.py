@@ -1,11 +1,9 @@
-"""Anna mode: one boolean (admin override -> env ANNA) that retargets text and
-image at Anna's OpenAI-compatible cloud gateway and silences voice. Expansion,
+"""Anna mode: one boolean (env ANNA) that retargets text and image at the Anna
+gateway (the in-stack anna-api adapter by default) and silences voice. Expansion,
 not restriction: with the boolean off, resolution is byte-identical to the local
 stack. The compose side (GPU services profiled out under ANNA=true) is pinned by
 the .env COMPOSE_PROFILES constant and verified by hand with `docker compose
-config --services`; here we pin the app side end-to-end through the real routes."""
-import json
-
+config --services`; here we pin the app side end-to-end through the real paths."""
 from app import llm, media
 from app.config import settings
 from app.providers import base as pbase
@@ -80,76 +78,11 @@ def test_base_url_normalized_per_modality(monkeypatch):
     assert pbase.resolve("image").base_url == "https://gw.example"
 
 
-def test_admin_round_trip_masking_and_validation(client):
-    d = client.get("/admin/providers").json()
-    assert d["anna"]["enabled"] is False and d["anna"]["api_key"] == ""
-
-    r = client.put("/admin/providers", json={"anna": {
-        "enabled": "true", "api_key": "sk-anna-secret",
-        "base_url": "https://gw.example", "text_model": "anna-large"}})
-    assert r.status_code == 200
-    d = r.json()
-    assert d["anna"]["enabled"] is True
-    assert d["anna"]["api_key"] == "********"                   # write-only, like every key
-    assert "sk-anna-secret" not in json.dumps(d)
-    # the modality cards show the UNDERLYING config (never the anna overlay), so a
-    # Save of what is displayed can never copy anna's gateway into local overrides
-    assert d["text"]["provider"] == "local"
-    assert d["image"]["provider"] == "comfy"
-    # while the live resolution really is anna
-    assert pbase.resolve("text").provider == "openai"
-    assert pbase.resolve("text").base_url == "https://gw.example/v1"
-    assert pbase.resolve("image").provider == "openai"
-
-    # survives a fresh GET; flipping off restores the local stack
-    assert client.get("/admin/providers").json()["anna"]["enabled"] is True
-    client.put("/admin/providers", json={"anna": {"enabled": "false"}})
-    d = client.get("/admin/providers").json()
-    assert d["anna"]["enabled"] is False
-    assert d["text"]["provider"] == "local" and d["image"]["provider"] == "comfy"
-
-    # validation: junk boolean / unknown field
-    assert client.put("/admin/providers",
-                      json={"anna": {"enabled": "maybe"}}).status_code == 422
-    assert client.put("/admin/providers",
-                      json={"anna": {"voice_model": "x"}}).status_code == 422
-
-
-def test_admin_override_beats_env_both_ways(client, monkeypatch):
-    _enable_anna_env(monkeypatch)
-    client.put("/admin/providers", json={"anna": {"enabled": "false"}})
-    assert pbase.resolve("text").provider == "local"            # panel says no, env says yes
-
-    monkeypatch.setenv("ANNA", "false")
-    client.put("/admin/providers", json={"anna": {
-        "enabled": "true", "base_url": "https://gw.example", "api_key": "k"}})
-    assert pbase.resolve("text").provider == "openai"           # panel says yes, env says no
-    # blanking returns control to the env
-    client.put("/admin/providers", json={"anna": {"enabled": ""}})
-    assert pbase.resolve("text").provider == "local"
-
-
-def test_card_save_while_anna_on_cannot_poison_the_local_stack(client):
-    """Re-saving exactly what a modality card displays while anna is ON (the
-    admin pressing Save out of habit) must leave the anna-off world untouched."""
-    baseline = pbase.resolve("text", apply_anna=False)
-    client.put("/admin/providers", json={"anna": {
-        "enabled": "true", "base_url": "https://gw.example", "api_key": "k"}})
-    card = client.get("/admin/providers").json()["text"]
-    client.put("/admin/providers", json={"text": {
-        "provider": card["provider"], "base_url": card["base_url"],
-        "model": card["model"]}})
-    client.put("/admin/providers", json={"anna": {"enabled": "false"}})
-    assert pbase.resolve("text") == baseline
-
-
-def test_text_turns_speak_to_anna_with_bearer(client, monkeypatch):
+def test_text_turns_speak_to_anna_with_bearer(monkeypatch):
     """The same llm.chat the whole engine uses: under anna the request goes to the
     gateway's /chat/completions with the Bearer key, and the stop list obeys the
     openai dialect's cap of 4 (the local 8-stop budget must not leak through)."""
-    client.put("/admin/providers", json={"anna": {
-        "enabled": "true", "api_key": "sk-anna-key", "base_url": "https://gw.example",
-        "text_model": "anna-large"}})
+    _enable_anna_env(monkeypatch, base="https://gw.example")
     captured = {}
 
     def _post(url, **kw):
@@ -167,10 +100,10 @@ def test_text_turns_speak_to_anna_with_bearer(client, monkeypatch):
     assert "chat_template_kwargs" not in captured["json"]       # no thinking kwarg on cloud
 
 
-def test_image_renders_through_anna_gateway(client, monkeypatch):
+def test_image_renders_through_anna_gateway(monkeypatch):
     monkeypatch.setattr(settings, "IMAGE_ENABLED", True)
-    client.put("/admin/providers", json={"anna": {
-        "enabled": "true", "api_key": "sk-anna-key", "base_url": "https://gw.example/v1"}})
+    _enable_anna_env(monkeypatch)
+    monkeypatch.delenv("ANNA_TEXT_MODEL", raising=False)
     captured = {}
     monkeypatch.setattr(pimage.httpx, "post",
                         lambda url, json=None, headers=None, timeout=None:
@@ -186,8 +119,8 @@ def test_image_renders_through_anna_gateway(client, monkeypatch):
 def test_voice_is_off_in_anna_mode(client, monkeypatch):
     monkeypatch.setattr(settings, "VOICE_ENABLED", True)
     assert pbase.voice_enabled() is True
-    client.put("/admin/providers", json={"anna": {"enabled": "true",
-                                                  "base_url": "https://gw.example"}})
+    monkeypatch.setenv("ANNA", "true")
+    monkeypatch.setenv("ANNA_BASE_URL", "https://gw.example")
     assert pbase.voice_enabled() is False
 
     # the speak passthrough refuses; the cleanup/registry surfaces no-op without
@@ -208,20 +141,5 @@ def test_voice_is_off_in_anna_mode(client, monkeypatch):
     assert media.register_character_voice("c1", "Vex", "a wary scout") is None
     assert media.delete_character_voice("c1") is None
 
-    # the admin TEST button answers plainly instead of dialing a dead service
-    d = client.post("/admin/providers/test", json={"modality": "audio"}).json()
-    assert d["ok"] is False and "Anna" in d["error"]
-
-    client.put("/admin/providers", json={"anna": {"enabled": "false"}})
+    monkeypatch.setenv("ANNA", "false")
     assert pbase.voice_enabled() is True
-
-
-def test_admin_test_flags_missing_base_url(client):
-    client.put("/admin/providers", json={"anna": {"enabled": "true"}})
-    d = client.post("/admin/providers/test", json={"modality": "text"}).json()
-    assert d["ok"] is False and "base URL" in d["error"]
-
-
-def test_admin_page_carries_the_anna_card(client):
-    page = client.get("/admin").content
-    assert b"Anna mode" in page and b"anna-enabled" in page

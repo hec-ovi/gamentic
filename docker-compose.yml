@@ -352,9 +352,9 @@ services:
       - CHAR_SUMMARY_EVERY=${CHAR_SUMMARY_EVERY:-12}
       - CHAR_SUMMARY_KEEP_TURNS=${CHAR_SUMMARY_KEEP_TURNS:-8}
       - CHAR_SUMMARY_MAX_TOKENS=${CHAR_SUMMARY_MAX_TOKENS:-320}
-      # inference providers (per-modality; admin overrides at /admin beat these).
-      # Defaults = this local stack. Empty base_url/model = the local URLs above
-      # (LLM_BASE_URL/LLM_MODEL stay working aliases for TEXT_*).
+      # inference providers (per-modality). Defaults = this local stack. Empty
+      # base_url/model = the local URLs above (LLM_BASE_URL/LLM_MODEL stay
+      # working aliases for TEXT_*).
       - TEXT_PROVIDER=${TEXT_PROVIDER:-local}
       - TEXT_BASE_URL=${TEXT_BASE_URL:-}
       - TEXT_API_KEY=${TEXT_API_KEY:-}
@@ -369,10 +369,7 @@ services:
       - IMAGE_BASE_URL=${IMAGE_BASE_URL:-}
       - IMAGE_API_KEY=${IMAGE_API_KEY:-}
       - IMAGE_MODEL=${IMAGE_MODEL:-}
-      # set to require Authorization Bearer on /admin (page + API); empty = open
-      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
-      # Anna mode (cloud-only inference; see the header comment). The admin panel
-      # boolean overrides ANNA at call time; these are the env layer underneath.
+      # Anna mode (no local inference; see the header comment).
       # The :? guard makes a missing COMPOSE_PROFILES line FAIL LOUDLY instead of
       # silently skipping every local inference service (profiles are opt-in:
       # without the pinned constant nothing GPU-shaped would start and turns
@@ -381,7 +378,7 @@ services:
       - ANNA=${ANNA:-false}
       - ANNA_API_KEY=${ANNA_API_KEY:-}
       # default = the in-stack anna-api adapter in front of the Anna agent; set a
-      # real cloud gateway URL in .env (or the admin card) to bypass the agent
+      # real cloud gateway URL in .env to bypass the agent
       - ANNA_BASE_URL=${ANNA_BASE_URL:-http://gamentic-anna-api:9100}
       - ANNA_TEXT_MODEL=${ANNA_TEXT_MODEL:-anna-copilot}
       - ANNA_IMAGE_MODEL=${ANNA_IMAGE_MODEL:-}

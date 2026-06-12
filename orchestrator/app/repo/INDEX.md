@@ -12,7 +12,6 @@ Data access, one module per domain. Callers import the PACKAGE (`from . import r
 | `scenes.py` | scene rows, movement + draft layer, exits, scene items | `current_scene`, `get_or_create_scene`, `set_location`, `add_exit`, `add/reveal/take_scene_item`, `set_scene_description/status/draft/image` |
 | `quests.py` | quests + objectives | `start_quest`, `update_objective`, `set_quest_status`, `quest_dict` |
 | `lore.py` | keyword-matched world facts | `match_lore` |
-| `providers.py` | the provider_config admin-override table (read at call time by app/providers/) | `get_provider_overrides`, `set_provider_override` |
 | `beats.py` | the story log + model-facing windows | `add_beat`, `all_beats`, `recent_beats(_at)`, `scene_beats_for_character`, `last_image_turn`, `next_turn_index` |
 | `clock.py` | the FICTIONAL story clock | `advance_time`, `time_at`, `game_time`, `elapsed_text` |
 | `state.py` | the assembled GameState the API serves | `game_state` |

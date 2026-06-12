@@ -36,8 +36,8 @@ def chat(
     stop: list[str] | None = None,
     thinking: bool | None = None,
 ) -> LLMReply:
-    # Resolved at call time (admin DB override -> env -> default), so swapping the
-    # text provider in the admin panel takes effect on the next call, no restart.
+    # Resolved at call time (env -> default), so a .env change lands on the
+    # next compose up with no code involved.
     cfg = providers.resolve("text")
     payload: dict = {
         "model": cfg.model,

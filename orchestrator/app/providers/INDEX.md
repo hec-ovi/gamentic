@@ -2,8 +2,8 @@
 
 The inference-providers layer (docs/shared/inference-providers.md): one interface per
 modality, dialect classes for pure JSON shaping (httpx only, no SDKs), and the config
-spine. Config resolves AT CALL TIME (admin DB override -> env -> default), so the
-/admin panel hot-swaps providers with no restart. Defaults reproduce the local stack
+spine. Config resolves AT CALL TIME (env -> default); .env is the single config
+layer (the setup faces write it), applied on the next compose up. Defaults reproduce the local stack
 byte-for-byte.
 
 | Module | Owns | Key pieces |
@@ -25,7 +25,7 @@ Conventions:
 - Providers returning raw image data hand back a `data:` URL; media.fetch_image_bytes
   decodes it on persist, so the storage path is provider-agnostic.
 - Cloud dialects are pinned by contract tests over mocked HTTP against their PUBLISHED
-  schemas; live verification is the admin TEST button. comfy + local are live-tested.
+  schemas; live verification is a real key and a real call. comfy + local are live-tested.
 - ANNA MODE (hackathon): one boolean preset above per-modality resolution. When on,
   text/image resolve to the openai dialect against `ANNA_BASE_URL` (one URL,
   normalized per modality) with `ANNA_API_KEY`, and every speak surface gates on

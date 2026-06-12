@@ -156,11 +156,6 @@ CREATE TABLE IF NOT EXISTS creator_sessions (
     updated_at TEXT
 );
 
-CREATE TABLE IF NOT EXISTS provider_config (
-    key TEXT PRIMARY KEY,             -- '<modality>.<field>', e.g. 'image.provider'
-    value TEXT                        -- admin override; beats env, read at call time (hot-swap)
-);
-
 CREATE INDEX IF NOT EXISTS idx_scenes_game ON scenes(game_id, name);
 CREATE INDEX IF NOT EXISTS idx_beats_game ON beats(game_id, turn_index, seq);
 CREATE INDEX IF NOT EXISTS idx_chars_game ON characters(game_id);

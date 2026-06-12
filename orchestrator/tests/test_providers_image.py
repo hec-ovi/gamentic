@@ -53,9 +53,7 @@ def test_comfy_character_request_shape(monkeypatch):
 
 
 def test_comfy_reference_capability_override_degrades_to_plain_t2i(monkeypatch):
-    from app import db, repo
-    with db.get_conn() as conn:
-        repo.set_provider_override(conn, "image.supports_references", "false")
+    monkeypatch.setenv("IMAGE_SUPPORTS_REFERENCES", "false")
     captured = {}
     monkeypatch.setattr(pimage.httpx, "post",
                         lambda url, json=None, timeout=None:

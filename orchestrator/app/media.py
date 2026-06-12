@@ -2,7 +2,7 @@
 
 These functions keep their historical signatures (tests and integrate/jobs.py call
 them directly) but now dispatch to the ACTIVE provider from app/providers/, resolved
-at call time (admin DB override -> env -> default). With the default local stack the
+at call time (env -> default). With the default local stack the
 wire behavior is byte-identical to what this module always did.
 
 Every call is wrapped so a missing/slow/erroring service NEVER breaks the game:

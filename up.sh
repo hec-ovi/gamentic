@@ -58,7 +58,7 @@ echo
 docker compose ps
 echo
 echo "frontend     http://localhost:5173"
-echo "orchestrator http://localhost:8000  (admin panel: http://localhost:8000/admin)"
+echo "orchestrator http://localhost:8000"
 
 if [ "$mode" = anna ]; then
     echo "anna agent   http://localhost:19001"

@@ -135,10 +135,5 @@ class Settings:
     VOICE_API_URL = os.getenv("VOICE_API_URL", "http://localhost:9002")
     VOICE_ENABLED = os.getenv("VOICE_ENABLED", "true").lower() == "true"
 
-    # --- Admin panel (/admin) ---
-    # When set, the panel page and its /admin/providers API require
-    # 'Authorization: Bearer <token>'. Empty = open (keep the stack off public nets).
-    ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
-
 
 settings = Settings()

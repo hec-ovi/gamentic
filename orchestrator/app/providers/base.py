@@ -1,12 +1,12 @@
 """Per-modality provider config, resolved AT CALL TIME.
 
-Resolution order per setting: admin override (DB table provider_config) -> env ->
-default. Defaults reproduce today's local stack byte-for-byte (local llama.cpp text,
-local Maya1 voice-api audio, comfy image-api image). Because resolution happens on
-every call, an admin PUT hot-swaps providers with NO container restart.
+Resolution order per setting: env -> default. Defaults reproduce today's local
+stack byte-for-byte (local llama.cpp text, local Maya1 voice-api audio, comfy
+image-api image). Config changes live in .env (the setup faces write it) and
+apply on the next compose up; there is no runtime override layer on top.
 
 Env spine (TEXT_*/AUDIO_*/IMAGE_*; LLM_BASE_URL/LLM_MODEL stay as working aliases
-for TEXT_*). Capability flags are set by dialect and overridable by env/DB.
+for TEXT_*). Capability flags are set by dialect and overridable by env.
 """
 import os
 import time
@@ -14,13 +14,11 @@ from dataclasses import dataclass
 
 import httpx
 
-from .. import db
 from ..config import settings
-from ..repo import providers as repo_providers
 
 MODALITIES = ("text", "audio", "image")
 
-# The dialects per modality (the admin dropdown + validation surface).
+# The dialects per modality (the validation surface; the setup schema mirrors it).
 # text 'local' and 'openai' speak the SAME wire dialect (OpenAI /chat/completions);
 # they differ only in capability defaults (stop-list budget, thinking support).
 DIALECTS = {
@@ -60,7 +58,7 @@ class ProviderConfig:
     base_url: str
     api_key: str = ""
     model: str = ""
-    # capabilities (dialect defaults, overridable by env and admin DB):
+    # capabilities (dialect defaults, overridable by env):
     supports_seed: bool = False
     supports_references: bool = False
     emotion_mode: str = "none"        # tags | instructions | none
@@ -74,9 +72,7 @@ class ProviderConfig:
 # and silences voice (Anna has no TTS surface). Expansion, not restriction: with
 # anna off, resolution below behaves exactly as it always did, byte for byte.
 # Resolution for the boolean and its settings mirrors everything else here:
-# admin override (anna.* keys in provider_config) -> env (ANNA*) -> default.
-
-ANNA_FIELDS = ("enabled", "api_key", "base_url", "text_model", "image_model")
+# env (ANNA*) -> default.
 
 
 @dataclass
@@ -99,21 +95,14 @@ def _anna_truth(v: str) -> bool:
     return bool(v) and v != "false"
 
 
-def anna_config(ov: dict | None = None) -> AnnaConfig:
-    """The Anna preset, resolved NOW (admin -> env -> off)."""
-    if ov is None:
-        ov = _overrides()
-
-    def pick(field: str, env_name: str) -> str:
-        v = (ov.get(f"anna.{field}") or "").strip()
-        return v if v else _env(env_name)
-
+def anna_config() -> AnnaConfig:
+    """The Anna preset, resolved NOW (env -> off)."""
     return AnnaConfig(
-        enabled=_anna_truth(pick("enabled", "ANNA")),
-        api_key=pick("api_key", "ANNA_API_KEY"),
-        base_url=pick("base_url", "ANNA_BASE_URL"),
-        text_model=pick("text_model", "ANNA_TEXT_MODEL"),
-        image_model=pick("image_model", "ANNA_IMAGE_MODEL"),
+        enabled=_anna_truth(_env("ANNA")),
+        api_key=_env("ANNA_API_KEY"),
+        base_url=_env("ANNA_BASE_URL"),
+        text_model=_env("ANNA_TEXT_MODEL"),
+        image_model=_env("ANNA_IMAGE_MODEL"),
     )
 
 
@@ -141,7 +130,7 @@ def _anna_image_base(url: str) -> str:
 
 def _anna_resolve(modality: str, anna: AnnaConfig) -> ProviderConfig:
     """Text/image under Anna: the openai dialect against Anna's gateway, with the
-    dialect's own capability defaults (no env/admin capability knobs leak in)."""
+    dialect's own capability defaults (no env capability knobs leak in)."""
     if modality == "text":
         return ProviderConfig(
             modality="text", provider="openai",
@@ -152,19 +141,6 @@ def _anna_resolve(modality: str, anna: AnnaConfig) -> ProviderConfig:
         base_url=_anna_image_base(anna.base_url), api_key=anna.api_key,
         model=anna.image_model or _DEFAULT_MODELS[("image", "openai")],
         supports_seed=False, supports_references=True)
-
-
-def _overrides() -> dict:
-    """The admin override table, read fresh per resolution (hot-swap). Best-effort:
-    any DB trouble degrades to env-only resolution, never breaks a call."""
-    try:
-        conn = db.connect()
-        try:
-            return repo_providers.get_provider_overrides(conn)
-        finally:
-            conn.close()
-    except Exception:
-        return {}
 
 
 def _env(*names: str, default: str = "") -> str:
@@ -206,23 +182,19 @@ def _capability_defaults(modality: str, provider: str, model: str) -> dict:
     return {"supports_seed": "nano-banana" in (model or ""), "supports_references": False}
 
 
-def resolve(modality: str, apply_anna: bool = True) -> ProviderConfig:
-    """The active config for a modality: DB override -> env -> default, NOW.
+def resolve(modality: str) -> ProviderConfig:
+    """The active config for a modality: env -> default, NOW.
     Anna mode sits on top: when the anna boolean is on, text and image resolve to
-    the Anna preset wholesale (per-modality overrides wait underneath, untouched);
-    audio resolves as usual but every speak surface is gated by voice_enabled().
-    apply_anna=False skips the preset: the admin panel uses it so the modality
-    cards show (and round-trip) the UNDERLYING config - a Save while anna is on
-    must never copy anna's values into the local overrides."""
-    ov = _overrides()
-    if apply_anna and modality in ("text", "image"):
-        anna = anna_config(ov)
+    the Anna preset wholesale (per-modality env settings wait underneath,
+    untouched); audio resolves as usual but every speak surface is gated by
+    voice_enabled()."""
+    if modality in ("text", "image"):
+        anna = anna_config()
         if anna.enabled:
             return _anna_resolve(modality, anna)
 
     def pick(field: str, *env_names: str, default: str = "") -> str:
-        v = (ov.get(f"{modality}.{field}") or "").strip()
-        return v if v else _env(*env_names, default=default)
+        return _env(*env_names, default=default)
 
     if modality == "text":
         provider = pick("provider", "TEXT_PROVIDER", default=_DEFAULT_PROVIDER["text"])
@@ -267,39 +239,6 @@ def resolve(modality: str, apply_anna: bool = True) -> ProviderConfig:
         caps.get("supports_thinking", False))
     cfg.voice_pool = pick("voice_pool", "AUDIO_VOICE_POOL")
     return cfg
-
-
-def capability_notes(cfg: ProviderConfig) -> list[str]:
-    """Plain-words capability readout for the admin panel."""
-    notes = []
-    if cfg.modality == "text":
-        notes.append(f"stop sequences are capped at {cfg.max_stops} per call")
-        notes.append("hybrid thinking is available" if cfg.supports_thinking
-                     else "thinking requests are silently dropped (not supported here)")
-    elif cfg.modality == "audio":
-        if cfg.emotion_mode == "tags":
-            notes.append("emotion rides as an inline tag on the spoken line")
-        elif cfg.emotion_mode == "instructions":
-            notes.append("emotion is rendered as a spoken-style instruction sentence")
-        else:
-            notes.append("no emotion support: tone is silently unused")
-        if cfg.provider in ("local", "fal"):
-            notes.append("voices are designed descriptions composed from the character sheet")
-        elif cfg.provider == "openai":
-            notes.append("voices map deterministically onto the provider's named voices")
-        else:
-            notes.append("voices pick deterministically from your AUDIO_VOICE_POOL ids")
-    else:
-        if not cfg.supports_references:
-            notes.append("this provider cannot do reference images: "
-                         "character identity will be softer")
-        if not cfg.supports_seed:
-            notes.append("no seed support: character sets use reference-path identity"
-                         if cfg.supports_references else
-                         "no seed and no references: character views render independently")
-        if cfg.supports_seed and cfg.supports_references:
-            notes.append("full identity support (seed + reference images)")
-    return notes
 
 
 def fal_queue_run(cfg: ProviderConfig, model: str, payload: dict,

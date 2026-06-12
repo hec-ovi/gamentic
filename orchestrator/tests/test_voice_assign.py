@@ -131,8 +131,7 @@ def test_switching_provider_reresolves_once_and_stays_stable(client, fake_llm, m
     before = _vex_row(gid)
     assert before["voice_id"] == before["voice_design"]      # local mapping
 
-    with db.get_conn() as conn:                              # hot-swap: DB override
-        repo.set_provider_override(conn, "audio.provider", "openai")
+    monkeypatch.setenv("AUDIO_PROVIDER", "openai")           # .env change, next call
     assert integrate_voice.reresolve_voices() == 1           # one character re-mapped
     after = _vex_row(gid)
     assert after["voice_design"] == before["voice_design"]   # the design never moves
@@ -142,8 +141,7 @@ def test_switching_provider_reresolves_once_and_stays_stable(client, fake_llm, m
     assert integrate_voice.reresolve_voices() == 0           # deterministic no-op re-run
     assert _vex_row(gid)["voice_id"] == after["voice_id"]
 
-    with db.get_conn() as conn:                              # switch back home
-        repo.set_provider_override(conn, "audio.provider", "")
+    monkeypatch.delenv("AUDIO_PROVIDER", raising=False)      # switch back home
     integrate_voice.reresolve_voices()
     assert _vex_row(gid)["voice_id"] == before["voice_design"]
 

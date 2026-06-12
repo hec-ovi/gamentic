@@ -77,7 +77,7 @@ def assign_voices_for_game(conn, gid: str) -> None:
 
 
 def reresolve_voices() -> int:
-    """After an audio provider switch (admin PUT): re-map every character's stored
+    """After an audio provider switch (.env change + restart): re-map every character's stored
     design into the new provider's voice space ONCE, and re-resolve each game's
     narrator. Deterministic, so re-running is a no-op. Returns characters updated."""
     if not settings.VOICE_ENABLED:

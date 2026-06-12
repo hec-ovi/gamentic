@@ -1,11 +1,9 @@
-"""The provider config spine: per-modality resolution (admin DB override -> env ->
-default) happens AT CALL TIME so the admin panel hot-swaps with no restart; the
-defaults reproduce today's local stack byte-for-byte; LLM_BASE_URL/LLM_MODEL stay
-working aliases for TEXT_*; capability flags default per dialect and are
-overridable. Plus the text dialect wire contract (Bearer, stop cap, thinking gate)."""
-import json
-
-from app import db, llm, repo
+"""The provider config spine: per-modality resolution (env -> default) happens AT
+CALL TIME, so an env change lands on the very next call; the defaults reproduce
+today's local stack byte-for-byte; LLM_BASE_URL/LLM_MODEL stay working aliases for
+TEXT_*; capability flags default per dialect and are overridable by env. Plus the
+text dialect wire contract (Bearer, stop cap, thinking gate)."""
+from app import llm
 from app.config import settings
 from app.providers import base as pbase
 
@@ -51,16 +49,6 @@ def test_env_beats_default_and_llm_alias_still_works(monkeypatch):
     assert cfg.base_url == "http://spine:4321/v1" and cfg.model == "spine-model"
 
 
-def test_db_override_beats_env_and_clearing_restores_it(monkeypatch):
-    monkeypatch.setenv("TEXT_MODEL", "env-model")
-    with db.get_conn() as conn:
-        repo.set_provider_override(conn, "text.model", "db-model")
-    assert pbase.resolve("text").model == "db-model"             # admin override on top
-    with db.get_conn() as conn:
-        repo.set_provider_override(conn, "text.model", "")       # blank = cleared
-    assert pbase.resolve("text").model == "env-model"            # the env shows through
-
-
 def test_empty_env_vars_are_treated_as_unset(monkeypatch):
     # compose passes `TEXT_BASE_URL=` through as empty; that must NOT blank the default
     _clear_provider_env(monkeypatch)
@@ -104,11 +92,10 @@ def test_cloud_dialects_get_sane_base_and_model_defaults(monkeypatch):
     assert aud.base_url == "https://queue.fal.run" and aud.model == "fal-ai/maya/batch"
 
 
-def test_capability_override_via_db(monkeypatch):
+def test_capability_override_via_env(monkeypatch):
     _clear_provider_env(monkeypatch)
-    with db.get_conn() as conn:
-        repo.set_provider_override(conn, "image.supports_references", "false")
-        repo.set_provider_override(conn, "text.max_stops", "2")
+    monkeypatch.setenv("IMAGE_SUPPORTS_REFERENCES", "false")
+    monkeypatch.setenv("TEXT_MAX_STOPS", "2")
     assert not pbase.resolve("image").supports_references        # comfy default overridden
     assert pbase.resolve("text").max_stops == 2
 
@@ -160,16 +147,15 @@ def test_local_text_keeps_no_auth_eight_stops_and_thinking(monkeypatch):
     assert captured["body"]["chat_template_kwargs"] == {"enable_thinking": True}
 
 
-def test_text_hot_swap_via_db_override_no_restart(monkeypatch):
+def test_text_swap_via_env_lands_on_the_next_call(monkeypatch):
     captured = {}
 
     def _post(url, json=None, timeout=None, headers=None):
         captured.update(url=url, headers=headers)
         return _Resp()
     monkeypatch.setattr(llm.httpx, "post", _post)
-    with db.get_conn() as conn:
-        repo.set_provider_override(conn, "text.base_url", "https://swapped.example/v1")
-        repo.set_provider_override(conn, "text.api_key", "sk-swap")
+    monkeypatch.setenv("TEXT_BASE_URL", "https://swapped.example/v1")
+    monkeypatch.setenv("TEXT_API_KEY", "sk-swap")
     llm.chat([{"role": "user", "content": "hi"}])
     assert captured["url"] == "https://swapped.example/v1/chat/completions"
     assert captured["headers"] == {"Authorization": "Bearer sk-swap"}

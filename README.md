@@ -60,17 +60,24 @@ The world is an explicit state machine and the narrator is the engine that advan
 
 ## Run it
 
-Requires Docker (with GPU access for the model and the image service) and local model files on disk.
+Requires Docker (with GPU access for the model and the image service) and local model files on disk. Configure first, three ways to taste, then start the stack:
 
 ```bash
-cp .env.example .env           # then set MODELS_DIR and the model file paths
-./up.sh                        # or: docker compose up -d --build (from the repo root)
+# 1. console-shy: double-click setup.html, answer the questions, save the .env it makes
+# 2. terminal:    ./gamentic-setup        (same questions; Windows: gamentic-setup.bat)
+# 3. expert:      cp .env.example .env    and edit it yourself
+
+./up.sh                        # start (or: docker compose up -d --build)
 ```
 
-`./up.sh` reads `ANNA` from `.env` and starts the matching stack: the full local
-one by default, or the four-container Anna stack (see Anna mode below), cleaning
-up the other mode's leftovers when the boolean was flipped. `./up.sh down` stops
-everything.
+Both setup faces ask the identical questions from one shared schema
+(`infra/setup/schema.js`), write a complete `.env`, and never send your keys
+anywhere (the HTML page makes zero network calls). `./gamentic-setup doctor`
+checks the host before you start: docker, GPU nodes, model files, free ports,
+config pitfalls. `./up.sh` reads `ANNA` from `.env` and starts the matching
+stack: the full local one by default, or the four-container Anna stack (see
+Anna mode below), cleaning up the other mode's leftovers when the boolean was
+flipped. `./up.sh down` stops everything.
 
 | Service | URL | Tech stack |
 |---|---|---|
@@ -87,8 +94,9 @@ Open the frontend, create a world by chatting with the story creator, and play.
 gamentic/
   orchestrator/   game brain (FastAPI + SQLite, narrator + character agents, tools)
   frontend/       vanilla HTML / CSS / JS client
-  infra/          ComfyUI + image-api service (compose lives at the repo root)
+  infra/          ComfyUI + image-api, the Anna agent + its adapter, the setup faces
   voice-api/      Maya1 TTS service (synthesis + streaming; voice identity lives in the game DB)
+  setup.html      the double-click setup face; gamentic-setup is the CLI one
 ```
 
 ## Bring your own inference
@@ -116,21 +124,18 @@ every prompt. The provider only ever sees the most primitive request its kind al
 text in, completion out; text plus voice in, audio out; prompt plus references in,
 image out.
 
-Two ways to configure it:
-
-- **Experts**: environment variables, four per modality (audio adds a fifth for the voice).
-  `TEXT_PROVIDER/_BASE_URL/_API_KEY/_MODEL`, same for `AUDIO_*` and `IMAGE_*`.
-  Defaults run the local stack untouched. Point `TEXT_BASE_URL` at any
-  OpenAI-compatible endpoint with a key and the narrator runs on it.
-- **Everyone else**: open `/admin` on the orchestrator: pick a provider per modality,
-  paste a key, press TEST, save. Changes apply on the next call, no restart. Keys stay
-  on the server and never reach the browser. Set `ADMIN_TOKEN` to gate the panel.
+It is all `.env`: four variables per modality (audio adds a fifth for the voice),
+`TEXT_PROVIDER/_BASE_URL/_API_KEY/_MODEL`, same for `AUDIO_*` and `IMAGE_*`.
+Defaults run the local stack untouched; point `TEXT_BASE_URL` at any
+OpenAI-compatible endpoint with a key and the narrator runs on it. The setup
+faces (custom mode) ask these questions for you; experts edit the file directly.
+Changes land on the next `./up.sh`.
 
 Honesty about testing: the local paths (llama.cpp, Maya1, ComfyUI) are the live-tested
 defaults this project runs on. The cloud dialects (OpenAI, Google, ElevenLabs, fal) are
 implemented against their published schemas and pinned by contract tests, but have not
-been verified against the paid live services. If you hold a key, the TEST button is the
-verification, and reports are welcome.
+been verified against the paid live services. If you hold a key, your first played
+turn is the verification, and reports are welcome.
 
 ### Anna mode (no local inference, no GPU)
 
@@ -157,9 +162,9 @@ ANNA_BASE_URL=              # blank = the in-stack anna-api adapter
 ANNA_TEXT_MODEL=            # blank = anna-copilot; image blank = gpt-image-2
 ```
 
-The `/admin` panel carries the same boolean for runtime flips without a restart,
-with the key write-only as always. Flip `ANNA=false` and the same command brings
-the full local stack back, byte for byte: it is an expansion, not a restriction.
+The setup faces set this boolean for you (pick the Anna mode card). Flip
+`ANNA=false` and the same command brings the full local stack back, byte for
+byte: it is an expansion, not a restriction.
 
 Three rules keep the switch honest:
 
