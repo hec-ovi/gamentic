@@ -73,3 +73,52 @@ test("focus returns to the creator chat box when the reply lands", async () => {
   // the reply landed: the keyboard comes back to the chat box on its own
   await waitFor(() => expect(document.activeElement).toBe(screen.getByPlaceholderText(/describe your world/i)));
 });
+
+test("the begin button stays locked until the world-builder signals ready, then unlocks", async () => {
+  const u = user();
+  let calls = 0;
+  server.use(
+    http.post(`${API}/create/message`, () => {
+      calls += 1;
+      return calls === 1
+        ? HttpResponse.json({ reply: "What tone do you want?", ready: false })
+        : HttpResponse.json({ reply: "Your world is complete. Say the word.", ready: true });
+    }),
+  );
+  await mountApp();
+  await u.click(screen.getByRole("button", { name: /forge a world/i }));
+  // locked from the first breath: a fresh chat has no world yet
+  const begin = () => screen.getByRole("button", { name: /begin/i });
+  expect(begin().disabled).toBe(true);
+  const box = screen.getByPlaceholderText(/describe your world/i);
+  await u.type(box, "A haunted lighthouse");
+  await u.click(screen.getByRole("button", { name: /^send$/i }));
+  await screen.findByText(/what tone do you want/i);
+  expect(begin().disabled).toBe(true);                       // builder not ready yet
+  await u.type(screen.getByPlaceholderText(/describe your world/i), "Grim. A keeper. Survive the night.");
+  await u.click(screen.getByRole("button", { name: /^send$/i }));
+  await screen.findByText(/your world is complete/i);
+  expect(begin().disabled).toBe(false);                      // the ready reply unlocks it
+  expect(begin().textContent).toMatch(/begin the adventure/i);
+});
+
+test("a restored session that was already ready keeps the begin button unlocked", async () => {
+  const u = user();
+  server.use(
+    http.get(`${API}/create/creator-abc`, () =>
+      HttpResponse.json({
+        session_id: "creator-abc",
+        history: [
+          { role: "user", content: "A haunted lighthouse." },
+          { role: "assistant", content: "I'm ready to start the adventure whenever you are." },
+        ],
+        ready: true,
+      }),
+    ),
+  );
+  await mountApp();
+  localStorage.setItem(SESSION_KEY, "creator-abc");
+  await u.click(screen.getByRole("button", { name: /forge a world/i }));
+  await screen.findByText(/picked up where you left off/i);
+  expect(screen.getByRole("button", { name: /begin the adventure/i }).disabled).toBe(false);
+});

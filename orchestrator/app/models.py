@@ -189,6 +189,10 @@ class SpeakIn(BaseModel):
     text: str = Field(..., min_length=1)
     voice_id: str = ""
     emotion: str = ""
+    # optional ownership tag: in local-provider mode it rides to voice-api, whose wav
+    # manifest maps filename -> [game_ids] so DELETE /voice/games/{gid} can free the
+    # wavs only that game claims. Cloud providers have no wav cache and ignore it.
+    game_id: str = ""
 
 
 class Beat(BaseModel):

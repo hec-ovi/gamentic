@@ -87,11 +87,13 @@ export async function revealBeat(g, beat) {
   // queue the NEXT voiced beat behind it so it renders while this one plays.
   // Autoplay is split: narration follows `autoplayNarrator`, character lines
   // (public dialogue AND private whispers) follow `autoplayCharacters`.
+  // g.id rides as game_id on every render: the voice-api manifest tracks which
+  // games claim a wav, so deleting this adventure deletes exactly its audio.
   let prepared = null;
   if (autoplayFor(beat) && beat.voiceId && voice.enabled) {
-    const current = voice.prepare({ text: beat.text, voiceId: beat.voiceId, emotion: beat.emotion });
+    const current = voice.prepare({ text: beat.text, voiceId: beat.voiceId, emotion: beat.emotion, gameId: g.id });
     const next = nextVoicedBeat(g, beat.id);
-    if (next) voice.prepare({ text: next.text, voiceId: next.voiceId, emotion: next.emotion });
+    if (next) voice.prepare({ text: next.text, voiceId: next.voiceId, emotion: next.emotion, gameId: g.id });
     prepared = await current;
   }
 

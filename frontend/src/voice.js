@@ -14,6 +14,10 @@
 //  - disabled             -> do nothing (text already on screen).
 //  - fetch/play error      -> swallow; never block the game on audio.
 //  - volume               -> master * per-speaker (0..1).
+//  - gameId (optional)    -> rides as "game_id": ties the rendered wav to its
+//    adventure in the voice-api ownership manifest, so deleting the adventure
+//    deletes its wavs (ownership deletion, no retention timers - owner
+//    decision 2026-06-11). Outside a game there is no owner: field omitted.
 //  - stop()               -> halts current playback.
 //  - ONE GPU serves one generation: synthesis requests go through a strict
 //    FIFO queue, never in parallel. Identical requests hit the server cache
@@ -51,12 +55,18 @@ export class Voice {
   // Synthesize WITHOUT playing: returns { audioUrl, duration } or null.
   // Queued FIFO (one generation at a time); cached per (voice, text). This is
   // the pipelining primitive: call it for beat N+1 while beat N plays.
-  prepare({ text, voiceId, emotion } = {}) {
+  prepare({ text, voiceId, emotion, gameId } = {}) {
     if (!this.enabled) return Promise.resolve(null);
     const clean = cleanText(text);
     if (!clean || !voiceId) return Promise.resolve(null);
 
-    const key = `${voiceId}|${emotion || ""} ${clean}`;
+    // gameId is part of the cache key ON PURPOSE: the voice-api only learns
+    // that a game claims a wav when that game's id rides a request. A
+    // cross-game local-cache hit would skip the POST, the manifest would list
+    // only the first game, and deleting that game would take a wav this one
+    // still replays. The extra POST per game is cheap: the server cache
+    // returns the same stable audio_url.
+    const key = `${gameId || ""}|${voiceId}|${emotion || ""} ${clean}`;
     const hit = this._cache.get(key);
     if (hit) return Promise.resolve(hit);
 
@@ -69,7 +79,16 @@ export class Voice {
         const res = await this._fetch("/voice/speak", {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ text: clean, voice_id: voiceId, ...(emotion ? { emotion } : {}) }),
+          // game_id ties the wav to its adventure in the voice-api manifest
+          // (delete the adventure, the wav dies with it); no active game, no
+          // owner, no field. The cloud-bytes path POSTs this same body - the
+          // response branch below only changes how the AUDIO comes back.
+          body: JSON.stringify({
+            text: clean,
+            voice_id: voiceId,
+            ...(emotion ? { emotion } : {}),
+            ...(gameId ? { game_id: gameId } : {}),
+          }),
         });
         if (!res || !res.ok) return null;
         // Cloud audio passthrough (frontend-api.md): when the nginx /voice
@@ -114,8 +133,8 @@ export class Voice {
 
   // Synthesize + play a single beat (the per-beat play button). Returns the
   // audio_url that was played, or null if skipped (disabled / no voice / error).
-  async speak({ text, voiceId, speakerId, emotion } = {}) {
-    const prepared = await this.prepare({ text, voiceId, emotion });
+  async speak({ text, voiceId, speakerId, emotion, gameId } = {}) {
+    const prepared = await this.prepare({ text, voiceId, emotion, gameId });
     if (!prepared) return null;
     if (!this._Audio) return prepared.audioUrl; // headless: report intent
     this.playUrl(prepared.audioUrl, speakerId);

@@ -122,6 +122,12 @@ services:
       - IMAGE_CHAR_FACE_HEIGHT=${IMAGE_CHAR_FACE_HEIGHT:-512}
       - IMAGE_CHAR_BODY_WIDTH=${IMAGE_CHAR_BODY_WIDTH:-640}
       - IMAGE_CHAR_BODY_HEIGHT=${IMAGE_CHAR_BODY_HEIGHT:-1152}
+      - COMFY_OUTPUT_DIR=/comfy/output
+    volumes:
+      # the ComfyUI staging dir, mounted so the DELETE endpoints can reclaim files the
+      # moment the orchestrator owns its copy (owner rule: no timers, files die with
+      # their adventure)
+      - ./infra/comfyui/data/output:/comfy/output
     ports:
       - "${IMAGE_API_PORT:-9001}:9001"
     healthcheck:

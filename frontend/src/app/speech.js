@@ -30,7 +30,9 @@ export async function speakBeat(beatId) {
     return;
   }
   setSpeaking({ beatId, phase: "loading" });
-  const prepared = await voice.prepare({ text: beat.text, voiceId: beat.voiceId, emotion: beat.emotion });
+  // g.id rides as game_id so the voice-api manifest knows this game claims the
+  // wav (ownership deletion: delete the adventure, its audio dies with it)
+  const prepared = await voice.prepare({ text: beat.text, voiceId: beat.voiceId, emotion: beat.emotion, gameId: g.id });
   if (!speaking || speaking.beatId !== beatId) return; // stopped or superseded meanwhile
   if (!prepared) return setSpeaking(null); // synth failed; the text is on screen
   const el = voice.playUrl(prepared.audioUrl, beat.speaker);

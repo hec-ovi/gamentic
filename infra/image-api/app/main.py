@@ -5,6 +5,9 @@ Implements the gamentic image contract (docs/SPECS.md section 3):
   POST /image/generate  {prompt, negative_prompt?, width?, height?, seed?, steps?}
                         -> {image_url, width, height, seed, prompt_id}
   GET  /image/file      proxies the rendered PNG back from ComfyUI
+  DELETE /image/file    removes one staging file (orchestrator calls it the moment its
+                        own /media copy is persisted) -> {"deleted": true|false}
+  DELETE /image/files   confirm=all wipes the whole staging dir -> {"deleted": <n>}
 
 The orchestrator/frontend only ever talk to this origin; how images are produced
 (ComfyUI graph, FLUX.2 Klein, LoRAs) stays behind this contract.
@@ -17,6 +20,7 @@ import hashlib
 import logging
 import random
 import uuid
+from pathlib import Path, PurePosixPath
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Response
@@ -294,3 +298,99 @@ async def image_file(
     except ComfyError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return Response(content=data, media_type="image/png")
+
+
+# --- Deletion: the ownership-based cleanup contract (2026-06-11) ------------------------
+#
+# The owner killed the retention-timer idea outright: no schedulers, no TTLs. Instead,
+# files die when their owner dies. The orchestrator deletes each staging file the moment
+# its own /media copy is persisted, and a game delete / wipe-all sweeps whatever is left.
+# Reads go through ComfyUI's HTTP /view, but core ComfyUI has no delete endpoint, so
+# these two routes operate directly on the staging dir (config.COMFY_OUTPUT_DIR, the
+# same files /image/file serves, addressed by the same filename+subfolder pair).
+
+
+def _staging_target(filename: str, subfolder: str) -> Path:
+    """Resolve filename+subfolder to a path strictly inside the staging dir, or 400.
+
+    Path safety is non-negotiable here: this endpoint takes caller-supplied names and
+    unlinks, so '../', absolute paths, and empty names are rejected up front, and the
+    RESOLVED path (symlinks followed) must still land inside the staging root - a
+    symlink planted in the output dir pointing at /etc therefore 400s instead of
+    deleting through it.
+    """
+    if not filename.strip():
+        raise HTTPException(status_code=400, detail="filename must not be empty")
+    for raw in (filename, subfolder):
+        parts = PurePosixPath(raw)
+        if parts.is_absolute() or ".." in parts.parts:
+            raise HTTPException(
+                status_code=400,
+                detail="filename/subfolder must be a relative path inside the output dir",
+            )
+    try:
+        root = config.COMFY_OUTPUT_DIR.resolve()
+        target = (root / subfolder / filename).resolve()
+    except ValueError as exc:
+        # A %00 in the query reaches pathlib as an embedded null and resolve() raises
+        # ValueError (found while testing this very endpoint); that is a malformed
+        # name, not a server fault, so it 400s like the other rejects.
+        raise HTTPException(status_code=400, detail="malformed filename/subfolder") from exc
+    if target == root or not target.is_relative_to(root):
+        raise HTTPException(
+            status_code=400, detail="path resolves outside the ComfyUI output dir"
+        )
+    return target
+
+
+@app.delete("/image/file")
+async def delete_image_file(
+    filename: str = Query(...),
+    subfolder: str = Query(""),
+    type: str = Query("output"),
+) -> dict:
+    """Delete one staging file. {"deleted": false} when it is already gone - the
+    orchestrator calls this best-effort right after persisting its /media copy, and a
+    retried/raced delete must stay a non-event, never a 500.
+    """
+    # Only the output (staging) dir is mounted into this adapter; ComfyUI's temp/input
+    # trees live in the other container and are not ours to unlink.
+    if type != "output":
+        raise HTTPException(status_code=400, detail="only type=output can be deleted")
+    target = _staging_target(filename, subfolder)
+    try:
+        target.unlink()
+    except FileNotFoundError:
+        return {"deleted": False}
+    except IsADirectoryError:
+        # Addressing a directory through the file endpoint is a caller mix-up; nothing
+        # was deleted and the structure ComfyUI expects stays intact.
+        return {"deleted": False}
+    return {"deleted": True}
+
+
+@app.delete("/image/files")
+async def purge_image_files(confirm: str = Query("")) -> dict:
+    """Empty the whole staging dir (wipe-all). Requires the exact confirm=all so a
+    fat-fingered curl can't erase every adventure's staging output in one keystroke.
+
+    Files in subfolders go too, but directories themselves are kept: ComfyUI writes
+    into the tree it created and must find it intact after a purge.
+    """
+    if confirm != "all":
+        raise HTTPException(
+            status_code=400, detail="refusing to purge without confirm=all"
+        )
+    root = config.COMFY_OUTPUT_DIR
+    deleted = 0
+    if root.is_dir():
+        for path in root.rglob("*"):
+            # is_symlink first: a dangling or dir-pointing symlink fails is_file() but
+            # is still staging garbage we own; unlink removes the link, never its target.
+            if path.is_symlink() or path.is_file():
+                try:
+                    path.unlink()
+                    deleted += 1
+                except OSError as exc:  # raced away or perms - purge the rest anyway
+                    log.warning("purge skipped %s: %s", path, exc)
+    return {"deleted": deleted}

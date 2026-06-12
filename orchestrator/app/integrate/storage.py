@@ -1,6 +1,7 @@
 """Media persistence on disk: download rendered images into the per-game folder we own
 (served under /media/<gid>/...), detect already-persisted reference sets, and wipe
 folders when games go."""
+import json
 import os
 
 from .. import media
@@ -12,12 +13,51 @@ def _persist(gid: str, src_url, name: str):
     Falls back to the original image-api URL if the download fails (still works, not persisted)."""
     data = media.fetch_image_bytes(src_url)
     if not data:
-        return src_url
+        return src_url   # the staging file IS the live copy now: it must survive
     d = os.path.join(settings.GAMES_DATA_DIR, gid, "images")
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, f"{name}.png"), "wb") as f:
         f.write(data)
+    # From this write on OUR copy is the truth and the staging file the image-api
+    # kept is garbage (owner decision 2026-06-11: ownership-based deletion, no
+    # retention timers). Fire-and-forget, success path ONLY - the fallback above
+    # returns the staging URL as the live copy. Non-image-api sources (data: URLs,
+    # cloud providers) skip inside the facade; so does any service failure.
+    media.delete_staging_image(src_url)
     return f"/media/{gid}/{name}.png"
+
+
+def _item_image_urls(raw_json) -> list[str]:
+    """image_urls inside an inventory/items JSON column. Defensive parse: a sweep
+    runs during game DELETE, and a malformed row must never block the funeral."""
+    try:
+        return [str(it.get("image_url") or "") for it in json.loads(raw_json or "[]")
+                if isinstance(it, dict)]
+    except Exception:
+        return []
+
+
+def remote_image_urls(conn, gid: str) -> list[str]:
+    """Every URL this game stored that still points at the image-api staging folder
+    (persist fallbacks: the download failed at render time, so the staging file is
+    the only copy). Collected BEFORE the rows die so the game-delete sweep can free
+    those files on the image-api side too - deleting only our /media folder would
+    leave them in the ComfyUI output dir forever. Covers scenes, character views,
+    beats, and the item images in player/scene/character inventories."""
+    urls: list[str] = []
+    for r in conn.execute("SELECT image_url, items FROM scenes WHERE game_id=?", (gid,)):
+        urls.append(r["image_url"] or "")
+        urls += _item_image_urls(r["items"])
+    for r in conn.execute("SELECT face_url, body_front_url, body_side_url, inventory"
+                          " FROM characters WHERE game_id=?", (gid,)):
+        urls += [r["face_url"] or "", r["body_front_url"] or "", r["body_side_url"] or ""]
+        urls += _item_image_urls(r["inventory"])
+    for r in conn.execute("SELECT image_url FROM beats WHERE game_id=?", (gid,)):
+        urls.append(r["image_url"] or "")
+    p = conn.execute("SELECT inventory FROM player_state WHERE game_id=?", (gid,)).fetchone()
+    if p:
+        urls += _item_image_urls(p["inventory"])
+    return sorted({u for u in urls if "/image/file?" in u})
 
 
 def _existing_char_urls(gid: str, cid: str) -> dict | None:

@@ -136,6 +136,14 @@ Active personal project under heavy iteration. The brain, the services and the f
 - Deep story memory costs speed: turn time grows with the story window you choose (prefill measures about 1s per 900 tokens on the reference hardware). The story-memory settings exist precisely to pick your own point on that curve.
 - A local Q4 model, even the 26B, will sometimes narrate a tool call instead of making it. The brain fights this with structure, never with hope: a deterministic movement router, validated tools with bounded state, adjudication with default-accept, output sanitizers on every path, and parsers that accept the model's intent even when it writes the call as prose.
 
+## Planned
+
+Two features are next on the list, not yet started:
+
+- **A character workshop.** Create characters yourself with agentic help: personality, portrait set and voice, regenerating each piece until it fits. Finished characters live in a store of their own and can be dropped into any adventure. A stored character keeps its voice, look and personality; memories, whispers and inventory always belong to the story they happened in.
+- **Checkpoints.** Rewind the story to an earlier moment when an outcome lands wrong.
+- **Characters conspiring.** Characters whispering each other behind your back (alliances, betrayals, double agents); you only ever find out the way anyone does: by play.
+
 ## Models and licenses
 
 Gamentic is just the harness. It does not distribute, host, or bundle any model weights. You bring your own, downloaded from their official sources, and each model stays the property of its authors under its own license and terms, which you are responsible for following:

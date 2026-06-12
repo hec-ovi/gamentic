@@ -24,15 +24,14 @@ MAYA1_MAX_TOKENS = int(os.environ.get("MAYA1_MAX_TOKENS", "2048"))
 DATA_DIR = Path(os.environ.get("VOICE_DATA_DIR", str(Path(__file__).parent / "data")))
 AUDIO_DIR = DATA_DIR / "audio"
 CHARACTERS_FILE = DATA_DIR / "characters.json"
+# Game -> wav ownership manifest, beside the wavs it describes (deletion
+# contract 2026-06-11: ownership-based deletion, no retention timers).
+MANIFEST_FILE = AUDIO_DIR / "games.json"
 
 SAMPLE_RATE = 24000  # SNAC 24kHz codec, fixed by the model
 DEFAULT_VOICE = os.environ.get(
     "VOICE_DEFAULT",
     "Male voice, 40s, warm medium pitch, measured storyteller pacing, engaging narrator tone")
-
-# How long to keep generated audio before it can be cleaned up (best-effort).
-AUDIO_TTL_SECONDS = int(os.environ.get("VOICE_AUDIO_TTL", "3600"))
-
 
 def ensure_dirs() -> None:
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)

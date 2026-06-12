@@ -6,12 +6,31 @@ orchestrator restart silently killed an in-progress creation and finalize failed
 JSON produced by a final tool call, then persisted by repo.create_game.
 """
 import json
+import re
 
 from . import engine, prompts, llm, repo, db
 from .engine import parsing
 from .models import WorldSheet
 
 ORIGIN_MIN_CHARS = 220   # ~3 short sentences; anything thinner gets the enrichment pass
+
+# The creator's readiness signal (owner: the begin button stays LOCKED until the
+# world-builder is genuinely ready - it used to sit clickable the whole chat and
+# bounce with a 409). The prompt asks for the exact marker [ready]; the prose
+# fallback honors the house rule - parse the intent, never demand the protocol
+# (the prompt has always made the model SAY it is ready in words).
+_READY_MARK = re.compile(r"\[\s*ready\s*\]", re.I)
+_READY_PROSE = re.compile(r"\bready\b[^.!?\n]{0,60}\b(?:start|begin|forge)\b", re.I)
+
+
+def is_ready(text: str) -> bool:
+    """Does this creator reply signal the world is complete enough to forge?"""
+    return bool(_READY_MARK.search(text or "") or _READY_PROSE.search(text or ""))
+
+
+def strip_ready(text: str) -> str:
+    """Display form of a stored creator reply: the marker is plumbing, never prose."""
+    return _READY_MARK.sub("", text or "").strip()
 
 
 def enrich_origins(gid: str) -> None:
@@ -63,12 +82,19 @@ def message(session_id: str, user_message: str) -> dict:
     # Sanitize BEFORE storing or returning (static-confirmed: this path shipped raw model
     # content): a leaked think-span or tool-call line would otherwise reach the player AND
     # persist in the session history, re-fed to the model on every later creator turn.
-    text = engine.clean_prose(parsing._strip_think(reply.content or ""))
+    # Readiness reads the RAW reply first: clean_prose would eat a lone "[ready]" line
+    # (it looks like a JSON line), and the marker must never reach the display anyway.
+    raw = parsing._strip_think(reply.content or "")
+    ready = is_ready(raw)
+    text = engine.clean_prose(_READY_MARK.sub("", raw)).strip()
     history.append({"role": "user", "content": user_message})
-    history.append({"role": "assistant", "content": text})
+    # The marker is RE-APPENDED to the stored copy (live: the model said "when YOU are
+    # ready" - no prose signal - so a refresh lost the unlocked button; the stored
+    # marker is the durable truth, stripped again at every display edge).
+    history.append({"role": "assistant", "content": text + ("\n[ready]" if ready else "")})
     with db.get_conn() as conn:
         _save(conn, session_id, history)
-    return {"reply": text}
+    return {"reply": text, "ready": ready}
 
 
 def get_session(conn, session_id: str) -> list[dict] | None:

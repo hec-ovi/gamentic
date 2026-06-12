@@ -13,7 +13,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
-from . import db, repo, engine, creator, integrate, prompts, llm, constants, transfer
+from . import db, repo, engine, creator, integrate, media, prompts, llm, constants, transfer
 from .integrate import events as game_events
 from .config import settings
 from .providers import DIALECTS, MODALITIES, capability_notes, resolve
@@ -164,9 +164,12 @@ def get_state(gid: str):
 @app.delete("/games")
 def wipe_everything(confirm: str = ""):
     """The settings 'wipe all memory' button: delete EVERY game (state, history,
-    characters), release every voice-registry entry, drop creator sessions, and remove
-    every generated media folder INCLUDING orphans left by older delete races. Requires
-    ?confirm=wipe (a destructive endpoint must never fire by accident)."""
+    characters), release every voice-registry entry, drop creator sessions, remove
+    every generated media folder INCLUDING orphans left by older delete races, and
+    empty the accessory services' own caches (the image-api's ComfyUI staging folder,
+    the voice-api's wav cache + manifest - owner decision 2026-06-11: 'wipe all
+    memory' means nothing generated survives ANYWHERE). Requires ?confirm=wipe
+    (a destructive endpoint must never fire by accident)."""
     if confirm != "wipe":
         raise HTTPException(400, "pass ?confirm=wipe to wipe everything")
     with db.get_conn() as conn:
@@ -177,19 +180,37 @@ def wipe_everything(confirm: str = ""):
         conn.execute("DELETE FROM creator_sessions")
     folders = integrate.delete_all_media()           # all folders, orphans included
     integrate.release_game_voices(char_ids)
-    return {"wiped_games": len(gids), "wiped_media_folders": folders}
+    # best-effort service purges AFTER our own state is gone: a dead media service
+    # must never fail the wipe. -1 = the service could not confirm a count (down,
+    # disabled, or a bad reply); the wipe itself already succeeded regardless.
+    staging = media.purge_all_staging_images()
+    audio = media.purge_all_audio()
+    return {"wiped_games": len(gids), "wiped_media_folders": folders,
+            "wiped_staging_files": -1 if staging is None else staging,
+            "wiped_audio_files": -1 if audio is None else audio}
 
 
 @app.delete("/games/{gid}")
 def delete_game(gid: str):
-    """Wipe an entire game session (and all its characters, scenes, quests, history)."""
+    """Wipe an entire game session (and all its characters, scenes, quests, history).
+    Ownership-based cleanup (owner decision 2026-06-11): every file the adventure
+    produced dies with it - our /media folder, any image-api staging files still
+    referenced by persist-fallback URLs in the DB, and the wavs only this game
+    claims in the voice-api manifest. All service calls best-effort: a dead media
+    service must NEVER fail a game delete."""
     with db.get_conn() as conn:
-        char_ids = ([c["id"] for c in repo.get_characters(conn, gid)]
-                    if repo.get_game(conn, gid) else [])
+        exists = repo.get_game(conn, gid)
+        char_ids = [c["id"] for c in repo.get_characters(conn, gid)] if exists else []
+        # collected BEFORE the rows die: these are the fallback '/image/file?' URLs
+        # whose only copy still sits in the image-api staging folder
+        staging = integrate.remote_image_urls(conn, gid) if exists else []
         if not repo.delete_game(conn, gid):
             raise HTTPException(404, "game not found")
     integrate.delete_game_images(gid)        # wipe the per-game image folder too
     integrate.release_game_voices(char_ids)  # free their voice-registry entries too
+    for url in staging:                      # free their staging files on the image-api side
+        media.delete_staging_image(url)
+    media.purge_game_audio(gid)              # wavs only this game claims (voice-api manifest)
     return {"deleted": gid}
 
 
@@ -401,12 +422,18 @@ def create_message(body: CreateMessageIn):
 @app.get("/create/{session_id}")
 def create_session(session_id: str):
     """The creator chat so far (sessions persist in the DB and survive restarts).
-    Lets the frontend restore an in-progress creation after a refresh."""
+    Lets the frontend restore an in-progress creation after a refresh. `ready` is
+    re-derived from the last builder reply (the stored text is marker-free, so the
+    prose signal carries it) - a restored session keeps its unlocked begin button."""
     with db.get_conn() as conn:
         history = creator.get_session(conn, session_id)
     if history is None:
         raise HTTPException(404, "unknown creator session")
-    return {"session_id": session_id, "history": history}
+    last = next((m.get("content", "") for m in reversed(history)
+                 if m.get("role") == "assistant"), "")
+    shown = [{**m, "content": creator.strip_ready(m.get("content", ""))}
+             if m.get("role") == "assistant" else m for m in history]
+    return {"session_id": session_id, "history": shown, "ready": creator.is_ready(last)}
 
 
 @app.post("/audio/speak")
@@ -424,7 +451,11 @@ def audio_speak(body: SpeakIn):
     provider = audio_providers.get_provider(cfg)
     voice = (body.voice_id or "").strip() or audio_providers.default_voice(cfg)
     try:
-        out = provider.speak(text, voice, body.emotion)
+        # game_id rides through to voice-api in local mode (its wav manifest maps
+        # filename -> [game_ids], so deleting that game can free its wavs); cloud
+        # providers have no wav cache to tag and ignore it
+        out = provider.speak(text, voice, body.emotion,
+                             game_id=(body.game_id or "").strip())
     except Exception:
         out = None
     if not out:

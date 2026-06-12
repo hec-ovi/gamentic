@@ -1,5 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import { http, HttpResponse } from "msw";
+import { server } from "./setup.js";
 import { Voice, cleanText } from "../src/voice.js";
 
 // A fake fetch that records the call and returns a canned /voice/speak response.
@@ -208,20 +210,27 @@ test("prepare passes the beat's emotion through to /voice/speak (omitted when em
 test("cloud audio passthrough: an audio/* response becomes a playable object URL", async () => {
   // when nginx retargets /voice at the orchestrator (cloud provider, keys
   // server-side), the response is raw audio bytes, not { audio_url }
-  const fetchImpl = async () => ({
-    ok: true,
-    headers: { get: (k) => (k.toLowerCase() === "content-type" ? "audio/wav" : null) },
-    blob: async () => ({ size: 4, type: "audio/wav" }),
-  });
+  const bodies = [];
+  const fetchImpl = async (url, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    return {
+      ok: true,
+      headers: { get: (k) => (k.toLowerCase() === "content-type" ? "audio/wav" : null) },
+      blob: async () => ({ size: 4, type: "audio/wav" }),
+    };
+  };
   const hadCreate = typeof URL.createObjectURL === "function";
   const orig = URL.createObjectURL;
   URL.createObjectURL = () => "blob:cloud-line-1";
   try {
     const v = new Voice({ fetchImpl });
-    const got = await v.prepare({ text: "Hush now.", voiceId: "v-cloud" });
+    const got = await v.prepare({ text: "Hush now.", voiceId: "v-cloud", gameId: "g-cloud" });
     assert.deepEqual(got, { audioUrl: "blob:cloud-line-1", duration: null });
+    // the bytes path POSTs the same body as the url path: game_id for free
+    // (the body is built once; only the RESPONSE branch differs)
+    assert.equal(bodies[0].game_id, "g-cloud");
     // and it caches like the url shape does
-    const again = await v.prepare({ text: "Hush now.", voiceId: "v-cloud" });
+    const again = await v.prepare({ text: "Hush now.", voiceId: "v-cloud", gameId: "g-cloud" });
     assert.equal(again.audioUrl, "blob:cloud-line-1");
   } finally {
     if (hadCreate) URL.createObjectURL = orig;
@@ -238,4 +247,60 @@ test("the local { audio_url } shape is untouched by the bytes branch", async () 
   const v = new Voice({ fetchImpl });
   const got = await v.prepare({ text: "hi", voiceId: "v1" });
   assert.deepEqual(got, { audioUrl: "/audio/x.wav", duration: 2.5 });
+});
+
+
+// ---------------------------------------------------------------------------
+// game ownership: game_id rides every speak so the voice-api manifest knows
+// which games claim a wav. Delete the adventure, its audio dies with it
+// (ownership deletion, no retention timers - owner decision 2026-06-11).
+// These two assert at the NETWORK layer: real fetch through the MSW handler.
+// ---------------------------------------------------------------------------
+
+// node's fetch cannot resolve the relative /voice/speak a browser resolves
+// against the page origin; the shim does the same resolution off jsdom's
+// location so MSW sees the exact request the browser would send.
+const browserFetch = (url, opts) => fetch(new URL(url, location.href), opts);
+
+test("a speak fired while a game is active carries game_id in the request body", async () => {
+  let wire = null;
+  server.use(
+    http.post("http://localhost:8000/voice/speak", async ({ request }) => {
+      wire = await request.json();
+      return HttpResponse.json({ audio_url: "/audio/owned.wav", duration_s: 1 });
+    }),
+  );
+  const AudioImpl = makeAudio();
+  const v = new Voice({ fetchImpl: browserFetch, AudioImpl });
+  const played = await v.speak({ text: "The vault sighs open.", voiceId: "vx", speakerId: "narrator", gameId: "g-active" });
+  assert.equal(played, "/audio/owned.wav");
+  assert.deepEqual(wire, { text: "The vault sighs open.", voice_id: "vx", game_id: "g-active" });
+});
+
+test("a speak with no active game omits game_id entirely", async () => {
+  let wire = null;
+  server.use(
+    http.post("http://localhost:8000/voice/speak", async ({ request }) => {
+      wire = await request.json();
+      return HttpResponse.json({ audio_url: "/audio/unowned.wav", duration_s: 1 });
+    }),
+  );
+  const v = new Voice({ fetchImpl: browserFetch, AudioImpl: makeAudio() });
+  await v.speak({ text: "No table, no owner.", voiceId: "vx" });
+  assert.deepEqual(wire, { text: "No table, no owner.", voice_id: "vx" });
+  assert.equal("game_id" in wire, false, "outside a game the field stays off the wire");
+});
+
+test("the same line spoken from a second game re-registers its claim (game_id is part of the cache key)", async () => {
+  // a cross-game local-cache hit would skip the POST, the manifest would list
+  // only the first game, and deleting it would take a wav the second game
+  // still replays - so the cache key must scope to the game
+  const fetchImpl = makeFetch();
+  const v = new Voice({ fetchImpl, AudioImpl: makeAudio() });
+  await v.prepare({ text: "same line", voiceId: "vx", gameId: "g1" });
+  await v.prepare({ text: "same line", voiceId: "vx", gameId: "g1" });
+  assert.equal(fetchImpl.calls.length, 1, "within one game the cache still holds");
+  await v.prepare({ text: "same line", voiceId: "vx", gameId: "g2" });
+  assert.equal(fetchImpl.calls.length, 2, "a second game must POST so the manifest lists it too");
+  assert.equal(fetchImpl.calls[1].body.game_id, "g2");
 });

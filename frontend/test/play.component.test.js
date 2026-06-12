@@ -549,9 +549,11 @@ test("whisper replies SPEAK with the character's voice through the speak pipelin
   await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
 
   await waitFor(() =>
-    // the emotion must ride along to /voice/speak (work order item 12 [J])
+    // the emotion must ride along to /voice/speak (work order item 12 [J]),
+    // and so must the ACTIVE game's id: the voice-api ownership manifest only
+    // learns who claims a wav from the requests that render it
     expect(prepared).toHaveBeenCalledWith(
-      expect.objectContaining({ text: "Hush now.", voiceId: "vx-jacker", emotion: "whisper" }),
+      expect.objectContaining({ text: "Hush now.", voiceId: "vx-jacker", emotion: "whisper", gameId: "g-test" }),
     ),
   );
 }, 10000);
@@ -635,6 +637,9 @@ test("the speak button walks loading -> playing -> back to idle", async () => {
   // synthesizing: the loading state
   expect(btn.classList.contains("speak-loading")).toBe(true);
   expect(btn.getAttribute("aria-label")).toMatch(/preparing voice/i);
+  // the manual speak path tags the render with the active game too (the
+  // voice-api ownership manifest: delete the game, its wavs die with it)
+  expect(app.voice.prepare).toHaveBeenCalledWith(expect.objectContaining({ gameId: "g-test" }));
 
   // audio ready: the playing state
   releasePrepare({ audioUrl: "/audio/x.wav", duration: 2 });

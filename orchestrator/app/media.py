@@ -11,6 +11,7 @@ Gated by IMAGE_ENABLED / VOICE_ENABLED.
 """
 import base64
 import threading
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
@@ -59,6 +60,76 @@ def delete_character_voice(char_id: str) -> None:
         httpx.delete(f"{settings.VOICE_API_URL}/characters/{char_id}", timeout=5)
     except Exception:
         pass
+
+
+# ---------- ownership-based cleanup (owner decision 2026-06-11: NO retention
+# timers, NO schedulers - when our copy of a file is the truth the staging copy
+# dies that instant, and when an adventure dies every file it produced dies with
+# it, ComfyUI staging folder and wav cache included) ----------
+
+def delete_staging_image(url: str | None) -> None:
+    """Free ONE staging file in the image-api's ComfyUI output dir. Only
+    '/image/file?' URLs qualify: data: payloads and cloud-provider URLs leave no
+    staging file behind, so they skip silently. Best-effort: a dead image-api
+    never breaks the render (or the delete) that triggered this."""
+    if not settings.IMAGE_ENABLED or not url or "/image/file?" not in url:
+        return
+    try:
+        # keep_blank_values: the image-api emits 'subfolder=' explicitly; without it
+        # parse_qs would drop the key and we could not echo the exact coordinates back
+        q = parse_qs(urlsplit(url).query, keep_blank_values=True)
+        filename = (q.get("filename") or [""])[0]
+        if not filename:
+            return
+        httpx.delete(f"{settings.IMAGE_API_URL}/image/file",
+                     params={"filename": filename,
+                             "subfolder": (q.get("subfolder") or [""])[0],
+                             "type": (q.get("type") or ["output"])[0]},
+                     timeout=5)
+    except Exception:
+        pass
+
+
+def purge_all_staging_images() -> int | None:
+    """Empty the image-api's ENTIRE staging folder (the settings 'wipe all memory'
+    button). Returns the file count the service reports, or None when it could not
+    confirm (service down, images disabled, malformed reply). Best-effort."""
+    if not settings.IMAGE_ENABLED:
+        return None
+    try:
+        r = httpx.delete(f"{settings.IMAGE_API_URL}/image/files",
+                         params={"confirm": "all"}, timeout=10)
+        r.raise_for_status()
+        return int(r.json().get("deleted", 0))
+    except Exception:
+        return None
+
+
+def purge_game_audio(gid: str) -> None:
+    """Drop the cached wavs that ONLY this game claims in the voice-api manifest
+    (a wav shared with another game just loses this game's claim). Called on game
+    delete so a dead adventure's dialogue never lingers in the cache. Best-effort."""
+    if not settings.VOICE_ENABLED:
+        return
+    try:
+        httpx.delete(f"{settings.VOICE_API_URL}/voice/games/{gid}", timeout=5)
+    except Exception:
+        pass
+
+
+def purge_all_audio() -> int | None:
+    """Empty the voice-api's whole wav cache + manifest ('wipe all memory').
+    Returns the count the service reports, or None when it could not confirm
+    (service down, voice disabled, malformed reply). Best-effort."""
+    if not settings.VOICE_ENABLED:
+        return None
+    try:
+        r = httpx.delete(f"{settings.VOICE_API_URL}/audio",
+                         params={"confirm": "all"}, timeout=10)
+        r.raise_for_status()
+        return int(r.json().get("deleted", 0))
+    except Exception:
+        return None
 
 
 # ---------- image ----------

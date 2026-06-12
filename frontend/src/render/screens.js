@@ -37,7 +37,7 @@ export function renderMenu(state) {
 
       <div class="menu-title">
         <h1 class="title-glyph" data-text="GAMENTIC">GAMENTIC</h1>
-        <p class="title-sub">A self-hosted AI dungeon // neon decay protocol</p>
+        <p class="title-sub">A self-hosted AI dungeon</p>
       </div>
 
       <nav class="menu-deck">
@@ -47,7 +47,7 @@ export function renderMenu(state) {
       <footer class="menu-foot">
         <span class="foot-chip">v1.0</span>
         <span class="foot-line"></span>
-        <span class="foot-chip dim">vanilla // no build // local model</span>
+        <span class="foot-chip dim">LOCAL AI DUNGEON</span>
       </footer>
     </div>`;
 }
@@ -73,7 +73,7 @@ export function renderLibrary(state) {
       <div class="empty-state">
         <div class="empty-icon">${icon("sparkles")}</div>
         <h2>No adventures yet</h2>
-        <p>Your archive is empty. Forge your first real world to begin.</p>
+        <p>Forge your first real world to begin.</p>
         <button class="holo-btn primary" data-act="new-game">${icon("plus")}<span>New adventure</span></button>
       </div>`;
   } else {
@@ -92,7 +92,7 @@ export function renderLibrary(state) {
       ${holoFx()}
       <header class="holo-bar">
         ${iconBtn({ act: "go-menu", icon: "chevronLeft", label: "Main menu" })}
-        <span class="hud-tag">// ARCHIVE</span>
+        <span class="hud-tag">// ADVENTURES</span>
         ${help("library")}
         ${hudStat(backendOnline)}
         <button class="holo-btn lib-import" data-act="import-game" title="Import an exported adventure (template or checkpoint)" ${state.importing ? "disabled" : ""}>
@@ -185,7 +185,7 @@ export function renderCreator(state) {
     <div class="holo-stage forge-stage" data-stage>
       ${holoFx()}
       <header class="holo-bar">
-        ${iconBtn({ act: "go-library", icon: "chevronLeft", label: "Back", title: "Back to archive" })}
+        ${iconBtn({ act: "go-library", icon: "chevronLeft", label: "Back", title: "Back to adventures" })}
         <span class="hud-tag">// FORGE</span>
         ${help("creator")}
         <button class="holo-btn forge-restart" data-act="creator-restart" title="Discard this conversation and start a new world" ${c.busy ? "disabled" : ""}>
@@ -205,8 +205,9 @@ export function renderCreator(state) {
                  ${c.busy ? "disabled" : ""} />
           <button class="holo-btn" type="submit" ${c.busy ? "disabled" : ""}>${icon("send")}<span>Send</span></button>
         </form>
-        <button class="holo-btn primary forge-begin" data-act="begin-adventure" ${c.busy ? "disabled" : ""}>
-          ${icon("flame")}<span>${c.busy ? "Summoning..." : "Begin the Adventure"}</span>
+        <button class="holo-btn primary forge-begin" data-act="begin-adventure" ${c.busy || !c.ready ? "disabled" : ""}
+                title="${c.ready ? "Forge this world and begin" : "The world-builder unlocks this when your world is ready"}">
+          ${icon("flame")}<span>${c.busy ? "Summoning..." : c.ready ? "Begin the Adventure" : "Begin (not ready yet)"}</span>
         </button>
       </footer>
       ${c.finalizing ? renderCrafting() : ""}

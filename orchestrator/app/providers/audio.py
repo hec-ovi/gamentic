@@ -25,7 +25,10 @@ class AudioProvider:
         """Capability gate: a provider with emotion_mode none drops the tone."""
         return (emotion or "").strip() if self.cfg.emotion_mode != "none" else ""
 
-    def speak(self, text: str, voice: str, emotion: str = "") -> tuple[bytes, str] | None:
+    def speak(self, text: str, voice: str, emotion: str = "",
+              game_id: str = "") -> tuple[bytes, str] | None:
+        # game_id is a local-manifest concern (ownership-based wav cleanup, owner
+        # decision 2026-06-11); cloud dialects have no wav cache to tag and drop it
         raise NotImplementedError
 
 
@@ -33,13 +36,17 @@ class LocalProvider(AudioProvider):
     """The Maya1 voice-api: POST /voice/speak {text, voice_id, emotion} -> {audio_url},
     then fetch the audio bytes. voice = a designed description (or a preset name)."""
 
-    def speak(self, text, voice, emotion=""):
+    def speak(self, text, voice, emotion="", game_id=""):
         body: dict = {"text": text}
         if voice:
             body["voice_id"] = voice
         emotion = self._emotion(emotion)
         if emotion:
             body["emotion"] = emotion
+        if game_id:
+            # the wav's ownership tag: voice-api records filename -> [game_ids] in its
+            # manifest so DELETE /voice/games/{gid} frees the wavs only that game claims
+            body["game_id"] = game_id
         r = httpx.post(f"{self.cfg.base_url}/voice/speak", json=body, timeout=120)
         r.raise_for_status()
         url = r.json().get("audio_url")
@@ -55,7 +62,7 @@ class OpenAIProvider(AudioProvider):
     """/v1/audio/speech {model, input, voice, instructions}: the emotion is rendered
     as an instruction sentence (their documented steerability channel)."""
 
-    def speak(self, text, voice, emotion=""):
+    def speak(self, text, voice, emotion="", game_id=""):
         payload: dict = {"model": self.cfg.model, "input": text, "voice": voice}
         emotion = self._emotion(emotion)
         if emotion:
@@ -72,7 +79,7 @@ class ElevenLabsProvider(AudioProvider):
     """POST /v1/text-to-speech/{voice_id} with the xi-api-key header; the emotion
     rides as an inline [tag] (v3 audio tags). voice = their concrete voice_id."""
 
-    def speak(self, text, voice, emotion=""):
+    def speak(self, text, voice, emotion="", game_id=""):
         emotion = self._emotion(emotion)
         body = {"text": f"[{emotion}] {text}" if emotion else text,
                 "model_id": self.cfg.model}
@@ -91,7 +98,7 @@ class FalProvider(AudioProvider):
     poll_interval = 1.0
     poll_timeout = 120.0
 
-    def speak(self, text, voice, emotion=""):
+    def speak(self, text, voice, emotion="", game_id=""):
         emotion = self._emotion(emotion)
         payload = {"texts": [f"<{emotion}> {text}" if emotion else text],
                    "prompts": [voice]}

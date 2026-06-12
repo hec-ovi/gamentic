@@ -90,6 +90,46 @@ def test_direct_creation_route_gets_the_description_backstop_too(client, fake_ll
     assert c["description"] == "A wary dwarven scout, loyal but blunt."
 
 
+# ---------- creator readiness (the begin button's gate) ----------
+
+def test_ready_marker_unlocks_and_never_displays(client, fake_llm):
+    """Owner (2026-06-11): the agent says it is ready and nothing changes - the begin
+    button now LOCKS until the creator signals readiness. The marker itself is plumbing
+    and never reaches the player or the stored history."""
+    fake_llm.creator_text = llm.LLMReply(content=(
+        "Your lighthouse world is complete. Say the word and we begin. [ready]"))
+    r = client.post("/create/message", json={"session_id": "rdy1", "message": "That is all."}).json()
+    assert r["ready"] is True
+    assert "[ready]" not in r["reply"] and r["reply"].endswith("we begin.")
+    h = client.get("/create/rdy1").json()
+    assert "[ready]" not in h["history"][1]["content"]
+    # the marker is the DURABLE truth (live: the model said "when YOU are ready" - no
+    # prose signal - and a refresh lost the unlocked button): a refresh stays ready
+    assert h["ready"] is True
+
+
+def test_ready_prose_alone_unlocks_too(client, fake_llm):
+    """Parse the intent, never demand the protocol: a builder that only SAYS it in
+    words ('ready to start the adventure') still unlocks."""
+    fake_llm.creator_text = llm.LLMReply(content=(
+        "I'm ready to start the adventure whenever you are."))
+    r = client.post("/create/message", json={"session_id": "rdy2", "message": "Go on."}).json()
+    assert r["ready"] is True
+    assert client.get("/create/rdy2").json()["ready"] is True   # survives a refresh
+
+
+def test_an_ordinary_creator_reply_stays_locked(client, fake_llm):
+    fake_llm.creator_text = llm.LLMReply(content="What tone do you want - grim or playful?")
+    r = client.post("/create/message", json={"session_id": "rdy3", "message": "Pirates."}).json()
+    assert r["ready"] is False
+    assert client.get("/create/rdy3").json()["ready"] is False
+
+
+def test_creator_prompt_teaches_the_ready_marker():
+    from app import prompts
+    assert "[ready]" in prompts.render("creator.system.md")
+
+
 # ---------- creator-reply sanitation ----------
 
 def test_creator_reply_is_sanitized_before_store_and_return(client, fake_llm):

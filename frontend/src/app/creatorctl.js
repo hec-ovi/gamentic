@@ -52,6 +52,7 @@ export async function enterCreator() {
   try {
     const res = await api.creatorSession(saved);
     c.sessionId = res.session_id || saved;
+    c.ready = Boolean(res.ready);
     const history = (res.history || []).map((m) => ({
       role: m.role === "user" ? "user" : "builder",
       text: m.content || "",
@@ -74,6 +75,10 @@ export function resetCreator() {
     busy: false,
     finalizing: false,
     restored: false,
+    // the begin button stays LOCKED until the world-builder signals the world is
+    // complete (owner: it used to sit clickable the whole chat and bounce a 409);
+    // each reply carries the flag, so changing direction mid-chat re-locks it
+    ready: false,
     error: "",
     messages: [
       {
@@ -95,6 +100,7 @@ export async function sendCreatorMessage(raw) {
   try {
     const res = await api.creatorMessage(c.sessionId, text);
     c.messages.push({ role: "builder", text: (res && res.reply) || "..." });
+    c.ready = Boolean(res && res.ready);
     storeCreatorSession(c.sessionId); // the session now exists server-side
     state.backendOnline = true;
   } catch (err) {
@@ -111,7 +117,7 @@ export async function sendCreatorMessage(raw) {
 
 export async function beginAdventure() {
   const c = state.creator;
-  if (c.busy) return;
+  if (c.busy || !c.ready) return;
   c.busy = true;
   c.finalizing = true; // full-screen "forging your world" takeover (blocks the chat)
   c.error = "";

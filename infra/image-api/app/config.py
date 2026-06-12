@@ -8,6 +8,14 @@ from pathlib import Path
 # Where ComfyUI lives. On the gamentic docker network it is reachable by container name.
 COMFY_URL: str = os.environ.get("COMFY_URL", "http://gamentic-image:8188")
 
+# ComfyUI's output (staging) directory as mounted INSIDE this container. Reads still go
+# through ComfyUI's HTTP /view, but deletes can't: core ComfyUI has no delete endpoint,
+# so the game-delete contract (ownership-based deletion, no retention timers - when an
+# adventure dies, its staging files die with it) is served straight off the filesystem.
+# Compose must bind ./infra/comfyui/data/output here read-write. If the mount is absent
+# the DELETE endpoints degrade to "nothing to delete" (false / 0), never a 500.
+COMFY_OUTPUT_DIR: Path = Path(os.environ.get("COMFY_OUTPUT_DIR", "/comfy/output"))
+
 # API-format workflow template to drive (FLUX.2 Klein distilled by default).
 WORKFLOW_TEMPLATE: Path = Path(
     os.environ.get(

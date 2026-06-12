@@ -15,9 +15,15 @@ os.environ["DB_PATH"] = os.path.join(_TMP, "test.db")
 # the integration test enables them and mocks the network layer.
 os.environ.setdefault("IMAGE_ENABLED", "false")
 os.environ.setdefault("VOICE_ENABLED", "false")
+# Hermetic suite: any test that enables media without stubbing it must hit a DEAD
+# port, never the live services (live 2026-06-11: a suite run rendered 14 REAL
+# images through localhost:9001 into the just-purged staging dir - each one a
+# ~6s GPU render - while the inert cleanup stubs kept the deletes from firing).
+os.environ["IMAGE_API_URL"] = "http://127.0.0.1:9"
+os.environ["VOICE_API_URL"] = "http://127.0.0.1:9"
 
 from fastapi.testclient import TestClient  # noqa: E402
-from app import db, llm, main  # noqa: E402
+from app import db, llm, main, media  # noqa: E402
 
 
 class FakeLLM:
@@ -104,6 +110,19 @@ def fresh_db():
         os.remove(os.environ["DB_PATH"])
     db.init_db()
     yield
+
+
+@pytest.fixture(autouse=True)
+def inert_media_cleanup(monkeypatch):
+    """The ownership-cleanup calls are DESTRUCTIVE against live services: the dev box
+    usually has the real image-api/voice-api up on 9001/9002, and a wipe test that
+    flips IMAGE_ENABLED on would otherwise EMPTY THE REAL STAGING FOLDER. Inert by
+    default; tests that assert these calls re-patch them with recorders, and the
+    wire-shape tests reach the real functions via direct module imports."""
+    monkeypatch.setattr(media, "delete_staging_image", lambda url: None)
+    monkeypatch.setattr(media, "purge_all_staging_images", lambda: None)
+    monkeypatch.setattr(media, "purge_game_audio", lambda gid: None)
+    monkeypatch.setattr(media, "purge_all_audio", lambda: None)
 
 
 @pytest.fixture

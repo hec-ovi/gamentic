@@ -174,6 +174,45 @@ def test_audio_speak_route_resolves_cloud_provider_server_side(client, monkeypat
     assert captured["headers"] == {"Authorization": "Bearer sk-audio"}
 
 
+# ---------- game_id passthrough (ownership-based wav cleanup, 2026-06-11) ----------
+
+def test_local_speak_forwards_game_id_for_the_wav_manifest(monkeypatch):
+    """voice-api maps filename -> [game_ids] beside the wavs, so DELETE
+    /voice/games/{gid} can free the wavs only that game claims."""
+    captured = {}
+    _mock_local(monkeypatch, captured)
+    paudio.get_provider(pbase.resolve("audio")).speak("Stay close.", DESIGN, game_id="g-7")
+    assert captured["body"] == {"text": "Stay close.", "voice_id": DESIGN,
+                                "game_id": "g-7"}
+
+
+def test_audio_speak_route_forwards_game_id_in_local_mode(client, monkeypatch):
+    monkeypatch.setattr(settings, "VOICE_ENABLED", True)
+    captured = {}
+    _mock_local(monkeypatch, captured)
+    r = client.post("/audio/speak", json={"text": "Hold the line.",
+                                          "voice_id": "narrator", "game_id": "g-9"})
+    assert r.status_code == 200 and r.content == b"WAVBYTES"
+    assert captured["body"] == {"text": "Hold the line.", "voice_id": "narrator",
+                                "game_id": "g-9"}
+
+
+def test_cloud_providers_ignore_game_id(monkeypatch):
+    """No wav cache to tag: the kwarg is accepted (the route always passes it) but
+    never reaches the cloud wire."""
+    captured = {}
+    monkeypatch.setattr(paudio.httpx, "post",
+                        lambda url, json=None, headers=None, timeout=None:
+                        captured.update(body=json)
+                        or _Resp(content=b"MP3", headers={"content-type": "audio/mpeg"}))
+    monkeypatch.setenv("AUDIO_PROVIDER", "openai")
+    paudio.get_provider(pbase.resolve("audio")).speak("Hold.", "ash", game_id="g-9")
+    assert "game_id" not in captured["body"]
+    monkeypatch.setenv("AUDIO_PROVIDER", "elevenlabs")
+    paudio.get_provider(pbase.resolve("audio")).speak("Hold.", "v-1", game_id="g-9")
+    assert "game_id" not in captured["body"]
+
+
 def test_audio_speak_route_disabled_and_down_are_graceful(client, monkeypatch):
     monkeypatch.setattr(settings, "VOICE_ENABLED", False)
     assert client.post("/audio/speak", json={"text": "Hi."}).status_code == 409

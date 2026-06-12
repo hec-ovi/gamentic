@@ -8,6 +8,11 @@ retrieve it, speak as that character) plus a low-latency streaming endpoint.
 Emotion is native: inline ``[tag]`` markers translate to Maya1 ``<tag>`` markers
 (laugh, whisper, angry, scream, ...), and ``voice_id`` is a natural-language
 voice description (or a named preset), so characters get real distinct voices.
+
+Deletion is ownership-based (owner decision 2026-06-11, no retention timers):
+speaks may carry a ``game_id`` claim recorded in a manifest beside the wavs, and
+``DELETE /voice/games/{gid}`` / ``DELETE /audio?confirm=all`` are how cached
+audio ever dies.
 """
 from __future__ import annotations
 
@@ -24,9 +29,11 @@ import config
 import synth
 import voices as voicelib
 from characters import Registry
+from manifest import Manifest
 
 _engine: synth.Maya1Engine | None = None
 _registry: Registry | None = None
+_manifest: Manifest | None = None
 
 
 def engine() -> synth.Maya1Engine:
@@ -39,12 +46,18 @@ def registry() -> Registry:
     return _registry
 
 
+def manifest() -> Manifest:
+    assert _manifest is not None, "manifest not initialised"
+    return _manifest
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _engine, _registry
+    global _engine, _registry, _manifest
     config.ensure_dirs()
     _engine = synth.Maya1Engine()
     _registry = Registry()
+    _manifest = Manifest()
     yield
 
 
@@ -59,6 +72,7 @@ class SpeakRequest(BaseModel):
     speed: float = Field(1.0, gt=0.1, le=3.0)
     emotion: str = "neutral"  # base tone; inline [tags] add per-span emotion
     format: str = "url"        # "url" -> {audio_url} | "base64" -> {audio_base64}
+    game_id: str = ""          # optional owner claim for the cached wav (deletion contract)
 
 
 class AssignRequest(BaseModel):
@@ -86,11 +100,13 @@ class CharacterSpeakRequest(BaseModel):
     emotion: str | None = None  # override the character's base emotion for this line
     speed: float | None = Field(None, gt=0.1, le=3.0)
     format: str = "url"
+    game_id: str = ""           # same owner claim as /voice/speak; NPC lines die with the game too
 
 
 # --- core synth + serving -------------------------------------------------
 
-def _synth_to_payload(text: str, voice_id: str, speed: float, base_emotion: str, fmt: str) -> dict:
+def _synth_to_payload(text: str, voice_id: str, speed: float, base_emotion: str, fmt: str,
+                      game_id: str = "") -> dict:
     try:
         wav = engine().render(text, voice_id, speed=speed, base_emotion=base_emotion)
     except ValueError as e:
@@ -107,6 +123,12 @@ def _synth_to_payload(text: str, voice_id: str, speed: float, base_emotion: str,
     path = config.AUDIO_DIR / name
     if not path.exists():
         synth.write_wav(wav, name)
+    # ownership claim happens on every url-format speak, cache hit included: a
+    # second game re-speaking an existing line must still be on record as an
+    # owner, or deleting the first game would take its audio away
+    gid = game_id.strip()
+    if gid:
+        manifest().claim(name, gid)
     return {"audio_url": f"/audio/{name}", "duration_s": dur, "sample_rate": config.SAMPLE_RATE}
 
 
@@ -138,7 +160,8 @@ def assign(req: AssignRequest) -> dict:
 
 @app.post("/voice/speak")
 def speak(req: SpeakRequest) -> dict:
-    return _synth_to_payload(req.text, req.voice_id, req.speed, req.emotion, req.format)
+    return _synth_to_payload(req.text, req.voice_id, req.speed, req.emotion, req.format,
+                             game_id=req.game_id)
 
 
 @app.post("/voice/stream")
@@ -166,6 +189,26 @@ def get_audio(name: str):
     if not path.exists():
         raise HTTPException(status_code=404, detail="not found")
     return FileResponse(str(path), media_type="audio/wav")
+
+
+# --- ownership-based deletion (the deletion contract, 2026-06-11) ----------
+# No timers, no retention sweeps: when the orchestrator deletes an adventure it
+# calls these, and every wav that adventure produced dies with it.
+
+@app.delete("/voice/games/{gid}")
+def delete_game_audio(gid: str) -> dict:
+    """Release every wav this game claimed; solely-owned ones are deleted from
+    disk, shared ones just lose the gid. Unknown gid -> {"deleted": 0}."""
+    return {"deleted": manifest().release_game(gid)}
+
+
+@app.delete("/audio")
+def purge_audio(confirm: str = "") -> dict:
+    """Wipe the whole wav cache and the manifest. The confirm guard exists
+    because a typo'd game-delete URL must never be able to empty the cache."""
+    if confirm != "all":
+        raise HTTPException(status_code=400, detail="pass confirm=all to wipe the audio cache")
+    return {"deleted": manifest().purge_all()}
 
 
 # --- character layer ------------------------------------------------------
@@ -212,7 +255,7 @@ def character_speak(char_id: str, req: CharacterSpeakRequest) -> dict:
     return _synth_to_payload(
         req.text, char.voice_id,
         req.speed if req.speed is not None else char.speed,
-        req.emotion or char.base_emotion, req.format)
+        req.emotion or char.base_emotion, req.format, game_id=req.game_id)
 
 
 # --- streaming WAV helpers ------------------------------------------------
