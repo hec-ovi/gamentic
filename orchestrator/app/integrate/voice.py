@@ -33,7 +33,14 @@ def assign_voices_for_game(conn, gid: str) -> None:
     voice composed from their sheet at creation (the same moment their image
     descriptor is fixed), stored on their row, and resolved to the active
     provider's voice space. Idempotent: established voices never reshuffle within
-    a provider; a provider switch re-resolves from the stored design ONCE."""
+    a provider; a provider switch re-resolves from the stored design ONCE.
+
+    DELIBERATE: this module gates on settings.VOICE_ENABLED, NOT
+    providers.voice_enabled() (the Anna-aware gate every SPEAK surface uses).
+    Identity is engine-owned and composed even in Anna mode - pure CPU, no audio
+    rendered, list_voice_ids() gates itself - so a cloud-born adventure keeps
+    designed voices for a later local life (only its narrator voice stays unset:
+    the local catalog was absent at creation)."""
     if not settings.VOICE_ENABLED:
         return
     cfg = providers.resolve("audio")

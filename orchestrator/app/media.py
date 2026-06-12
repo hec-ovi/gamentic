@@ -7,7 +7,7 @@ wire behavior is byte-identical to what this module always did.
 
 Every call is wrapped so a missing/slow/erroring service NEVER breaks the game:
 on any failure these return empty/None and the game stays fully playable text-only.
-Gated by IMAGE_ENABLED / VOICE_ENABLED.
+Gated by IMAGE_ENABLED / voice_enabled() (VOICE_ENABLED, and quiet in Anna mode).
 """
 import base64
 import threading
@@ -24,7 +24,7 @@ from .providers import image as image_providers
 # designs itself now and no longer registers them here) ----------
 
 def list_voice_ids() -> list[str]:
-    if not settings.VOICE_ENABLED:
+    if not providers.voice_enabled():
         return []
     try:
         r = httpx.get(f"{settings.VOICE_API_URL}/voices", timeout=5)
@@ -38,7 +38,7 @@ def register_character_voice(char_id: str, name: str, description: str,
                              gender: str = "") -> str | None:
     """DEPRECATED for the engine (voice identity lives in OUR DB now; see
     integrate/voice.py). Kept for back-compat with anything still calling it."""
-    if not settings.VOICE_ENABLED or not (description or name).strip():
+    if not providers.voice_enabled() or not (description or name).strip():
         return None
     body = {"id": char_id, "name": name, "description": description}
     if gender:
@@ -54,7 +54,7 @@ def register_character_voice(char_id: str, name: str, description: str,
 def delete_character_voice(char_id: str) -> None:
     """Release a character's legacy registry entry (called on game wipe so old
     voice-api state never piles up). Best-effort."""
-    if not settings.VOICE_ENABLED:
+    if not providers.voice_enabled():
         return
     try:
         httpx.delete(f"{settings.VOICE_API_URL}/characters/{char_id}", timeout=5)
@@ -109,7 +109,7 @@ def purge_game_audio(gid: str) -> None:
     """Drop the cached wavs that ONLY this game claims in the voice-api manifest
     (a wav shared with another game just loses this game's claim). Called on game
     delete so a dead adventure's dialogue never lingers in the cache. Best-effort."""
-    if not settings.VOICE_ENABLED:
+    if not providers.voice_enabled():
         return
     try:
         httpx.delete(f"{settings.VOICE_API_URL}/voice/games/{gid}", timeout=5)
@@ -121,7 +121,7 @@ def purge_all_audio() -> int | None:
     """Empty the voice-api's whole wav cache + manifest ('wipe all memory').
     Returns the count the service reports, or None when it could not confirm
     (service down, voice disabled, malformed reply). Best-effort."""
-    if not settings.VOICE_ENABLED:
+    if not providers.voice_enabled():
         return None
     try:
         r = httpx.delete(f"{settings.VOICE_API_URL}/audio",

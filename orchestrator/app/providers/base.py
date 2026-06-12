@@ -69,6 +69,91 @@ class ProviderConfig:
     voice_pool: str = ""              # elevenlabs: comma-separated voice ids to pick from
 
 
+# ---------- Anna mode (the hackathon's cloud gateway) ----------
+# One boolean that retargets text AND image at Anna's OpenAI-compatible endpoints
+# and silences voice (Anna has no TTS surface). Expansion, not restriction: with
+# anna off, resolution below behaves exactly as it always did, byte for byte.
+# Resolution for the boolean and its settings mirrors everything else here:
+# admin override (anna.* keys in provider_config) -> env (ANNA*) -> default.
+
+ANNA_FIELDS = ("enabled", "api_key", "base_url", "text_model", "image_model")
+
+
+@dataclass
+class AnnaConfig:
+    enabled: bool = False
+    api_key: str = ""
+    base_url: str = ""        # one URL, with or without a trailing /v1; normalized per modality
+    text_model: str = ""
+    image_model: str = ""
+
+
+def _anna_truth(v: str) -> bool:
+    """Mirrors the compose profile trick EXACTLY: the local services run only when
+    ANNA is unset/empty or the literal 'false' (their profile name
+    local-inference-anna-${ANNA} must equal the pinned COMPOSE_PROFILES constant,
+    a string match compose does verbatim). So here too, ANY other value counts as
+    on - 'ANNA=1' or 'ANNA=yes' must never read as off in the app while compose
+    has already skipped the GPU containers (that split-brain kills every turn)."""
+    v = (v or "").strip()
+    return bool(v) and v != "false"
+
+
+def anna_config(ov: dict | None = None) -> AnnaConfig:
+    """The Anna preset, resolved NOW (admin -> env -> off)."""
+    if ov is None:
+        ov = _overrides()
+
+    def pick(field: str, env_name: str) -> str:
+        v = (ov.get(f"anna.{field}") or "").strip()
+        return v if v else _env(env_name)
+
+    return AnnaConfig(
+        enabled=_anna_truth(pick("enabled", "ANNA")),
+        api_key=pick("api_key", "ANNA_API_KEY"),
+        base_url=pick("base_url", "ANNA_BASE_URL"),
+        text_model=pick("text_model", "ANNA_TEXT_MODEL"),
+        image_model=pick("image_model", "ANNA_IMAGE_MODEL"),
+    )
+
+
+def anna_enabled() -> bool:
+    return anna_config().enabled
+
+
+def voice_enabled() -> bool:
+    """The voice gate every speak/cleanup surface checks: Anna has no voice API,
+    so anna on means voice off, whatever VOICE_ENABLED says."""
+    return settings.VOICE_ENABLED and not anna_enabled()
+
+
+def _anna_text_base(url: str) -> str:
+    """Text dialect wants .../v1 (chat/completions hangs off it)."""
+    u = (url or "").rstrip("/")
+    return u if (not u or u.endswith("/v1")) else f"{u}/v1"
+
+
+def _anna_image_base(url: str) -> str:
+    """Image dialect appends /v1/images/... itself, so it wants the bare host."""
+    u = (url or "").rstrip("/")
+    return u[:-3].rstrip("/") if u.endswith("/v1") else u
+
+
+def _anna_resolve(modality: str, anna: AnnaConfig) -> ProviderConfig:
+    """Text/image under Anna: the openai dialect against Anna's gateway, with the
+    dialect's own capability defaults (no env/admin capability knobs leak in)."""
+    if modality == "text":
+        return ProviderConfig(
+            modality="text", provider="openai",
+            base_url=_anna_text_base(anna.base_url), api_key=anna.api_key,
+            model=anna.text_model, max_stops=4, supports_thinking=False)
+    return ProviderConfig(
+        modality="image", provider="openai",
+        base_url=_anna_image_base(anna.base_url), api_key=anna.api_key,
+        model=anna.image_model or _DEFAULT_MODELS[("image", "openai")],
+        supports_seed=False, supports_references=True)
+
+
 def _overrides() -> dict:
     """The admin override table, read fresh per resolution (hot-swap). Best-effort:
     any DB trouble degrades to env-only resolution, never breaks a call."""
@@ -121,9 +206,19 @@ def _capability_defaults(modality: str, provider: str, model: str) -> dict:
     return {"supports_seed": "nano-banana" in (model or ""), "supports_references": False}
 
 
-def resolve(modality: str) -> ProviderConfig:
-    """The active config for a modality: DB override -> env -> default, NOW."""
+def resolve(modality: str, apply_anna: bool = True) -> ProviderConfig:
+    """The active config for a modality: DB override -> env -> default, NOW.
+    Anna mode sits on top: when the anna boolean is on, text and image resolve to
+    the Anna preset wholesale (per-modality overrides wait underneath, untouched);
+    audio resolves as usual but every speak surface is gated by voice_enabled().
+    apply_anna=False skips the preset: the admin panel uses it so the modality
+    cards show (and round-trip) the UNDERLYING config - a Save while anna is on
+    must never copy anna's values into the local overrides."""
     ov = _overrides()
+    if apply_anna and modality in ("text", "image"):
+        anna = anna_config(ov)
+        if anna.enabled:
+            return _anna_resolve(modality, anna)
 
     def pick(field: str, *env_names: str, default: str = "") -> str:
         v = (ov.get(f"{modality}.{field}") or "").strip()

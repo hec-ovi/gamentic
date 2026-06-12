@@ -127,6 +127,37 @@ implemented against their published schemas and pinned by contract tests, but ha
 been verified against the paid live services. If you hold a key, the TEST button is the
 verification, and reports are welcome.
 
+### Anna mode (cloud-only, no GPU)
+
+One boolean on top of the provider layer for running the whole game against a single
+OpenAI-compatible cloud gateway, nothing local, no GPU anywhere. In `.env`:
+
+```bash
+ANNA=true
+ANNA_API_KEY=sk-...
+ANNA_BASE_URL=https://...   # the gateway base, with or without /v1
+ANNA_TEXT_MODEL=...         # ANNA_IMAGE_MODEL too; blank image = gpt-image-2
+```
+
+With `ANNA=true`, `docker compose up` starts only the orchestrator and the frontend:
+the five local inference services (text model, ComfyUI, the image adapter and the two
+voice services) are profiled out entirely. Text and image are served by the gateway; voice is off (the
+game plays text-only, by design). The `/admin` panel carries the same boolean for
+runtime flips without a restart, with the key write-only as always. Flip `ANNA=false`
+and the same command brings the full local stack back, byte for byte: it is an
+expansion, not a restriction.
+
+Three rules keep the switch honest:
+
+- `ANNA` takes the literal values `true` or `false` only; anything else reads as
+  true on both layers.
+- When switching modes on a running stack, `docker compose down` BEFORE flipping
+  `ANNA` in `.env`, then `up -d` after. Down only sees the active profile, so a
+  flip-first leaves the old containers running.
+- If you carry an `.env` from before Anna mode existed, copy the new Anna block from
+  `.env.example`: compose refuses to start without the `COMPOSE_PROFILES` line and
+  says exactly what to add.
+
 ## Status and limits
 
 Active personal project under heavy iteration. The brain, the services and the frontend are covered by automated test suites and the whole loop has been soak-tested with full scripted adventures against the real stack. Where it honestly stands:

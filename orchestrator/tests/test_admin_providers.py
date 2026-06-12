@@ -22,7 +22,7 @@ class _Resp:
 def test_get_masks_api_keys_write_only(client, monkeypatch):
     monkeypatch.setenv("IMAGE_API_KEY", "sk-super-secret")
     d = client.get("/admin/providers").json()
-    assert set(d) == {"text", "audio", "image"}
+    assert set(d) == {"text", "audio", "image", "anna"}
     assert d["image"]["api_key"] == "********"               # set, but never echoed
     assert d["text"]["api_key"] == ""                        # unset reads empty
     assert "sk-super-secret" not in json.dumps(d)

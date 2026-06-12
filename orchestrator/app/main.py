@@ -16,7 +16,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from . import db, repo, engine, creator, integrate, media, prompts, llm, constants, transfer
 from .integrate import events as game_events
 from .config import settings
-from .providers import DIALECTS, MODALITIES, capability_notes, resolve
+from .providers import (ANNA_FIELDS, DIALECTS, MODALITIES, anna_config,
+                        capability_notes, resolve, voice_enabled)
 from .providers import audio as audio_providers
 from .providers import image as image_providers
 from .models import (WorldSheet, ActionIn, ContinueIn, CreateMessageIn, GameState,
@@ -442,7 +443,7 @@ def audio_speak(body: SpeakIn):
     return the audio bytes (API keys never reach the browser). With provider=local
     this simply proxies voice-api; in cloud-audio mode the frontend's /voice proxy
     points here instead (FE work order). Emotion routes per the provider's mode."""
-    if not settings.VOICE_ENABLED:
+    if not voice_enabled():
         raise HTTPException(409, "voice is disabled")
     text = body.text.strip()
     if not text:
@@ -481,7 +482,10 @@ def _admin_guard(request: Request) -> None:
 
 
 def _provider_view(modality: str) -> dict:
-    cfg = resolve(modality)
+    # apply_anna=False: the cards show the UNDERLYING per-modality config even
+    # while anna serves the calls, so a Save round-trips the stored values and
+    # can never copy anna's gateway into the local overrides.
+    cfg = resolve(modality, apply_anna=False)
     return {
         "provider": cfg.provider,
         "base_url": cfg.base_url,
@@ -506,10 +510,34 @@ def admin_page(request: Request):
     return FileResponse(os.path.join(os.path.dirname(__file__), "static", "admin.html"))
 
 
+def _anna_view() -> dict:
+    """The Anna preset for the panel: same write-only key discipline as the
+    modalities. The plain-words notes carry what flipping the boolean means."""
+    anna = anna_config()
+    notes = ["text and image are served by Anna's cloud endpoints while this is on",
+             "voice is off in Anna mode (Anna has no voice API); the game plays text-only",
+             "the GPU containers are skipped at compose-up when ANNA=true in .env; "
+             "a stack that is ALREADY running keeps running - run `docker compose "
+             "down` BEFORE flipping ANNA in .env (down only sees the active profile)"]
+    if anna.enabled and not anna.base_url:
+        notes.insert(0, "base URL is EMPTY: set it (env ANNA_BASE_URL or here) "
+                        "before the next game call")
+    return {
+        "enabled": anna.enabled,
+        "base_url": anna.base_url,
+        "text_model": anna.text_model,
+        "image_model": anna.image_model,
+        "api_key": "********" if anna.api_key else "",   # write-only: never echoed back
+        "notes": notes,
+    }
+
+
 @app.get("/admin/providers")
 def get_providers(request: Request):
     _admin_guard(request)
-    return {m: _provider_view(m) for m in MODALITIES}
+    out = {m: _provider_view(m) for m in MODALITIES}
+    out["anna"] = _anna_view()
+    return out
 
 
 _OVERRIDE_FIELDS = ("provider", "base_url", "api_key", "model", "supports_seed",
@@ -519,14 +547,28 @@ _OVERRIDE_FIELDS = ("provider", "base_url", "api_key", "model", "supports_seed",
 
 @app.put("/admin/providers")
 def put_providers(body: dict, request: Request):
-    """Write admin overrides ({modality: {field: value}}). An empty value CLEARS the
-    override (the env shows through again); absent fields stay untouched, so the
-    write-only api_key survives every save that doesn't retype it. Providers resolve
-    config at call time, so the next game call uses the new values: no restart."""
+    """Write admin overrides ({modality: {field: value}}, plus the 'anna' preset).
+    An empty value CLEARS the override (the env shows through again); absent fields
+    stay untouched, so the write-only api_key survives every save that doesn't
+    retype it. Providers resolve config at call time, so the next game call uses
+    the new values: no restart."""
     _admin_guard(request)
     audio_before = resolve("audio").provider
     with db.get_conn() as conn:
         for modality, fields in (body or {}).items():
+            if modality == "anna":
+                if not isinstance(fields, dict):
+                    raise HTTPException(422, "anna: expected an object of fields")
+                for field, value in fields.items():
+                    if field not in ANNA_FIELDS:
+                        raise HTTPException(422, f"unknown field: anna.{field}")
+                    if field == "enabled":
+                        v = str(value).strip().lower() if value is not None else ""
+                        if v not in ("", "true", "false"):
+                            raise HTTPException(422, "anna.enabled must be true, false or empty")
+                        value = v
+                    repo.set_provider_override(conn, f"anna.{field}", value)
+                continue
             if modality not in MODALITIES:
                 raise HTTPException(422, f"unknown modality: {modality}")
             if not isinstance(fields, dict):
@@ -542,7 +584,9 @@ def put_providers(body: dict, request: Request):
         # voice identity follows the provider: re-resolve every character's stored
         # design into the new voice space ONCE (deterministic; designs never move)
         integrate.reresolve_voices()
-    return {m: _provider_view(m) for m in MODALITIES}
+    out = {m: _provider_view(m) for m in MODALITIES}
+    out["anna"] = _anna_view()
+    return out
 
 
 @app.post("/admin/providers/test")
@@ -563,6 +607,12 @@ def test_provider(body: dict, request: Request):
             out["error"] = error
         return out
 
+    anna = anna_config()
+    if anna.enabled:
+        if modality == "audio":
+            return _done(False, error="voice is off in Anna mode (Anna has no voice API)")
+        if not anna.base_url:
+            return _done(False, error="Anna base URL is not set (env ANNA_BASE_URL or the panel)")
     try:
         if modality == "text":
             reply = llm.chat([{"role": "user", "content": "Reply with the single word: ok"}],

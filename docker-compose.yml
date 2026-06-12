@@ -9,11 +9,25 @@ name: gamentic
 #   voice-api - decodes Maya1's SNAC tokens to audio on CPU, owns the /voice contract
 #
 # Config lives in .env. Models are mounted read-only from MODELS_DIR.
+#
+# ANNA MODE (one boolean in .env): the five local-inference services above carry the
+# profile "local-inference-anna-${ANNA}", and .env pins
+# COMPOSE_PROFILES=local-inference-anna-false. So with ANNA=false the profile names
+# match and the full local stack runs; with ANNA=true they don't, and `docker compose
+# up` brings up ONLY orchestrator + frontend (text + image go to Anna's cloud, voice
+# is off). Nothing GPU or inference-shaped starts. Flip ANNA back and the same
+# command restores the local stack: expansion, not restriction.
+# Two rules of the trick: (1) ANNA takes the LITERAL values true/false only (any
+# other value reads as true on both layers; the app mirrors compose's exact string
+# match on 'false'); (2) when switching modes on a RUNNING stack, `docker compose
+# down` BEFORE flipping ANNA in .env - down only sees the active profile, so a
+# flip-first leaves the old containers running.
 
 services:
   llm-text:
     image: ghcr.io/ggml-org/llama.cpp:server-vulkan
     container_name: gamentic-llm-text
+    profiles: ["local-inference-anna-${ANNA:-false}"]
     restart: unless-stopped
     # AMD GPU access for the Vulkan backend
     devices:
@@ -61,6 +75,7 @@ services:
     image: gamentic-comfyui-strix:latest
     pull_policy: build
     container_name: gamentic-image
+    profiles: ["local-inference-anna-${ANNA:-false}"]
     restart: unless-stopped
     # ComfyUI on ROCm needs full GPU access on Strix Halo
     privileged: true
@@ -106,6 +121,7 @@ services:
     image: gamentic-image-api:latest
     pull_policy: build
     container_name: gamentic-image-api
+    profiles: ["local-inference-anna-${ANNA:-false}"]
     restart: unless-stopped
     depends_on:
       image:
@@ -147,6 +163,7 @@ services:
   llm-voice:
     image: ghcr.io/ggml-org/llama.cpp:server-vulkan
     container_name: gamentic-llm-voice
+    profiles: ["local-inference-anna-${ANNA:-false}"]
     restart: unless-stopped
     devices:
       - /dev/dri:/dev/dri
@@ -189,6 +206,7 @@ services:
     image: gamentic-voice-api:latest
     pull_policy: build
     container_name: gamentic-voice-api
+    profiles: ["local-inference-anna-${ANNA:-false}"]
     restart: unless-stopped
     environment:
       - MAYA1_URL=http://llm-voice:8080
@@ -219,8 +237,11 @@ services:
     container_name: gamentic-orchestrator
     restart: unless-stopped
     depends_on:
+      # required: false makes the wait optional: in Anna mode llm-text is profiled
+      # out of the project and the orchestrator starts on its own.
       llm-text:
         condition: service_healthy
+        required: false
     environment:
       - LLM_BASE_URL=http://gamentic-llm-text:8080/v1
       - LLM_MODEL=${LLM_ALIAS:-gemma-4-26b-a4b-heretic}
@@ -278,6 +299,18 @@ services:
       - IMAGE_MODEL=${IMAGE_MODEL:-}
       # set to require Authorization Bearer on /admin (page + API); empty = open
       - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+      # Anna mode (cloud-only inference; see the header comment). The admin panel
+      # boolean overrides ANNA at call time; these are the env layer underneath.
+      # The :? guard makes a missing COMPOSE_PROFILES line FAIL LOUDLY instead of
+      # silently skipping every local inference service (profiles are opt-in:
+      # without the pinned constant nothing GPU-shaped would start and turns
+      # would die against absent containers with no clue why).
+      - ANNA_COMPOSE_GUARD=${COMPOSE_PROFILES:?missing from .env - copy the Anna block from .env.example, at minimum COMPOSE_PROFILES=local-inference-anna-false, or the local inference services will not start}
+      - ANNA=${ANNA:-false}
+      - ANNA_API_KEY=${ANNA_API_KEY:-}
+      - ANNA_BASE_URL=${ANNA_BASE_URL:-}
+      - ANNA_TEXT_MODEL=${ANNA_TEXT_MODEL:-}
+      - ANNA_IMAGE_MODEL=${ANNA_IMAGE_MODEL:-}
     volumes:
       - ./orchestrator/data:/data
     ports:
