@@ -1437,6 +1437,50 @@ button.cast-row:hover { border-color: var(--accent); }
   .node-play:hover, .holo-node:hover { transform: translateY(-6px); }
 }
 
+/* ---- the mobile adapter (phones): single-column, story-first ----
+   Additive overrides only; every desktop/tablet rule above stays untouched. */
+@media (max-width: 640px) {
+  /* top bars wrap instead of pushing controls offscreen */
+  .holo-bar { flex-wrap: wrap; gap: 0.6rem; row-gap: 0.4rem; }
+
+  /* deck header: vitals lose their desktop floor, rows may wrap, tighter air */
+  .play-deck { gap: 0.5rem; padding: 0.45rem 0.6rem 0; }
+  .deck-vitals { min-width: 0; }
+  .vital-row { flex-wrap: wrap; row-gap: 0.25rem; }
+  .hud-goal { max-width: 100%; }
+  .deck-scene { margin-bottom: 0; padding: 0.55rem 0.7rem 0.6rem; }
+  .scene-name { font-size: 1rem; }
+  .scene-desc { max-height: 2.9em; }
+
+  /* the affordance board: cells stack, diagonal separators go, slots shrink */
+  .deck-board { flex-direction: column; gap: 0.4rem; margin: 0.3rem 0 0.5rem; padding: 0.45rem 0.7rem; }
+  .board-sep { display: none; }
+  .slot { width: 32px; height: 32px; }
+  .rail-label { margin-bottom: 0.3rem; }
+
+  /* story first: a guaranteed reading window (the page scrolls before the
+     story shrinks below it), tighter gutters, the cast strip yields space */
+  .play-body { gap: 0.6rem; padding: 0.6rem; min-height: 160px; }
+  .story { padding: 1rem 0.85rem; }
+  .char-column { max-height: 34vh; }
+  .narration p { font-size: 1.08rem; }
+
+  /* prose-measure elements cap at the panel, never the 64ch measure */
+  .system-badge { max-width: 100%; }
+  .bubble { min-width: 0; }
+  .bubble p { overflow-wrap: anywhere; }
+
+  /* the action bar compacts; the composer wraps: modes | input | tag + stack + send */
+  .play-actionbar { gap: 0.45rem; padding: 0.5rem 0.6rem calc(0.5rem + env(safe-area-inset-bottom)); }
+  .player-inv .slot, .player-items .slot { width: 28px; height: 28px; }
+  .composer { flex-wrap: wrap; }
+  .composer-modes { width: 100%; }
+  .mode-btn { flex: 1 1 auto; padding: 0.35rem 0.5rem; }
+  .composer-input { flex: 1 1 100%; order: 1; min-height: 2.3em; font-size: 0.95rem; }
+  .tag-btn, .stack-btn { order: 2; }
+  .composer > .holo-btn[type="submit"] { order: 3; flex: 1; justify-content: center; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
