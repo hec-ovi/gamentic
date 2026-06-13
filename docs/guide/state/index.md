@@ -2,7 +2,7 @@
 
 The linear ingestion flow plus the persistent SQLite state it mutates. The model never owns state; SQLite does. One turn = one transaction, then a full state snapshot is projected to the API.
 
-> Paired with the interactive chart: [`state-atlas.html`](../../state-atlas.html). This file mirrors it node-for-node; the chart is the same data drawn.
+> Paired with the interactive view: [`state` in the docs site](../index.html#state) (Graphs / Text). This file mirrors it node-for-node; the page is the same data drawn.
 > **Read this first, then load ONLY the file the task needs.** Each file under `guide/` is deliberately fat and self-contained: opening one fully answers a class of question. Never bulk-read the folder.
 
 **Lanes:** `linear ingestion` · `persistent state` · `history, folds, late media`

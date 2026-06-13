@@ -2,7 +2,7 @@
 
 Every distinct LLM call in Gamentic, plus the agentic tools that bridge to another agent. An *agent* = a purpose-built context one local model runs; `cue_character`/`spawn_character` are the bridges.
 
-> Paired with the interactive chart: [`agents-atlas.html`](../../agents-atlas.html). This file mirrors it node-for-node; the chart is the same data drawn.
+> Paired with the interactive view: [`agents` in the docs site](../index.html#agents) (Graphs / Text). This file mirrors it node-for-node; the page is the same data drawn.
 > **Read this first, then load ONLY the file the task needs.** Each file under `guide/` is deliberately fat and self-contained: opening one fully answers a class of question. Never bulk-read the folder.
 
 **Lanes:** `turn agents` · `skill agents` · `creation agents` · `background folds` · `backend`

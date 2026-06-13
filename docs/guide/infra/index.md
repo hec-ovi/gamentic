@@ -2,7 +2,7 @@
 
 The Docker stack: nine services on one bridge network. One boolean (`ANNA`) in `.env` picks which backend world starts; the app tier is always up.
 
-> Paired with the interactive chart: [`infra-atlas.html`](../../infra-atlas.html). This file mirrors it node-for-node; the chart is the same data drawn.
+> Paired with the interactive view: [`infra` in the docs site](../index.html#infra) (Graphs / Text). This file mirrors it node-for-node; the page is the same data drawn.
 > **Read this first, then load ONLY the file the task needs.** Each file under `guide/` is deliberately fat and self-contained: opening one fully answers a class of question. Never bulk-read the folder.
 
 **Lanes:** `host & config` · `app tier` · `local inference` · `anna tier`

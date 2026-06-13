@@ -2,7 +2,7 @@
 
 Every distinct LLM context and enhancer path. Character speech is owned by character-agent calls; narrator content is narration. Image and voice are enhancers, not story authorities.
 
-> Paired with the interactive chart: [`context-atlas.html`](../../context-atlas.html). This file mirrors it node-for-node; the chart is the same data drawn.
+> Paired with the interactive view: [`context` in the docs site](../index.html#context) (Graphs / Text). This file mirrors it node-for-node; the page is the same data drawn.
 > **Read this first, then load ONLY the file the task needs.** Each file under `guide/` is deliberately fat and self-contained: opening one fully answers a class of question. Never bulk-read the folder.
 
 **Lanes:** `turn contexts` · `shared state, media, voice` · `background/creation contexts`

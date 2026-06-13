@@ -2,7 +2,7 @@
 
 A self-hosted AI dungeon RPG you play in the browser. An AI narrator and a cast of AI characters, each with its own persona, memory and voice, drive a branching story over real game state. Everything runs on your own machine: the text, the images and the voice are all generated locally. No cloud, no API keys.
 
-### 📖 [Explore the interactive docs & blueprints →](https://hec-ovi.github.io/gamentic/)
+### <a href="https://hec-ovi.github.io/gamentic/" target="_blank" rel="noopener noreferrer">📖 Explore the interactive docs &amp; blueprints →</a>
 
 Pannable, clickable maps of the agents, the engine, the state, the infra and the code tree, each paired with an agent-ready markdown guide.
 

@@ -2,7 +2,7 @@
 
 The authoritative JSON shapes for the DB state, the API projection, the turn runtime and the frontend copy. Field names are grounded in `db.py`, `models.py`, `repo/state.py`, `repo/*`, `tools/*`, and `frontend/src/adapters.js`; values are illustrative.
 
-> Paired with the interactive reference: [`state-json-reference.html`](../../state-json-reference.html). For the lifecycle of each shape (who writes it, who reads it) see [`../state/`](../state/index.md).
+> Paired with the interactive view: [`state-json` in the docs site](../index.html#statejson). For the lifecycle of each shape (who writes it, who reads it) see [`../state/`](../state/index.md).
 > **Read this first, then load ONLY the file the task needs.** Each file under `guide/` is deliberately fat and self-contained: opening one fully answers a class of question. Never bulk-read the folder.
 
 ## Shapes

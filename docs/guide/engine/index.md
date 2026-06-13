@@ -2,7 +2,7 @@
 
 How the turn engine wires the browser frontend to the backend services: REST + SSE, the `run_turn` pipeline, the validated tool dispatcher, the SQLite source of truth, per-call provider resolution, and the inference services.
 
-> Paired with the interactive chart: [`engine-atlas.html`](../../engine-atlas.html). This file mirrors it node-for-node; the chart is the same data drawn.
+> Paired with the interactive view: [`engine` in the docs site](../index.html#engine) (Graphs / Text). This file mirrors it node-for-node; the page is the same data drawn.
 > **Read this first, then load ONLY the file the task needs.** Each file under `guide/` is deliberately fat and self-contained: opening one fully answers a class of question. Never bulk-read the folder.
 
 **Lanes:** `frontend` · `api+engine` · `data` · `external services`

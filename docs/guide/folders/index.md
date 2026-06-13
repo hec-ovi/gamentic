@@ -2,7 +2,7 @@
 
 Where each part of the code lives: a containment tree of the repo, one job per directory and per file, built from the owner-maintained `INDEX.md` resolver maps.
 
-> Paired with the interactive chart: [`folders-atlas.html`](../../folders-atlas.html). This file mirrors it node-for-node; the chart is the same data drawn.
+> Paired with the interactive view: [`folders` in the docs site](../index.html#folders) (Graphs / Text). This file mirrors it node-for-node; the page is the same data drawn.
 > **Read this first, then load ONLY the file the task needs.** Each file under `guide/` is deliberately fat and self-contained: opening one fully answers a class of question. Never bulk-read the folder.
 
 **Lanes:** `root` · `orchestrator` · `frontend` · `infra` · `voice+docs`
@@ -552,9 +552,9 @@ The Maya1-3B TTS service on llama.cpp Vulkan: app.py (routes), synth.py, voices.
 
 ### docs/ — `docs`  ·  _docs_
 
-The documentation + the public site: HANDOFF, the interactive atlases (agents, context, engine, folders, infra, state) + the state JSON reference, the hub (index.html) and the agent-ready guide/ twins, plus the private per-area folders (shared, anna, frontend, image, voice, feedback).
+The documentation. The PUBLIC site is ONE page (index.html) whose section views (overview, agents, engine, state, state-json, context, infra, folders) render as a node graph, an indented tree or grouped cards, each paired with an agent-ready guide/ twin. Everything else under docs/ stays private/gitignored.
 
-- **Key files / dirs:** HANDOFF.md; index.html (the public hub); agents/context/engine/folders/infra/state-atlas.html (6 atlases); state-json-reference.html; guide/ (agent-ready markdown twins); shared/; anna/; frontend/; image/; voice/; feedback/; README.md
+- **Key files / dirs:** index.html (single-page docs site); guide/ (agent-ready markdown twins); .nojekyll; HANDOFF.md (private); shared/ anna/ frontend/ image/ voice/ feedback/ (private); README.md (private)
 - **Entry / owner:** docs/*.html; docs/shared/inference-providers.md
 - **Produces:** the read-first developer docs + interactive atlases
 - **Key point:** Where the docs live; read HANDOFF and the atlases first.
@@ -565,18 +565,13 @@ The documentation + the public site: HANDOFF, the interactive atlases (agents, c
 
 ```json
 {
-  "atlases": [
-    "agents-atlas.html",
-    "context-atlas.html",
-    "engine-atlas.html",
-    "folders-atlas.html",
-    "infra-atlas.html",
-    "state-atlas.html",
-    "state-json-reference.html"
+  "public": [
+    "index.html (single page: all section views)",
+    "guide/<section>/index.md (twins)",
+    ".nojekyll"
   ],
-  "hub": "index.html",
-  "guide": "guide/<section>/index.md (agent-ready twins)",
   "private": [
+    "HANDOFF.md",
     "shared/",
     "anna/",
     "frontend/",

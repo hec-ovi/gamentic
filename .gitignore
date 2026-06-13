@@ -31,8 +31,6 @@ Screencast*.mp4
 docs/*
 !docs/.nojekyll
 !docs/index.html
-!docs/*-atlas.html
-!docs/state-json-reference.html
 !docs/guide/
 # build scratch for the docs site (template + generators), never published
 .docbuild/
