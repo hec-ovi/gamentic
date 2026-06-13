@@ -1,0 +1,1364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gamentic State JSON Reference</title>
+<style>
+  :root {
+    --bg: #080a08;
+    --panel: #10130f;
+    --panel-2: #151912;
+    --ink: #edf6e8;
+    --muted: #9daa95;
+    --faint: #65705f;
+    --line: #283125;
+    --line-2: #1d241b;
+    --green: #8bd17c;
+    --cyan: #7ccbd1;
+    --amber: #e2bd72;
+    --red: #e78383;
+    --violet: #b69be8;
+    --blue: #87a7e8;
+    --shadow: rgba(0, 0, 0, .52);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 22% -8%, rgba(139, 209, 124, .13), transparent 32%),
+      radial-gradient(circle at 86% 12%, rgba(124, 203, 209, .10), transparent 34%),
+      var(--bg);
+    color: var(--ink);
+    font: 13px/1.48 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  #app {
+    height: 100%;
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+  aside {
+    min-height: 0;
+    overflow: auto;
+    border-right: 1px solid var(--line);
+    background: rgba(11, 13, 10, .93);
+    box-shadow: 18px 0 50px var(--shadow);
+  }
+  .brand {
+    padding: 18px 16px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .brand .eyebrow {
+    color: var(--faint);
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+  }
+  h1 {
+    margin: 6px 0 8px;
+    font-size: 19px;
+    line-height: 1.12;
+    letter-spacing: 0;
+  }
+  .brand p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .nav {
+    display: grid;
+    gap: 6px;
+    padding: 12px;
+  }
+  .nav button, .toolbar button {
+    border: 1px solid var(--line);
+    background: rgba(18, 22, 17, .9);
+    color: var(--ink);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font: 750 11px/1 ui-sans-serif, system-ui, sans-serif;
+    cursor: pointer;
+  }
+  .nav button {
+    width: 100%;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .nav button:hover, .toolbar button:hover {
+    border-color: #4c5a45;
+    background: var(--panel-2);
+  }
+  .nav code {
+    color: var(--cyan);
+    font: 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  main {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    padding: 18px;
+  }
+  .top {
+    position: sticky;
+    top: -18px;
+    z-index: 4;
+    margin: -18px -18px 16px;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(8, 10, 8, .86);
+    backdrop-filter: blur(14px);
+  }
+  .topline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .top h2 {
+    margin: 0;
+    font-size: 16px;
+    letter-spacing: 0;
+  }
+  .top p {
+    margin: 5px 0 0;
+    color: var(--muted);
+    max-width: 920px;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  input {
+    width: min(360px, 42vw);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 9px 10px;
+    background: rgba(11, 13, 10, .92);
+    color: var(--ink);
+    outline: none;
+    font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  input:focus { border-color: #61705b; }
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    max-width: 1540px;
+  }
+  .panel {
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(18, 22, 17, .88), rgba(12, 14, 12, .96));
+    border-radius: 10px;
+    box-shadow: 0 18px 40px var(--shadow);
+    overflow: hidden;
+  }
+  .panelHead {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 13px 14px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, .018);
+  }
+  .panelHead h3 {
+    margin: 0;
+    font-size: 13px;
+    letter-spacing: .2px;
+  }
+  .panelHead p {
+    margin: 5px 0 0;
+    color: var(--muted);
+    max-width: 900px;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .chip {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 7px;
+    color: var(--muted);
+    background: rgba(0, 0, 0, .16);
+    font: 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: nowrap;
+  }
+  .tree {
+    padding: 12px 14px 18px;
+    overflow: auto;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  details {
+    margin: 2px 0;
+    border-left: 1px solid transparent;
+  }
+  details[open] { border-left-color: rgba(139, 209, 124, .13); }
+  summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 3px 0;
+    user-select: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary:before {
+    content: "+";
+    display: inline-grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    color: var(--green);
+    background: rgba(0,0,0,.18);
+    font-size: 10px;
+  }
+  details[open] > summary:before { content: "-"; }
+  .children { margin-left: 18px; }
+  .leaf {
+    padding: 2px 0 2px 22px;
+    white-space: pre-wrap;
+  }
+  .key { color: var(--green); }
+  .type {
+    margin-left: 8px;
+    color: var(--faint);
+    font-size: 10px;
+  }
+  .str { color: var(--amber); }
+  .num { color: var(--cyan); }
+  .bool { color: var(--violet); }
+  .null { color: var(--red); }
+  .path {
+    margin-left: 8px;
+    color: var(--faint);
+    font-size: 10px;
+  }
+  .hit > summary, .hit.leaf {
+    background: rgba(226, 189, 114, .11);
+    outline: 1px solid rgba(226, 189, 114, .22);
+    border-radius: 5px;
+  }
+  .raw {
+    margin: 0;
+    max-height: 72vh;
+    overflow: auto;
+    padding: 14px;
+    background: #070907;
+    color: #dfead8;
+    font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    tab-size: 2;
+  }
+  .raw .k { color: var(--green); }
+  .raw .s { color: var(--amber); }
+  .raw .n { color: var(--cyan); }
+  .raw .b { color: var(--violet); }
+  .raw .z { color: var(--red); }
+  .note {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .noteCard {
+    border: 1px solid var(--line-2);
+    border-radius: 8px;
+    padding: 10px;
+    background: rgba(7, 9, 7, .55);
+  }
+  .noteCard strong {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--ink);
+  }
+  .noteCard span { color: var(--muted); }
+  @media (max-width: 900px) {
+    body { overflow: auto; }
+    #app { min-height: 100%; grid-template-columns: 1fr; }
+    aside { max-height: 250px; border-right: 0; border-bottom: 1px solid var(--line); }
+    main { overflow: visible; }
+    .top { position: static; margin: -18px -18px 16px; }
+    .topline { align-items: stretch; flex-direction: column; }
+    input { width: 100%; }
+    .note { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <div class="brand">
+      <div class="eyebrow">state reference</div>
+      <h1>Full State JSON</h1>
+      <p>Example object for the authoritative DB state, API projection, turn runtime, and frontend copy.</p>
+    </div>
+    <div class="nav" id="nav"></div>
+  </aside>
+  <main>
+    <div class="top">
+      <div class="topline">
+        <div>
+          <h2>One complete example, with nullable and populated variants visible.</h2>
+          <p>Values are illustrative. Shapes are grounded in `db.py`, `models.py`, `repo/state.py`, `repo/*`, `tools/*`, and `frontend/src/adapters.js`.</p>
+        </div>
+        <div class="toolbar">
+          <input id="search" placeholder="find key, path, tool, table">
+          <button id="expand">Expand</button>
+          <button id="collapse">Collapse</button>
+          <button id="copy">Copy JSON</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="panelHead">
+          <div>
+            <h3>Read Rules</h3>
+            <p>The UI receives a projection. The complete state lives in SQLite rows plus JSON text columns. Prompts receive selected slices plus recent beats and folded summaries.</p>
+          </div>
+          <div class="chips">
+            <span class="chip">DB truth</span>
+            <span class="chip">API projection</span>
+            <span class="chip">prompt context</span>
+            <span class="chip">frontend mirror</span>
+          </div>
+        </div>
+        <div class="tree note">
+          <div class="noteCard"><strong>Always present</strong><span>`games` and `player_state` exist from creation.</span></div>
+          <div class="noteCard"><strong>Populated over play</strong><span>`scenes`, `characters`, `quests`, `lore`, `beats`, item blobs, traits, moments.</span></div>
+          <div class="noteCard"><strong>Derived</strong><span>Current scene and present cast are calculated from `player_state.location`.</span></div>
+          <div class="noteCard"><strong>History</strong><span>Recent beats stay verbatim; old beats fold into `story_summary` and `memory_summary`.</span></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panelHead">
+          <div>
+            <h3>Expandable JSON Tree</h3>
+            <p>Use this first. Expand top-level sections from the left rail, search to open matching paths, then inspect exact shapes.</p>
+          </div>
+          <div class="chips"><span class="chip" id="hitCount">0 hits</span></div>
+        </div>
+        <div class="tree" id="jsonTree"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panelHead">
+          <div>
+            <h3>Raw JSON</h3>
+            <p>The same object as plain copyable JSON.</p>
+          </div>
+        </div>
+        <pre class="raw" id="rawJson"></pre>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+const FULL_STATE = {
+  meta: {
+    purpose: "Example of the complete Gamentic state surface.",
+    invariant: "SQLite rows are authoritative. API state is a projection. Frontend state is a mirror.",
+    source_files: [
+      "orchestrator/app/db.py",
+      "orchestrator/app/models.py",
+      "orchestrator/app/repo/state.py",
+      "orchestrator/app/repo/*.py",
+      "orchestrator/app/engine/turn.py",
+      "orchestrator/app/tools/*.py",
+      "frontend/src/adapters.js",
+      "frontend/src/app/turns.js"
+    ],
+    enums: {
+      game_status: ["active", "won", "lost"],
+      scene_status: ["calm", "tense", "dangerous"],
+      character_disposition: ["friendly", "neutral", "hostile", "unknown"],
+      segment_type: ["say", "do", "look", "attack", "give", "whisper"],
+      whisper_mode: ["say", "do", "look"],
+      beat_kind: ["narration", "dialogue", "action", "system", "image"],
+      beat_speaker: ["narrator", "player", "system", "character_id"],
+      quest_status: ["active", "done", "failed"],
+      difficulty: ["easy", "normal", "hard"],
+      narrator_gender: ["", "female", "male"]
+    }
+  },
+  turn_input: {
+    action: null,
+    wish: "I hope Mara trusts me, but I do not want the vault to become easy.",
+    segments: [
+      {
+        type: "say",
+        text: "Mara, I found the lantern you described.",
+        target: "char_mara",
+        item: null,
+        amount: null,
+        mode: null,
+        refs: [{"kind": "character", "id": "char_mara", "name": "Mara"}]
+      },
+      {
+        type: "do",
+        text: "Hold the lantern near the sealed door and listen for movement.",
+        target: null,
+        item: "item_lantern",
+        amount: null,
+        mode: null,
+        refs: [{"kind": "item", "id": "item_lantern", "name": "Storm Lantern"}]
+      },
+      {
+        type: "look",
+        text: "the silver dust along the hinges",
+        target: null,
+        item: null,
+        amount: null,
+        mode: null,
+        refs: []
+      },
+      {
+        type: "attack",
+        text: "strike the vault sentinel with the iron rod",
+        target: "char_sentinel",
+        item: "item_iron_rod",
+        amount: 4,
+        mode: null,
+        refs: [
+          {"kind": "character", "id": "char_sentinel", "name": "Vault Sentinel"},
+          {"kind": "item", "id": "item_iron_rod", "name": "Iron Rod"}
+        ]
+      },
+      {
+        type: "give",
+        text: "offer the red key to Mara",
+        target: "char_mara",
+        item: "item_red_key",
+        amount: null,
+        mode: null,
+        refs: [
+          {"kind": "item", "id": "item_red_key", "name": "Red Key"},
+          {"kind": "character", "id": "char_mara", "name": "Mara"}
+        ]
+      },
+      {
+        type: "whisper",
+        text: "If the door opens, step behind me.",
+        target: "char_mara",
+        item: null,
+        amount: null,
+        mode: "say",
+        refs: [{"kind": "character", "id": "char_mara", "name": "Mara"}]
+      },
+      {
+        type: "whisper",
+        text: "show Mara the burned mark on my palm",
+        target: "char_mara",
+        item: null,
+        amount: null,
+        mode: "do",
+        refs: [{"kind": "character", "id": "char_mara", "name": "Mara"}]
+      },
+      {
+        type: "whisper",
+        text: "the expression she hides when the sentinel moves",
+        target: "char_mara",
+        item: null,
+        amount: null,
+        mode: "look",
+        refs: [{"kind": "character", "id": "char_mara", "name": "Mara"}]
+      }
+    ]
+  },
+  turn_runtime: {
+    free_text_interpretation: {
+      used_when: "ActionIn.action is supplied without structured segments.",
+      tool: "submit_segments",
+      arguments: {
+        segments: [
+          {"type": "say", "text": "Mara, I found the lantern.", "target": "Mara"},
+          {"type": "do", "text": "hold it near the sealed door"}
+        ]
+      },
+      echo_text: "original player text, kept for the player beat"
+    },
+    engine_scratch: {
+      next_turn_index: 12,
+      action_text: "composed public line from non-private segments",
+      directed_attempts: [
+        {"family": "attack", "target": "char_sentinel", "item": "item_iron_rod", "amount": 4, "handled": false, "rejected": false},
+        {"family": "give", "target": "char_mara", "item": "item_red_key", "handled": false, "rejected": false}
+      ],
+      private_segments: [
+        {"private_with": "char_mara", "mode": "say", "text": "If the door opens, step behind me."},
+        {"private_with": "char_mara", "mode": "do", "text": "show Mara the burned mark on my palm"},
+        {"private_with": "char_mara", "mode": "look", "text": "the expression she hides when the sentinel moves"}
+      ],
+      failures: [],
+      reaction_queue: ["char_mara", "char_sentinel"],
+      spawned_character_ids: []
+    },
+    narrator_context: {
+      messages: [
+        {"role": "system", "content": "narrator system prompt plus rules, state, secrets, tool policy"},
+        {"role": "user", "content": "story_summary, recent beats, current scene, present cast, lore matches, player action, pending attempts, wish"}
+      ],
+      state_slices_in_prompt: {
+        game: ["title", "status", "difficulty", "current_goal", "time_minutes", "story_summary", "last_tool_errors"],
+        player: ["life", "points", "location", "inventory", "flags"],
+        scene: ["description", "background", "status", "exits", "items including hidden/fixed", "offers", "draft", "arrival_note"],
+        characters: ["present cast", "elsewhere cast", "persona", "knowledge", "origin", "traits", "moments", "inventory"],
+        quests: ["active quests and objectives"],
+        lore: ["constant facts", "keyword-matched facts"],
+        beats: ["recent public/private beats in budget"]
+      },
+      narrator_tools_visible: [
+        "apply_damage", "heal", "add_item", "remove_item", "award_points",
+        "start_quest", "update_objective", "complete_quest", "fail_quest",
+        "move_location", "set_flag", "remember",
+        "cue_character", "spawn_character", "kill_character",
+        "set_disposition", "set_following",
+        "set_scene_status", "set_game_status",
+        "describe_scene", "describe_character", "set_goal",
+        "add_exit", "place_item", "reveal_item", "take_item",
+        "offer_action", "offer_scene_action", "give_item",
+        "note_trait", "note_scene", "advance_time",
+        "reveal_origin", "note_moment", "set_relation",
+        "reject_attempt when attempts are pending",
+        "show_image when images are enabled"
+      ]
+    },
+    narrator_reply: {
+      content: "The lantern gutters blue at the door. The sentinel wakes before the key touches Mara's palm.",
+      tool_calls: [
+        {"name": "set_scene_status", "arguments": {"status": "dangerous"}},
+        {"name": "give_item", "arguments": {"item": "Red Key", "target": "Mara"}},
+        {"name": "apply_damage", "arguments": {"target": "Vault Sentinel", "amount": 4}},
+        {"name": "cue_character", "arguments": {"name": "Mara", "reason": "the player trusted her with the key"}},
+        {"name": "cue_character", "arguments": {"name": "Vault Sentinel", "reason": "it was struck"}},
+        {"name": "advance_time", "arguments": {"minutes": 3}},
+        {"name": "show_image", "arguments": {"description": "blue lantern light on a sealed vault door", "caption": "The door listens."}}
+      ],
+      usage: {"prompt_tokens": 14820, "completion_tokens": 860, "total_tokens": 15680}
+    },
+    dispatcher_results: [
+      {"tool": "set_scene_status", "kind": "state", "text": null, "mutates": ["scenes.status"]},
+      {"tool": "give_item", "kind": "state", "text": "You give Red Key to Mara.", "mutates": ["player_state.inventory", "characters.inventory", "characters.moments"]},
+      {"tool": "apply_damage", "kind": "state", "text": "Vault Sentinel takes 4 damage (8 left).", "mutates": ["characters.life", "characters.moments"], "reactions": ["char_sentinel"]},
+      {"tool": "cue_character", "kind": "cue", "cue": {"id": "char_mara", "name": "Mara", "reason": "trusted with the key"}},
+      {"tool": "advance_time", "kind": "state", "text": null, "mutates": ["games.time_minutes"]},
+      {"tool": "show_image", "kind": "image", "image_request": {"description": "blue lantern light on a sealed vault door", "caption": "The door listens."}}
+    ],
+    character_cascade: {
+      queue: ["char_mara", "char_sentinel"],
+      max_characters_this_turn: 2,
+      max_acts_per_character: 1,
+      character_context: {
+        "char_mara": {
+          messages: [
+            {"role": "system", "content": "character prompt, persona, private knowledge, origin, disposition, inventory"},
+            {"role": "user", "content": "memory_summary, witnessed beats, direct cue, current situation"}
+          ],
+          tools_visible: ["attack", "give_item", "share_past", "mark_moment", "admit_trait"]
+        }
+      },
+      replies: [
+        {
+          character_id: "char_mara",
+          content: "[say emotion=\"whisper\"]I know this key. Do not let it hear your name.[/say]",
+          parsed_segments: [{"kind": "dialogue", "text": "I know this key. Do not let it hear your name.", "emotion": "whisper"}],
+          tool_calls: [{"name": "mark_moment", "arguments": {"event": "The player trusted Mara with the red key"}}]
+        }
+      ]
+    },
+    background_jobs_after_commit: {
+      scene_art_if_missing: {"job": "generate_scene_image", "writes": ["scenes.image_url"]},
+      portraits_if_missing: {"job": "generate_images_for_game", "writes": ["characters.face_url", "characters.body_front_url", "characters.body_side_url"]},
+      directed_image: {"job": "generate_directed_image", "writes": ["beats.kind=image"]},
+      look_image: {"job": "generate_view_snapshot", "writes": ["beats.kind=image"]},
+      item_images: {"job": "generate_item_image", "writes": ["item.image_url wherever item currently lives"]},
+      folds: {"job": "maybe_update_summary", "writes": ["games.story_summary", "characters.memory_summary"]}
+    }
+  },
+  db_authoritative_parsed: {
+    storage_note: "SQLite JSON columns are stored as TEXT. This reference shows those columns parsed so nested shapes are visible.",
+    games: [
+      {
+        id: "game_01",
+        title: "The Vault Under Rain",
+        setting: "A coastal city built above older sealed machinery.",
+        tone: "tense, intimate, occult mystery",
+        narrator_persona: "Terse, sensory, fair but not permissive.",
+        opening_scenario: "Rain strikes the glass roof as the player reaches the archive vault.",
+        art_style: "painterly noir, wet stone, blue lantern light",
+        narrator_voice_id: "voice_narrator_low",
+        memory: "- Mara fears being named by machines\n- The red key reacts to spoken names",
+        status: "active",
+        scene_status: "dangerous",
+        current_goal: "Open the archive vault without waking the whole mechanism.",
+        context_used: 15680,
+        time_minutes: 693,
+        arrival_note: "The player was last here 4h 12m ago (Day 1, morning). Note from then: The sentinel was dormant but listening.",
+        narrator_gender: "",
+        difficulty: "normal",
+        story_summary: "The player reached the archive, gained Mara's reluctant help, and learned the vault responds to names.",
+        summarized_through: 8,
+        history_beats: 80,
+        summary_every: 6,
+        context_tokens: 64000,
+        turn_voices: 2,
+        turn_acts: 1,
+        last_tool_errors: ["place_item: scene is full (6)"],
+        created_at: "2026-06-13 18:10:00"
+      }
+    ],
+    player_state: [
+      {
+        game_id: "game_01",
+        life: 17,
+        max_life: 20,
+        points: 3,
+        location: "Archive Vault",
+        inventory: [
+          {"id": "item_lantern", "name": "Storm Lantern", "description": "A brass lantern burning blue in sealed places.", "qty": 1, "image_url": "/media/game_01/images/item-storm-lantern.png"},
+          {"id": "item_iron_rod", "name": "Iron Rod", "description": "Heavy, plain, useful.", "qty": 1, "image_url": null}
+        ],
+        flags: {"heard_vault_name": "false", "mara_trust": "fragile", "sentinel_alert": "true"}
+      }
+    ],
+    scenes: [
+      {
+        id: "scene_vault",
+        game_id: "game_01",
+        name: "Archive Vault",
+        description: "A round chamber of wet green stone, sealed by a silver-ribbed door.",
+        status: "dangerous",
+        image_url: "/media/game_01/images/scene-archive-vault.png",
+        exits: [
+          {"id": "exit_stairs", "label": "back to the rain stairs", "target": "Rain Stairs"},
+          {"id": "exit_gallery", "label": "the broken gallery", "target": "Broken Gallery"},
+          {"id": "exit_crypt", "label": "the machine crypt", "target": "Machine Crypt"}
+        ],
+        items: [
+          {"id": "item_silver_dust", "name": "Silver Dust", "description": "A fine line gathered at the door hinges.", "hidden": false, "fixed": false, "image_url": null},
+          {"id": "item_name_plate", "name": "Blank Name Plate", "description": "A plate polished smooth by erased names.", "hidden": true, "fixed": false, "image_url": null},
+          {"id": "item_vault_door", "name": "Sealed Vault Door", "description": "The main door. It listens.", "hidden": false, "fixed": true, "image_url": null}
+        ],
+        offers: [
+          {"id": "offer_pry", "label": "Test the hinge dust"},
+          {"id": "offer_listen", "label": "Listen at the seal"}
+        ],
+        visited: 1,
+        left_at_minutes: 441,
+        draft: "The sentinel was dormant, Mara avoided looking at the door, and a hidden plate remained under dust.",
+        background: "The vault was built to archive names as bindings. Speaking a true name near the seal gives the mechanism leverage.",
+        created_at: "2026-06-13 18:21:00"
+      },
+      {
+        id: "scene_stairs",
+        game_id: "game_01",
+        name: "Rain Stairs",
+        description: "Narrow stairs under a cracked glass roof.",
+        status: "calm",
+        image_url: null,
+        exits: [{"id": "exit_vault", "label": "the archive vault", "target": "Archive Vault"}],
+        items: [],
+        offers: [],
+        visited: 1,
+        left_at_minutes: 693,
+        draft: "",
+        background: "The stairs collect runoff from the city glasshouse above.",
+        created_at: "2026-06-13 18:10:00"
+      }
+    ],
+    characters: [
+      {
+        id: "char_mara",
+        game_id: "game_01",
+        name: "Mara",
+        persona: "Mara is a precise archivist who speaks less when afraid. She knows the vault listens for names.",
+        description: "A rain-soaked archivist with silver ink on her cuffs.",
+        knowledge: "Mara once gave the vault her sister's name and regrets it.",
+        appearance: "young woman, dark raincoat, silver ink cuffs, watchful eyes",
+        face_url: "/media/game_01/images/mara-face.png",
+        body_front_url: "/media/game_01/images/mara-front.png",
+        body_side_url: "/media/game_01/images/mara-side.png",
+        voice_id: "voice_mara_whisper",
+        color: "#8bd17c",
+        talkativeness: 0.42,
+        location: "Archive Vault",
+        present: 1,
+        life: 10,
+        max_life: 10,
+        alive: 1,
+        inventory: [
+          {"id": "item_red_key", "name": "Red Key", "description": "Warm metal, newly handed over.", "hidden": false, "qty": 1, "image_url": null},
+          {"id": "item_black_thread", "name": "Black Thread", "description": "A private ward against names.", "hidden": true, "qty": 1, "image_url": null}
+        ],
+        disposition: "friendly",
+        following: 1,
+        offers: [{"id": "offer_mara_past", "label": "Ask why she fears the vault"}],
+        context_used: 5220,
+        traits: [{"id": "trait_mara_precise", "text": "Precise under pressure", "minutes": 315}],
+        gender: "female",
+        origin: "Mara erased her sister from the city records to save her from debt, then learned the vault kept the name anyway.",
+        origin_revealed: [{"id": "origin_mara_01", "text": "Mara once worked inside the name archive.", "minutes": 508}],
+        moments: [
+          {"id": "moment_key", "text": "Received Red Key from the player", "minutes": 693},
+          {"id": "moment_trust", "text": "The player trusted Mara with the red key", "minutes": 693}
+        ],
+        relation: "ally",
+        memory_summary: "Mara saw the player spare a guard, find the lantern, and avoid speaking a true name.",
+        summarized_through: 8,
+        voice_design: "Low, controlled female voice, soft but clipped when afraid.",
+        voice_provider: "local"
+      },
+      {
+        id: "char_sentinel",
+        game_id: "game_01",
+        name: "Vault Sentinel",
+        persona: "An old mechanism wearing a human shape. It guards the vault and reacts to names, keys, and blows.",
+        description: "A brass figure unfolding from the door seam.",
+        knowledge: "It can bind anyone who speaks a true name within the chamber.",
+        appearance: "tall brass humanoid, jointed plates, empty glass face",
+        face_url: null,
+        body_front_url: null,
+        body_side_url: null,
+        voice_id: "",
+        color: "#e2bd72",
+        talkativeness: 0.2,
+        location: "Archive Vault",
+        present: 1,
+        life: 8,
+        max_life: 12,
+        alive: 1,
+        inventory: [],
+        disposition: "hostile",
+        following: 0,
+        offers: [],
+        context_used: 3300,
+        traits: [],
+        gender: "",
+        origin: "The sentinel is a maintenance shell inhabited by the vault's binding routine.",
+        origin_revealed: [],
+        moments: [{"id": "moment_hit", "text": "Was wounded at the player's hand", "minutes": 693}],
+        relation: "guardian",
+        memory_summary: "",
+        summarized_through: 0,
+        voice_design: "",
+        voice_provider: ""
+      }
+    ],
+    quests: [
+      {
+        id: "quest_open_vault",
+        game_id: "game_01",
+        title: "Open the Archive Vault",
+        description: "Reach the sealed records without giving the vault a true name.",
+        status: "active"
+      },
+      {
+        id: "quest_save_name",
+        game_id: "game_01",
+        title: "Recover Mara's Sister's Name",
+        description: "Find what the archive kept.",
+        status: "active"
+      }
+    ],
+    objectives: [
+      {"id": "obj_enter", "quest_id": "quest_open_vault", "text": "Reach the archive door.", "done": 1, "progress": "complete"},
+      {"id": "obj_open", "quest_id": "quest_open_vault", "text": "Open the sealed door.", "done": 0, "progress": "red key obtained"},
+      {"id": "obj_no_name", "quest_id": "quest_open_vault", "text": "Avoid speaking a true name.", "done": 0, "progress": "still safe"}
+    ],
+    lore: [
+      {
+        id: "lore_names",
+        game_id: "game_01",
+        keys: ["name", "vault", "archive", "binding"],
+        content: "The archive stores true names as operational keys.",
+        constant: 1,
+        priority: 10,
+        discovered: 1
+      },
+      {
+        id: "lore_silver_dust",
+        game_id: "game_01",
+        keys: ["dust", "hinge", "silver"],
+        content: "Silver dust appears where a name-lock has recently moved.",
+        constant: 0,
+        priority: 4,
+        discovered: 0
+      }
+    ],
+    beats: [
+      {
+        id: "beat_001",
+        game_id: "game_01",
+        turn_index: 1,
+        seq: 0,
+        speaker: "narrator",
+        speaker_name: "Narrator",
+        kind: "narration",
+        text: "Rain strikes the glass roof as you reach the archive vault.",
+        location: "Rain Stairs",
+        image_url: null,
+        audio_url: null,
+        private_with: null,
+        emotion: "",
+        witnesses: ["char_mara"],
+        created_at: "2026-06-13 18:10:00"
+      },
+      {
+        id: "beat_044",
+        game_id: "game_01",
+        turn_index: 12,
+        seq: 0,
+        speaker: "player",
+        speaker_name: null,
+        kind: "action",
+        text: "you offer Red Key to Mara",
+        location: "Archive Vault",
+        image_url: null,
+        audio_url: null,
+        private_with: null,
+        emotion: "",
+        witnesses: ["char_mara", "char_sentinel"],
+        created_at: "2026-06-13 18:37:00"
+      },
+      {
+        id: "beat_045",
+        game_id: "game_01",
+        turn_index: 12,
+        seq: 1,
+        speaker: "narrator",
+        speaker_name: "Narrator",
+        kind: "narration",
+        text: "The lantern gutters blue at the door. The sentinel wakes before the key touches Mara's palm.",
+        location: "Archive Vault",
+        image_url: null,
+        audio_url: "/media/game_01/audio/beat_045.wav",
+        private_with: null,
+        emotion: "",
+        witnesses: ["char_mara", "char_sentinel"],
+        created_at: "2026-06-13 18:37:02"
+      },
+      {
+        id: "beat_046",
+        game_id: "game_01",
+        turn_index: 12,
+        seq: 2,
+        speaker: "char_mara",
+        speaker_name: "Mara",
+        kind: "dialogue",
+        text: "I know this key. Do not let it hear your name.",
+        location: "Archive Vault",
+        image_url: null,
+        audio_url: "/media/game_01/audio/beat_046.wav",
+        private_with: null,
+        emotion: "whisper",
+        witnesses: ["char_mara", "char_sentinel"],
+        created_at: "2026-06-13 18:37:04"
+      },
+      {
+        id: "beat_047",
+        game_id: "game_01",
+        turn_index: 12,
+        seq: 3,
+        speaker: "player",
+        speaker_name: null,
+        kind: "action",
+        text: "you whisper to Mara: \"If the door opens, step behind me.\"",
+        location: "Archive Vault",
+        image_url: null,
+        audio_url: null,
+        private_with: "char_mara",
+        emotion: "whisper",
+        witnesses: ["char_mara"],
+        created_at: "2026-06-13 18:37:05"
+      },
+      {
+        id: "beat_048",
+        game_id: "game_01",
+        turn_index: 12,
+        seq: 4,
+        speaker: "narrator",
+        speaker_name: "Narrator",
+        kind: "image",
+        text: "The door listens.",
+        location: "Archive Vault",
+        image_url: "/media/game_01/images/view-t12.png",
+        audio_url: null,
+        private_with: null,
+        emotion: "",
+        witnesses: ["char_mara", "char_sentinel"],
+        created_at: "2026-06-13 18:37:40"
+      }
+    ],
+    creator_sessions: [
+      {
+        id: "creator_session_01",
+        history: [
+          {"role": "user", "content": "I want a rain archive mystery."},
+          {"role": "assistant", "content": "What does the archive protect?"}
+        ],
+        updated_at: "2026-06-13 18:00:00"
+      }
+    ]
+  },
+  api_projection: {
+    "GET /games/{gid}/state": {
+      game_id: "game_01",
+      title: "The Vault Under Rain",
+      status: "active",
+      scene_status: "dangerous",
+      current_goal: "Open the archive vault without waking the whole mechanism.",
+      scene: {
+        id: "scene_vault",
+        name: "Archive Vault",
+        description: "A round chamber of wet green stone, sealed by a silver-ribbed door.",
+        background: "The vault was built to archive names as bindings. Speaking a true name near the seal gives the mechanism leverage.",
+        status: "dangerous",
+        image_url: "/media/game_01/images/scene-archive-vault.png",
+        exits: [
+          {"id": "exit_stairs", "label": "back to the rain stairs", "target": "Rain Stairs"},
+          {"id": "exit_gallery", "label": "the broken gallery", "target": "Broken Gallery"},
+          {"id": "exit_crypt", "label": "the machine crypt", "target": "Machine Crypt"}
+        ],
+        items: [
+          {"id": "item_silver_dust", "name": "Silver Dust", "description": "A fine line gathered at the door hinges.", "image_url": null, "fixed": false},
+          {"id": "item_vault_door", "name": "Sealed Vault Door", "description": "The main door. It listens.", "image_url": null, "fixed": true}
+        ],
+        available_actions: [
+          {"id": "s0", "label": "Look around", "type": "look"},
+          {"id": "offer_pry", "label": "Test the hinge dust", "type": "offer"},
+          {"id": "offer_listen", "label": "Listen at the seal", "type": "offer"}
+        ]
+      },
+      narrator_voice_id: "voice_narrator_low",
+      settings: {
+        narrator_gender: "",
+        difficulty: "normal",
+        history_beats: 80,
+        summary_every: 6,
+        context_tokens: 64000,
+        turn_voices: 2,
+        turn_acts: 1
+      },
+      context: {"used": 15680, "max": 131072},
+      images_enabled: true,
+      time: {"minutes": 693, "day": 1, "hour": 19, "part": "evening", "label": "Day 1, evening"},
+      player: {
+        life: 17,
+        max_life: 20,
+        points: 3,
+        location: "Archive Vault",
+        inventory: [
+          {"id": "item_lantern", "name": "Storm Lantern", "description": "A brass lantern burning blue in sealed places.", "image_url": "/media/game_01/images/item-storm-lantern.png", "qty": 1},
+          {"id": "item_iron_rod", "name": "Iron Rod", "description": "Heavy, plain, useful.", "image_url": null, "qty": 1}
+        ],
+        flags: {"heard_vault_name": "false", "mara_trust": "fragile", "sentinel_alert": "true"}
+      },
+      quests: [
+        {
+          id: "quest_open_vault",
+          title: "Open the Archive Vault",
+          description: "Reach the sealed records without giving the vault a true name.",
+          status: "active",
+          objectives: [
+            {"id": "obj_enter", "text": "Reach the archive door.", "done": true, "progress": "complete"},
+            {"id": "obj_open", "text": "Open the sealed door.", "done": false, "progress": "red key obtained"}
+          ]
+        }
+      ],
+      characters: [
+        {
+          id: "char_mara",
+          name: "Mara",
+          description: "A rain-soaked archivist with silver ink on her cuffs.",
+          gender: "female",
+          relation: "ally",
+          voice_id: "voice_mara_whisper",
+          color: "#8bd17c",
+          present: true,
+          location: "Archive Vault",
+          life: 10,
+          max_life: 10,
+          alive: true,
+          disposition: "friendly",
+          following: true,
+          face_url: "/media/game_01/images/mara-face.png",
+          body_url: "/media/game_01/images/mara-front.png",
+          body_front_url: "/media/game_01/images/mara-front.png",
+          body_side_url: "/media/game_01/images/mara-side.png",
+          inventory: [{"id": "item_red_key", "name": "Red Key", "description": "Warm metal, newly handed over.", "image_url": null, "fixed": false}],
+          traits: [{"id": "trait_mara_precise", "text": "Precise under pressure", "unlocked": "Day 1, afternoon"}],
+          context: {"used": 5220, "max": 131072},
+          available_actions: [
+            {"id": "b0", "label": "Talk", "type": "say"},
+            {"id": "b1", "label": "Give...", "type": "give"},
+            {"id": "offer_mara_past", "label": "Ask why she fears the vault", "type": "offer"}
+          ]
+        },
+        {
+          id: "char_sentinel",
+          name: "Vault Sentinel",
+          description: "A brass figure unfolding from the door seam.",
+          gender: "",
+          relation: "guardian",
+          voice_id: "",
+          color: "#e2bd72",
+          present: true,
+          location: "Archive Vault",
+          life: 8,
+          max_life: 12,
+          alive: true,
+          disposition: "hostile",
+          following: false,
+          face_url: null,
+          body_url: null,
+          body_front_url: null,
+          body_side_url: null,
+          inventory: [],
+          traits: [],
+          context: {"used": 3300, "max": 131072},
+          available_actions: [{"id": "b0", "label": "Attack", "type": "attack"}]
+        }
+      ]
+    },
+    "GET /games/{gid}/beats?since=11": {
+      beats: [
+        {"id": "beat_044", "turn_index": 12, "seq": 0, "speaker": "player", "speaker_name": null, "kind": "action", "text": "you offer Red Key to Mara", "location": "Archive Vault", "image_url": null, "audio_url": null, "private_with": null, "emotion": ""},
+        {"id": "beat_046", "turn_index": 12, "seq": 2, "speaker": "char_mara", "speaker_name": "Mara", "kind": "dialogue", "text": "I know this key. Do not let it hear your name.", "location": "Archive Vault", "image_url": null, "audio_url": "/media/game_01/audio/beat_046.wav", "private_with": null, "emotion": "whisper"},
+        {"id": "beat_048", "turn_index": 12, "seq": 4, "speaker": "narrator", "speaker_name": "Narrator", "kind": "image", "text": "The door listens.", "location": "Archive Vault", "image_url": "/media/game_01/images/view-t12.png", "audio_url": null, "private_with": null, "emotion": ""}
+      ]
+    },
+    "POST /games/{gid}/action response": {
+      beats: ["Beat[] created this turn, same shape as Beat model"],
+      state: "GameState object above"
+    },
+    "GET /games/{gid}/characters/{cid}/profile": {
+      id: "char_mara",
+      name: "Mara",
+      description: "A rain-soaked archivist with silver ink on her cuffs.",
+      gender: "female",
+      relation: "ally",
+      disposition: "friendly",
+      following: true,
+      alive: true,
+      life: 10,
+      max_life: 10,
+      face_url: "/media/game_01/images/mara-face.png",
+      body_url: "/media/game_01/images/mara-front.png",
+      voice_id: "voice_mara_whisper",
+      color: "#8bd17c",
+      carrying: [{"id": "item_red_key", "name": "Red Key", "description": "Warm metal, newly handed over.", "image_url": null, "fixed": false}],
+      traits: [{"id": "trait_mara_precise", "text": "Precise under pressure", "unlocked": "Day 1, afternoon"}],
+      origin: [{"id": "origin_mara_01", "text": "Mara once worked inside the name archive.", "learned": "Day 1, evening"}],
+      moments: [{"id": "moment_key", "text": "Received Red Key from the player", "when": "Day 1, evening"}],
+      memories: [{"image_url": "/media/game_01/images/view-t12.png", "caption": "The door listens.", "turn_index": 12}]
+    }
+  },
+  frontend_runtime: {
+    active: {
+      id: "game_01",
+      state: {
+        gameId: "game_01",
+        title: "The Vault Under Rain",
+        status: "active",
+        sceneStatus: "dangerous",
+        currentGoal: "Open the archive vault without waking the whole mechanism.",
+        narratorVoiceId: "voice_narrator_low",
+        settings: {
+          difficulty: "normal",
+          narratorGender: "",
+          historyBeats: 80,
+          summaryEvery: 6,
+          contextTokens: 64000,
+          turnVoices: 2,
+          turnActs: 1
+        },
+        context: {"used": 15680, "max": 131072, "ratio": 0.1196},
+        imagesEnabled: true,
+        time: {"label": "Day 1, evening", "day": 1, "hour": 19, "part": "evening", "minutes": 693},
+        scene: {
+          id: "scene_vault",
+          name: "Archive Vault",
+          status: "dangerous",
+          imageUrl: "/media/game_01/images/scene-archive-vault.png",
+          exits: [{"id": "exit_stairs", "label": "back to the rain stairs", "target": "Rain Stairs", "isBack": true}],
+          items: [{"id": "item_silver_dust", "name": "Silver Dust", "description": "A fine line gathered at the door hinges.", "imageUrl": null, "fixed": false}],
+          actions: [{"id": "offer_pry", "label": "Test the hinge dust", "type": "offer"}]
+        },
+        player: {
+          life: 17,
+          maxLife: 20,
+          points: 3,
+          location: "Archive Vault",
+          inventory: [{"id": "item_lantern", "name": "Storm Lantern", "description": "A brass lantern burning blue in sealed places.", "imageUrl": "/media/game_01/images/item-storm-lantern.png", "qty": 1}],
+          flags: {"heard_vault_name": "false", "mara_trust": "fragile", "sentinel_alert": "true"}
+        },
+        characters: [
+          {"id": "char_mara", "name": "Mara", "voiceId": "voice_mara_whisper", "present": true, "alive": true, "location": "Archive Vault", "relation": "ally", "gender": "female", "actions": [{"id": "b0", "label": "Talk", "type": "say"}]},
+          {"id": "char_sentinel", "name": "Vault Sentinel", "voiceId": null, "present": true, "alive": true, "location": "Archive Vault", "relation": "guardian", "gender": "", "actions": [{"id": "b0", "label": "Attack", "type": "attack"}]}
+        ],
+        quests: ["mapped QuestOut[]"]
+      },
+      beats: [
+        {"id": "beat_046", "turnIndex": 12, "seq": 2, "speaker": "char_mara", "speakerName": "Mara", "kind": "dialogue", "text": "I know this key. Do not let it hear your name.", "location": "Archive Vault", "imageUrl": null, "audioUrl": "/media/game_01/audio/beat_046.wav", "privateWith": null, "emotion": "whisper", "voiceId": "voice_mara_whisper"},
+        {"id": "pending-92", "turnIndex": null, "seq": 0, "speaker": "player", "kind": "action", "text": "you whisper to Mara: \"If the door opens, step behind me.\"", "pending": true, "privateWith": "char_mara"}
+      ],
+      generating: false,
+      skipReveal: false,
+      revealQueue: ["beat_044", "beat_045", "beat_046"],
+      pendingView: false,
+      pullOwed: false,
+      lastTurnIndex: 12,
+      lastVia: "char_mara",
+      wish: "",
+      composer: {
+        mode: "do",
+        stack: [
+          {"type": "say", "text": "Wait.", "target": null},
+          {"type": "look", "text": "the hinge dust"}
+        ]
+      },
+      profile: {
+        charId: "char_mara",
+        name: "Mara",
+        tab: "whisper",
+        data: "mapped profile object or null while loading",
+        stack: []
+      },
+      changes: {
+        player: {"life": {"from": 20, "to": 17}},
+        scene: {"status": {"from": "tense", "to": "dangerous"}},
+        inventory: {"removed": ["Red Key"], "added": []}
+      }
+    }
+  },
+  mutation_index: {
+    always_there: ["games row", "player_state row", "current scene row is created on demand"],
+    populated_during_play: ["scenes rows", "scene.items", "scene.exits", "characters rows", "character traits/origin/moments", "quests/objectives", "lore", "beats"],
+    derived_not_stored: {
+      current_scene: "repo.scenes.current_scene(conn, gid) reads player_state.location and returns/creates scenes.name",
+      present_characters: "characters with present=1, alive=1, location == player_state.location",
+      GameState: "repo.state.game_state assembles rows into API payload",
+      frontend_present_cast: "frontend sameLocation filter, then visible card cap"
+    },
+    write_surfaces: {
+      run_turn: ["adds player/narrator/system/character beats", "sets games.context_used", "schedules media/folds"],
+      tools: {
+        apply_damage: ["player_state.life", "characters.life", "characters.alive", "games.status", "characters.moments"],
+        heal: ["player_state.life", "characters.life", "games.status"],
+        add_item: ["player_state.inventory"],
+        remove_item: ["player_state.inventory"],
+        place_item: ["scenes.items", "characters.inventory", "player_state.inventory"],
+        reveal_item: ["scenes.items", "characters.inventory", "player_state.inventory"],
+        take_item: ["scenes.items", "player_state.inventory"],
+        give_item: ["player_state.inventory", "characters.inventory", "characters.moments"],
+        move_location: ["player_state.location", "characters.location for followers", "scenes.left_at_minutes", "games.arrival_note", "scenes.exits"],
+        describe_scene: ["scenes.description", "scenes.background"],
+        note_scene: ["scenes.draft"],
+        set_scene_status: ["scenes.status"],
+        set_game_status: ["games.status"],
+        advance_time: ["games.time_minutes"],
+        set_flag: ["player_state.flags"],
+        remember: ["games.memory"],
+        set_goal: ["games.current_goal"],
+        start_quest: ["quests", "objectives"],
+        update_objective: ["objectives.done", "objectives.progress"],
+        complete_quest: ["quests.status"],
+        fail_quest: ["quests.status"],
+        spawn_character: ["characters", "scenes.items may absorb person-like item"],
+        kill_character: ["characters.alive", "characters.present", "characters.life"],
+        set_disposition: ["characters.disposition"],
+        set_following: ["characters.following"],
+        describe_character: ["characters.description"],
+        note_trait: ["characters.traits"],
+        reveal_origin: ["characters.origin_revealed"],
+        note_moment: ["characters.moments"],
+        set_relation: ["characters.relation"],
+        cue_character: ["turn reaction queue only"],
+        reject_attempt: ["turn pending attempt only"],
+        show_image: ["background image request, later beats.image_url"]
+      },
+      background_jobs: {
+        generate_scene_image: ["scenes.image_url"],
+        generate_images_for_game: ["characters.face_url", "characters.body_front_url", "characters.body_side_url"],
+        generate_item_image: ["item.image_url in player/scene/character blobs"],
+        generate_directed_image: ["beats.kind=image"],
+        generate_view_snapshot: ["beats.kind=image"],
+        maybe_update_summary: ["games.story_summary", "games.summarized_through"],
+        maybe_update_character_summaries: ["characters.memory_summary", "characters.summarized_through"]
+      },
+      settings_api: {
+        "PATCH /games/{gid}/settings": ["games.narrator_gender", "games.difficulty", "games.history_beats", "games.summary_every", "games.context_tokens", "games.turn_voices", "games.turn_acts", "games.narrator_voice_id"]
+      },
+      frontend_only: {
+        resolveTurn: ["active.generating", "active.state replacement", "active.beats merge", "active.revealQueue", "active.pendingView"],
+        mediastream: ["active.pullOwed", "late beat/state refetch"],
+        profile: ["active.profile", "localStorage pm seen markers"]
+      }
+    },
+    context_morph: [
+      "raw input or structured segments arrive",
+      "free text may be interpreted into segments",
+      "deterministic gates route movement, attacks, gives, private whispers, and invalid attempts",
+      "narrator context is assembled from current rows, lore, summaries, and recent beats",
+      "LLM proposes prose and tool calls",
+      "dispatcher validates tool calls and mutates DB",
+      "new beats are inserted with location, privacy, emotion, witnesses",
+      "character agents may receive bounded cues and add dialogue/action/tool calls",
+      "API projects the updated DB state",
+      "frontend replaces its state, appends beats, runs reveal and diff cues",
+      "background media/folds land later and trigger SSE/refetch"
+    ]
+  },
+  export_checkpoint_shape: {
+    "GET /games/{gid}/export?kind=checkpoint": {
+      gamentic: "checkpoint",
+      version: 1,
+      game: "raw games row",
+      player: "raw player_state row",
+      characters: "raw characters rows",
+      scenes: "raw scenes rows",
+      quests: "raw quests rows",
+      objectives: "raw objectives rows joined through quests",
+      lore: "raw lore rows",
+      beats: "raw beats rows"
+    },
+    import_note: "Import creates a new game id, remaps character/quest/objective/beat ids where needed, rehomes media URLs, and drops missing image beats."
+  }
+};
+
+const rootName = "full_state_example";
+const tree = document.getElementById("jsonTree");
+const raw = document.getElementById("rawJson");
+const nav = document.getElementById("nav");
+const hitCount = document.getElementById("hitCount");
+
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[ch]));
+}
+
+function typeLabel(value) {
+  if (Array.isArray(value)) return `array[${value.length}]`;
+  if (value === null) return "null";
+  if (typeof value === "object") return `object{${Object.keys(value).length}}`;
+  return typeof value;
+}
+
+function primitive(value) {
+  if (value === null) return '<span class="null">null</span>';
+  if (typeof value === "string") return `<span class="str">"${esc(value)}"</span>`;
+  if (typeof value === "number") return `<span class="num">${value}</span>`;
+  if (typeof value === "boolean") return `<span class="bool">${value}</span>`;
+  return esc(value);
+}
+
+function shortPreview(value) {
+  if (Array.isArray(value)) return value.length ? "[]" : "empty";
+  if (value && typeof value === "object") return "{}";
+  return String(value);
+}
+
+function renderNode(key, value, path, depth) {
+  const text = JSON.stringify(value).toLowerCase();
+  const label = key === null ? rootName : key;
+  if (value === null || typeof value !== "object") {
+    return `<div class="leaf" data-path="${esc(path)}" data-text="${esc((path + " " + text).toLowerCase())}"><span class="key">"${esc(label)}"</span>: ${primitive(value)} <span class="path">${esc(path)}</span></div>`;
+  }
+  const entries = Array.isArray(value)
+    ? value.map((v, i) => [String(i), v])
+    : Object.entries(value);
+  const open = depth < 2 ? " open" : "";
+  const child = entries.map(([k, v]) => renderNode(k, v, `${path}.${k}`, depth + 1)).join("");
+  return `<details class="entry" data-path="${esc(path)}" data-text="${esc((path + " " + text).toLowerCase())}"${open}>
+    <summary><span class="key">"${esc(label)}"</span><span class="type">${typeLabel(value)} ${esc(shortPreview(value))}</span><span class="path">${esc(path)}</span></summary>
+    <div class="children">${child}</div>
+  </details>`;
+}
+
+function syntaxJson(json) {
+  return esc(json)
+    .replace(/("(?:\\.|[^"\\])*")(\s*:)/g, '<span class="k">$1</span>$2')
+    .replace(/:\s*("(?:\\.|[^"\\])*")/g, ': <span class="s">$1</span>')
+    .replace(/\b(-?\d+(?:\.\d+)?)\b/g, '<span class="n">$1</span>')
+    .replace(/\b(true|false)\b/g, '<span class="b">$1</span>')
+    .replace(/\bnull\b/g, '<span class="z">null</span>');
+}
+
+function render() {
+  tree.innerHTML = renderNode(null, FULL_STATE, rootName, 0);
+  raw.innerHTML = syntaxJson(JSON.stringify(FULL_STATE, null, 2));
+  nav.innerHTML = Object.keys(FULL_STATE).map(k =>
+    `<button data-jump="${esc(rootName + "." + k)}"><span>${esc(k.replace(/_/g, " "))}</span><code>${esc(k)}</code></button>`
+  ).join("");
+  nav.querySelectorAll("button").forEach(btn => {
+    btn.addEventListener("click", () => jumpTo(btn.dataset.jump));
+  });
+  hitCount.textContent = "0 hits";
+}
+
+function jumpTo(path) {
+  const el = tree.querySelector(`[data-path="${CSS.escape(path)}"]`);
+  if (!el) return;
+  let p = el.parentElement;
+  while (p) {
+    if (p.tagName === "DETAILS") p.open = true;
+    p = p.parentElement;
+  }
+  el.scrollIntoView({block: "center", behavior: "smooth"});
+  el.classList.add("hit");
+  setTimeout(() => el.classList.remove("hit"), 900);
+}
+
+function expandAll(open) {
+  tree.querySelectorAll("details").forEach(d => { d.open = open; });
+}
+
+function applySearch() {
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  tree.querySelectorAll(".hit").forEach(el => el.classList.remove("hit"));
+  if (!q) {
+    hitCount.textContent = "0 hits";
+    return;
+  }
+  let hits = 0;
+  tree.querySelectorAll("[data-text]").forEach(el => {
+    if (!el.dataset.text.includes(q)) return;
+    hits += 1;
+    el.classList.add("hit");
+    let p = el.parentElement;
+    while (p) {
+      if (p.tagName === "DETAILS") p.open = true;
+      p = p.parentElement;
+    }
+  });
+  hitCount.textContent = `${hits} hit${hits === 1 ? "" : "s"}`;
+}
+
+render();
+document.getElementById("expand").addEventListener("click", () => expandAll(true));
+document.getElementById("collapse").addEventListener("click", () => expandAll(false));
+document.getElementById("search").addEventListener("input", applySearch);
+document.getElementById("copy").addEventListener("click", async () => {
+  const text = JSON.stringify(FULL_STATE, null, 2);
+  try {
+    await navigator.clipboard.writeText(text);
+    document.getElementById("copy").textContent = "Copied";
+    setTimeout(() => { document.getElementById("copy").textContent = "Copy JSON"; }, 900);
+  } catch {
+    raw.textContent = text;
+  }
+});
+</script>
+</body>
+</html>

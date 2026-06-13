@@ -2,6 +2,10 @@
 
 A self-hosted AI dungeon RPG you play in the browser. An AI narrator and a cast of AI characters, each with its own persona, memory and voice, drive a branching story over real game state. Everything runs on your own machine: the text, the images and the voice are all generated locally. No cloud, no API keys.
 
+### 📖 [Explore the interactive docs & blueprints →](https://hec-ovi.github.io/gamentic/)
+
+Pannable, clickable maps of the agents, the engine, the state, the infra and the code tree, each paired with an agent-ready markdown guide.
+
 > Built and tuned for an AMD Strix Halo APU (Ryzen AI Max), on standard containers.
 
 ![status](https://img.shields.io/badge/status-work%20in%20progress-orange) ![local](https://img.shields.io/badge/runs-100%25%20local-success) ![model](https://img.shields.io/badge/LLM-Gemma%2026B%20MoE%20(llama.cpp%2FVulkan)-blue) ![api](https://img.shields.io/badge/backend-FastAPI%20%2B%20SQLite-009688) ![license](https://img.shields.io/badge/license-MIT-green)

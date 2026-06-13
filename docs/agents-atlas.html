@@ -1,0 +1,870 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gamentic Atlas</title>
+<style>
+  :root {
+    --bg: #070807;
+    --surface: #101210;
+    --surface-2: #151814;
+    --surface-3: #1d211c;
+    --line: #30362d;
+    --line-soft: #222720;
+    --text: #eef2e8;
+    --muted: #aab4a3;
+    --faint: #707b69;
+    --green: #65d08b;
+    --cyan: #62c8d8;
+    --amber: #e7b75f;
+    --pink: #e47ea5;
+    --violet: #a895f2;
+    --red: #ef756f;
+    --blue: #7ba7ff;
+    --shadow: rgba(0, 0, 0, .55);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  #app {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    grid-template-columns: 1fr minmax(330px, 390px);
+    background:
+      linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px),
+      var(--bg);
+    background-size: 36px 36px;
+  }
+  #app.side-wide {
+    grid-template-columns: 1fr 50vw;
+  }
+
+  #stageWrap {
+    position: relative;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  #chart {
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+    cursor: grab;
+  }
+  #chart.dragging { cursor: grabbing; }
+
+  .topbar {
+    position: absolute;
+    left: 18px;
+    top: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    z-index: 4;
+    pointer-events: none;
+  }
+  .title {
+    background: rgba(16,18,16,.88);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 11px 13px 10px;
+    box-shadow: 0 12px 34px var(--shadow);
+    max-width: 520px;
+    pointer-events: auto;
+  }
+  .title h1 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 760;
+    letter-spacing: .2px;
+  }
+  .title p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .title a { color: var(--cyan); text-decoration: none; }
+  .title a:hover { text-decoration: underline; }
+  .legend {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    max-width: 420px;
+    padding-top: 2px;
+  }
+  .pill {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    padding: 5px 8px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(16,18,16,.8);
+    color: var(--muted);
+    font-size: 11px;
+    box-shadow: 0 10px 28px var(--shadow);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 99px; display: inline-block; }
+
+  .controls {
+    position: absolute;
+    left: 18px;
+    bottom: 16px;
+    display: flex;
+    gap: 8px;
+    z-index: 4;
+  }
+  button {
+    border: 1px solid var(--line);
+    background: rgba(16,18,16,.9);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font: 650 11px ui-sans-serif, system-ui, sans-serif;
+    cursor: pointer;
+  }
+  button:hover { background: var(--surface-2); border-color: #46513f; }
+
+  #tip {
+    position: absolute;
+    z-index: 6;
+    width: min(320px, calc(100vw - 24px));
+    display: none;
+    border: 1px solid #3a4435;
+    border-radius: 9px;
+    padding: 9px 10px;
+    background: rgba(9, 11, 9, .97);
+    box-shadow: 0 18px 42px var(--shadow);
+    color: var(--muted);
+    pointer-events: none;
+  }
+  #tip strong {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--text);
+    font-size: 12px;
+  }
+  #tip p { margin: 0; }
+
+  #side {
+    border-left: 1px solid var(--line);
+    background: rgba(11, 13, 10, .96);
+    box-shadow: -22px 0 50px var(--shadow);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    min-width: 0;
+    min-height: 0;
+    z-index: 5;
+  }
+  .sideHead {
+    padding: 16px 17px 13px;
+    border-bottom: 1px solid var(--line);
+  }
+  .sideTop {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .sideToggle {
+    flex: 0 0 auto;
+    padding: 6px 8px;
+    border-radius: 7px;
+  }
+  .sideHead .eyebrow {
+    color: var(--faint);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 10px;
+    font-weight: 800;
+  }
+  .sideHead h2 {
+    margin: 5px 0 0;
+    font-size: 16px;
+    line-height: 1.2;
+  }
+  .sideHead p {
+    margin: 7px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  #detail {
+    overflow: auto;
+    min-height: 0;
+    padding: 14px 17px 22px;
+  }
+  .section {
+    margin: 0 0 14px;
+    padding: 12px;
+    border: 1px solid var(--line-soft);
+    background: rgba(21, 24, 20, .74);
+    border-radius: 10px;
+  }
+  .section h3 {
+    margin: 0 0 8px;
+    color: var(--text);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .9px;
+  }
+  .section p {
+    margin: 0;
+    color: var(--muted);
+  }
+  .kv {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 7px 10px;
+    font-size: 12px;
+  }
+  .k { color: var(--faint); }
+  .v { color: var(--text); }
+  ul {
+    margin: 0;
+    padding-left: 17px;
+    color: var(--muted);
+  }
+  li { margin: 3px 0; }
+  .code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: #d9e5d1;
+  }
+  .jsonbox {
+    margin: 0;
+    padding: 10px;
+    overflow: visible;
+    border: 1px solid #2b3329;
+    border-radius: 8px;
+    background: #090b09;
+    color: #d9e5d1;
+    font: 11px/1.48 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    tab-size: 2;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .jsonbox .jkey { color: var(--green); }
+  .jsonbox .jstr { color: var(--amber); }
+  .jsonbox .jnum { color: var(--cyan); }
+  .jsonbox .jbool { color: var(--violet); }
+  .jsonbox .jnull { color: var(--red); }
+  .jsonbox .jobj { color: #8fdc89; font-weight: 800; }
+  .jsonbox .jarr { color: #78d4e2; font-weight: 800; }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .chip {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 3px 7px;
+    color: var(--muted);
+    background: rgba(0,0,0,.16);
+    font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  .node rect.main {
+    stroke-width: 1.3;
+    rx: 12;
+    filter: drop-shadow(0 10px 18px rgba(0,0,0,.42));
+  }
+  .node text { user-select: none; pointer-events: none; }
+  .node .label { font-weight: 760; font-size: 13px; fill: var(--text); }
+  .node .sub { font-size: 11px; fill: var(--muted); }
+  .node .kind { font-size: 9px; font-weight: 850; letter-spacing: 1.1px; text-transform: uppercase; }
+  .node.selected rect.main { stroke-width: 2.4; }
+  .node.dim { opacity: .28; }
+  .node.connected { opacity: 1; }
+  .node { cursor: pointer; }
+
+  .edge {
+    fill: none;
+    stroke-width: 2.1;
+    stroke-linecap: round;
+    opacity: .46;
+    cursor: pointer;
+  }
+  .edge.dim { opacity: .13; }
+  .edge.selected { opacity: 1; stroke-width: 3.4; }
+  .edgePort {
+    fill: rgba(7,8,7,.88);
+    stroke-width: 1.6;
+    pointer-events: none;
+  }
+  .edgePort.dim { opacity: .13; }
+  .edgePortText {
+    fill: var(--faint);
+    font: 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    paint-order: stroke;
+    stroke: rgba(7,8,7,.9);
+    stroke-width: 3px;
+    pointer-events: none;
+    user-select: none;
+  }
+  .edgePortText.dim { opacity: .13; }
+  .edgeLabel {
+    font-size: 10px;
+    fill: var(--muted);
+    opacity: .62;
+    paint-order: stroke;
+    stroke: rgba(7,8,7,.82);
+    stroke-width: 4px;
+    stroke-linejoin: round;
+    pointer-events: none;
+    user-select: none;
+  }
+  .edgeLabel.hidden { opacity: 0; }
+  .edgeLabel.dim { opacity: .18; }
+
+  .laneLabel {
+    font-size: 11px;
+    font-weight: 850;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    fill: var(--faint);
+    pointer-events: none;
+  }
+  .laneLine {
+    stroke: rgba(170,180,163,.16);
+    stroke-width: 1;
+    stroke-dasharray: 5 8;
+    pointer-events: none;
+  }
+
+  .helpBtn rect {
+    fill: rgba(7,8,7,.72);
+    stroke: var(--line);
+    rx: 6;
+  }
+  .helpBtn text {
+    font: 850 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    pointer-events: none;
+  }
+  .helpBtn:hover rect { stroke: #64715d; fill: rgba(24,28,22,.95); }
+
+  @media (max-width: 960px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: 1fr 42vh; }
+    #app.side-wide { grid-template-columns: 1fr; grid-template-rows: 1fr 50vh; }
+    #side { border-left: 0; border-top: 1px solid var(--line); }
+    .topbar { right: 12px; }
+    .legend { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <main id="stageWrap">
+    <div class="topbar">
+      <div class="title">
+        <h1 id="metaTitle">Atlas</h1>
+        <p id="metaSub"></p>
+      </div>
+      <div class="legend" id="legend" aria-hidden="true"></div>
+    </div>
+    <svg id="chart" role="img" aria-label="Gamentic atlas">
+      <defs id="defs"></defs>
+      <g id="viewport">
+        <g id="lanes"></g>
+        <g id="edges"></g>
+        <g id="labels"></g>
+        <g id="nodes"></g>
+      </g>
+    </svg>
+    <div id="tip"></div>
+    <div class="controls">
+      <button id="fit">Fit</button>
+      <button id="reset">Reset layout</button>
+    </div>
+  </main>
+  <aside id="side">
+    <div class="sideHead">
+      <div class="sideTop">
+        <div class="eyebrow" id="detailKind">Selected</div>
+        <button class="sideToggle" id="sideToggle">Expand</button>
+      </div>
+      <h2 id="detailTitle">Click a node</h2>
+      <p id="detailSummary">The right panel explains lifecycle, population, mutation points, and IN/OUT usage.</p>
+    </div>
+    <div id="detail"></div>
+  </aside>
+</div>
+
+<script>
+// ===== GENERATED from the verified fact-pack — edit gen_data.py, not this file =====
+const META = {"title": "Agents Atlas", "subtitle": "Every LLM agent: narrator, characters, skills, creation, folds, and the Anna backend. Agentic tools (cue_character) are the bridges.", "legend": [{"color": "var(--amber)", "label": "turn"}, {"color": "var(--green)", "label": "character"}, {"color": "var(--cyan)", "label": "skill"}, {"color": "var(--violet)", "label": "creation"}, {"color": "var(--pink)", "label": "fold"}, {"color": "var(--blue)", "label": "backend"}]};
+const INTRO = {"kind": "orientation", "title": "One model, many agents", "summary": "One local model plays every role through separate, purpose-built contexts. An agent is any distinct LLM call; an agentic tool (cue_character) is the bridge that spawns another agent.", "sections": [{"h3": "Turn agents", "html": "<div class=\"chips\"><span class=\"chip\">narrator</span><span class=\"chip\">narrator-resolve</span><span class=\"chip\">character (public)</span><span class=\"chip\">character (private)</span></div>"}, {"h3": "Skill agents (one call, then forgotten)", "html": "<div class=\"chips\"><span class=\"chip\">interpreter</span><span class=\"chip\">image-prompt writer</span><span class=\"chip\">explain</span></div>"}, {"h3": "Creation agents", "html": "<div class=\"chips\"><span class=\"chip\">creator chat</span><span class=\"chip\">finalize extractor</span><span class=\"chip\">art director</span><span class=\"chip\">origin enrichment</span></div>"}, {"h3": "Background folds", "html": "<div class=\"chips\"><span class=\"chip\">game-summary fold</span><span class=\"chip\">character-summary fold</span></div>"}, {"h3": "The bridge", "html": "<p>The narrator never voices a character. It calls <span class=\"code\">cue_character</span>; the engine turns that cue into a separate character-agent run. <span class=\"code\">spawn_character</span> and a character's <span class=\"code\">attack</span>/<span class=\"code\">give_item</span> are the cascade bridges.</p>"}, {"h3": "Edge colors", "html": "<p>amber = cue, cyan = trigger, green = feed, pink = fold.</p>"}]};
+const SECTIONS = [{"label": "Reads / inputs", "field": "reads", "type": "list"}, {"label": "Generates / outputs", "field": "generates", "type": "list"}, {"label": "Writes / mutates", "field": "writes", "type": "list"}, {"label": "Owned by (code)", "field": "mutators", "type": "list"}];
+const C = {"turn": "#e7b75f", "character": "#65d08b", "skill": "#62c8d8", "creation": "#a895f2", "fold": "#e47ea5", "backend": "#7ba7ff"};
+const NODE_FILL = {"turn": "#171410", "character": "#121812", "skill": "#101718", "creation": "#161322", "fold": "#181117", "backend": "#111521"};
+const EDGE_KIND = {"cue": "#e7b75f", "trigger": "#62c8d8", "feed": "#65d08b", "fold": "#e47ea5"};
+const FLOW_KIND = "feed";
+const HOME = {"x": 40, "y": 80, "k": 0.5};
+const nodes = [{"id": "narrator", "kind": "turn", "label": "Narrator", "sub": "omniscient author's eye", "summary": "The main per-turn agent: reads full world state + recap + lore + the player's composed action, writes second-person present-tense prose and drives all world-state change through the narrator toolset, cuing characters to speak rather than voicing them.", "reads": ["prompts.build_narrator_messages (prompts.py:202): narrator.system.md + narrator.user.md", "_state_block (prompts.py:59): scene, mood, present/elsewhere cast, inventory, exits, quests, goal, time, SECRETS (other chars' knowledge+origin), remembered facts", "_situation_blocks (prompts.py:167): narrator.easy/hard/newplace/returning.md dispatched by state; narrator.looking.md when looking", "_lore_block (prompts.py:157): repo.match_lore budgeted", "_fit_token_budget (prompts.py:186): verbatim beat window trimmed to ~60% of effective_context_tokens", "g['story_summary'] (EARLIER CHAPTERS recap), g['last_tool_errors'] (failed calls fed back once), narrator.attempts.md (numbered attack/give attempts), wish_block (fenced player wish)"], "generates": ["prose narration beat (emit narrator/Narrator/narration)", "tool calls from tools.narrator_tools(adjudicating, images)", "cues (queued character reactions), spawns, image_request, reject_attempt vetoes"], "writes": ["beats (narration)", "all game/scene/character/quest/item state via apply_tool", "g.last_tool_errors (still-invalid calls), g.context_used (global meter), scene.description seed if unfurnished"], "mutators": ["engine/turn.py: run_turn (llm.chat at turn.py:477)", "prompts.py: build_narrator_messages", "tools/__init__.py: narrator_tools, apply_tool"], "note": "Never voices a character: it must cue_character and stop. tool_choice='auto', NARRATOR_TEMPERATURE, scaffold + cast-name stop sequences, optional thinking.", "x": 70, "y": 126, "w": 250, "h": 104}, {"id": "narratorResolve", "kind": "turn", "label": "Narrator-Resolve (dead-air killer)", "sub": "second narrator pass, no tools", "summary": "A short second narrator call fired ONLY when the first pass changed state via tools but wrote no prose (and nobody else will speak); it voices the mechanical outcome in one or two sentences so no turn is dead air.", "reads": ["prompts.build_narrator_resolve_messages (prompts.py:276): narrator.resolve.md + narrator.resolve.user.md", "_state_block (current state)", "narrator_action (the action) + state_notes list ('CHANGES': move/furnish/pickup receipts)"], "generates": ["one short narration beat only (no tools, no dialogue)"], "writes": ["beats (narration)", "g.context_used (max with main pass)"], "mutators": ["engine/turn.py: run_turn (llm.chat at turn.py:610, the else-branch when prose empty)", "prompts.py: build_narrator_resolve_messages"], "note": "Same voice and same stop sequences as the main pass; no tools list passed. Fires when (state_notes or not will_speak) and main prose was empty.", "x": 380, "y": 126, "w": 250, "h": 104}, {"id": "characterPublic", "kind": "character", "label": "Character Agent (public)", "sub": "local-POV persona", "summary": "Each present character runs as its own agent with its own context: only its persona, private knowledge, past, traits, felt-HP and the beats IT witnessed; it replies in [say]/[do]/[whisper] tags and can act on others via its own tools.", "reads": ["prompts.build_character_messages (prompts.py:303): character.system.md + character.user.md", "witnessed_beats_for_character (per-character verbatim window, not the room log)", "persona, knowledge_block, origin_block (its past), traits_block, felt_hp (words not numbers), present_block (who is here), memory_block (its own folded recap + pivotal moments)", "impulse line when directed (forced gift reply)"], "generates": ["[say]->dialogue bubble, [do]->action, [whisper]->private-to-player dialogue (parsed by parsing.parse_character_output_with_marks)", "reaction targets to enqueue", "tool calls / inline memory marks"], "writes": ["beats (dialogue/action/system)", "character.context (per-character meter, set_character_context)", "own memory via share_past/mark_moment/admit_trait; attack/give_item on others"], "mutators": ["engine/turn.py: _character_reply (llm.chat at turn.py:187)", "prompts.py: build_character_messages", "tools/__init__.py: CHARACTER_TOOLS, apply_tool(actor=ch)"], "note": "Voiced separately from the narrator; cued via cue_character. One retry if it returns nothing usable. CHARACTER_TEMPERATURE, CHAR_HISTORY_BEATS.", "x": 690, "y": 126, "w": 250, "h": 104}, {"id": "characterPrivate", "kind": "character", "label": "Character Agent (private / whisper)", "sub": "1:1 confidential thread", "summary": "The same character agent run with private_with set, so its ENTIRE reply lands in a 1:1 thread no one else witnesses: the whisper channel and the forced gift reply. Built by the same builder; lifecycle and routing differ.", "reads": ["prompts.build_character_messages (same builder) with private exchange beats marked (privately) in the witnessed window", "impulse for the forced gift reply: 'The player just gave you <item>. React to the gift, just to them.'"], "generates": ["private dialogue/action beats bound to private_with (a stated-emotion-less private say is voiced as a whisper)"], "writes": ["beats (private_with=character id)", "character.context", "own memory via share_past/mark_moment/admit_trait (whispers run NO narrator, so these self-tools are the only way confessions get recorded)"], "mutators": ["engine/turn.py: _character_reply(private_with=...) called at turn.py:657 (gift) and turn.py:717 (whisper exchange)", "engine/turn.py: run_turn private channel block (lines 661-717)"], "note": "Same agent, different lifecycle: triggered by player whisper segments or a landed give. Consecutive whispers to the same char form ONE exchange, char replies once.", "x": 1000, "y": 126, "w": 250, "h": 104}, {"id": "interpreter", "kind": "skill", "label": "Input Interpreter", "sub": "freeform -> segments", "summary": "One small tool-constrained call loaded only for this skill: parses a freeform typed action into ordered structured segments (say/do/attack/give/whisper/look) so typing freely gets the same directed routing and adjudication as the composer buttons.", "reads": ["prompts.build_interpret_messages (prompts.py:579): interpret.system.md + interpret.user.md", "present character names + player inventory (so names/items resolve)"], "generates": ["a submit_segments tool call -> validated list[dict] of segments (or None on any failure -> caller falls back to raw text)"], "writes": ["no DB state; its output drives _compose/run_turn"], "mutators": ["engine/turn.py: interpret_action (llm.chat at turn.py:248)", "prompts.py: build_interpret_messages, INTERPRET_TOOL"], "note": "Gated by settings.INTERPRET_FREE_TEXT. temperature 0.2, bounded to 6 segments, single forced submit_segments tool.", "x": 70, "y": 372, "w": 250, "h": 104}, {"id": "imagePromptWriter", "kind": "skill", "label": "Image-Prompt Writer", "sub": "FLUX prompt author", "summary": "Optional agentic image-prompt writer: one LLM call that turns live scene context into a single FLUX.2-klein prompt (poses, the just-happened moment), then CODE hardens it (strips quoted lettering, clips length, appends no-text guard); any failure falls back to the deterministic template prompt.", "reads": ["prompts.build_image_prompt_messages (prompts.py:595): imageprompt.system.md + imageprompt.user.md", "_image_context (image_prompts.py:172): PLACE, time/mood, focus, present characters' gendered base, JUST HAPPENED recent public beats, STYLE"], "generates": ["one prose FLUX prompt (<80 words, subjects-first recipe), hardened by _harden_image_prompt"], "writes": ["no DB; returns the prompt string consumed by the media render job"], "mutators": ["integrate/image_prompts.py: _agentic_prompt (llm.chat at image_prompts.py:198)", "integrate/jobs.py: generate_view_snapshot (jobs.py:25; _agentic_prompt at jobs.py:56), generate_scene_image (jobs.py:255)", "prompts.py: build_image_prompt_messages"], "note": "Gated by settings.IMAGE_AGENTIC_PROMPTS. Fires for look/show_image renders and current-scene art; temperature 0.4, max_tokens 140. Triggered downstream of the narrator's show_image tool or a player LOOK.", "x": 380, "y": 372, "w": 250, "h": 104}, {"id": "explain", "kind": "skill", "label": "Explain (tap-to-ask)", "sub": "'what is this?'", "summary": "Answers a player's tap on a thing (item/character/scene/quest/goal/beat) with a short spoiler-safe in-world explanation built ONLY from player-visible facts; returns None (no call) when nothing visible matches the tapped key.", "reads": ["prompts.build_explain_messages (prompts.py:541): explain.system.md + explain.user.md", "_explain_facts (prompts.py:472): only revealed items, public bios, known scene/quest/goal/beat state; never persona/knowledge/hidden items"], "generates": ["2-3 sentence in-world explanation prose (returned to the FE, not stored as a beat)"], "writes": ["no DB state"], "mutators": ["main.py: explain endpoint (main.py:398, builds messages at :405)", "prompts.py: build_explain_messages, _explain_facts"], "note": "Spoiler-safe by construction: the facts builder is the gate; if facts is None the messages are None and no LLM call happens.", "x": 690, "y": 372, "w": 250, "h": 104}, {"id": "creatorChat", "kind": "creation", "label": "Creator Chat", "sub": "world-design interview", "summary": "A warm story-architect agent that interviews the user across a persisted conversation to design the world, asking 1-2 questions per turn and emitting a [ready] marker (or prose equivalent) when the world is complete enough to forge.", "reads": ["prompts.build_creator_messages (prompts.py:606): creator.system.md + full persisted history + new user message"], "generates": ["conversational reply (sanitized of think/tool debris), readiness signal", "history is appended and persisted to creator_sessions"], "writes": ["creator_sessions.history (SQLite), with [ready] marker re-appended to the stored copy"], "mutators": ["creator.py: message (llm.chat at creator.py:77)", "prompts.py: build_creator_messages", "creator.py: is_ready/strip_ready"], "note": "Free-form chat, no tools. temperature 0.8. Readiness parsed from RAW reply ([ready] mark or prose fallback) before clean_prose strips it.", "x": 70, "y": 618, "w": 250, "h": 104}, {"id": "finalizeExtractor", "kind": "creation", "label": "Finalize Extractor", "sub": "chat -> WorldSheet", "summary": "Converts the whole creator conversation into one structured WorldSheet via a single forced save_world tool call (title, setting, cast with sex/origin/appearance, quests, lore, opening fiction), which repo.create_game persists to start the game.", "reads": ["prompts.build_finalize_messages (prompts.py:613): finalize.system.md + finalize.user.md (full conversation flattened)"], "generates": ["one save_world tool call -> WorldSheet -> a new game id"], "writes": ["games + player_state + characters + scenes + quests + objectives + lore via repo.create_game; seeds player_items and start time via _seed_sheet_extras; deletes the creator session"], "mutators": ["creator.py: finalize (llm.chat at creator.py:122)", "prompts.py: build_finalize_messages, FINALIZE_TOOL", "creator.py: _seed_sheet_extras"], "note": "tool_choice='auto', temperature 0.4, max_tokens 1200. No save_world call => ValueError, keep chatting.", "x": 380, "y": 618, "w": 250, "h": 104}, {"id": "artDirector", "kind": "creation", "label": "Art Director", "sub": "first-sight image prompts", "summary": "ONE creation-time call that reads the whole world bible and writes the first-sight image prompts: each character's reference descriptor plus the main opening image, emitted as strict JSON so portraits and the opening render never depend on a thin per-render template.", "reads": ["prompts.build_artdirector_messages (prompts.py:443): artdirector.system.md + artdirector.user.md", "title, setting, tone, art_style, opening_scenario, start_location, time_of_day, full cast (name/gender/description/appearance)"], "generates": ["strict JSON {characters:[{name, descriptor}], main_image} -> hardened/clipped into a direction dict"], "writes": ["no DB directly; the returned direction feeds generate_images_for_game (character descriptors) and generate_scene_image (main-image override)"], "mutators": ["integrate/jobs.py: art_direction (llm.chat at jobs.py:169)", "prompts.py: build_artdirector_messages", "integrate/jobs.py: generate_creation_art orchestrates the order"], "note": "Creation-only; temperature 0.4, max_tokens 700, no tools (parses fenced JSON). Any failure returns None and templates carry the renders.", "x": 690, "y": 618, "w": 250, "h": 104}, {"id": "originEnrich", "kind": "creation", "label": "Origin Enrichment", "sub": "per-character backstory", "summary": "Background per-character call (one LLM call each) that gives any character with a thin origin a real 5-8 sentence private biography; the finalize pass under-delivers on backstories, so a focused single-character pass is what the small model does well.", "reads": ["prompts.build_origin_messages (prompts.py:420): origin.system.md + origin.user.md", "setting, tone, character name/gender/persona/description/relation/knowledge/existing origin"], "generates": ["a 5-8 sentence third-person past-tense biography (cleaned, trimmed to a sentence on length cut)"], "writes": ["characters.origin via repo.set_character_origin (only ever upgrades, never downgrades)"], "mutators": ["creator.py: enrich_origins (llm.chat at creator.py:49)", "prompts.py: build_origin_messages", "main.py: scheduled at every creation path (main.py:55, :115, :477)"], "note": "Runs only for chars whose origin is under ORIGIN_MIN_CHARS (220). temperature 0.7, max_tokens 400. Never blocks/fails creation.", "x": 1000, "y": 618, "w": 250, "h": 104}, {"id": "gameSummaryFold", "kind": "fold", "label": "Game-Summary Fold", "sub": "rolling story recap", "summary": "Background fold: compresses story OLDER than the newest kept turns into a facts-only rolling recap (<400 words) so the narrator knows the whole story at bounded token cost; one LLM call per fold, stale-guarded.", "reads": ["prompts.build_summary_messages (prompts.py:265): summary.system.md + summary.user.md", "previous recap + the transcript of beats between summarized_through and target turn"], "generates": ["one updated facts-only recap (scrubbed of think/scaffold by scrub_model_text)"], "writes": ["games.story_summary + games.summarized_through via repo.set_story_summary (only if cursor hasn't moved)"], "mutators": ["engine/folds.py: maybe_update_summary (llm.chat at folds.py:31)", "prompts.py: build_summary_messages", "main.py: scheduled after turns (main.py:293)"], "note": "Gated by SUMMARY_ENABLED; cadence effective_summary_every; KEEP_TURNS never folded. temperature 0.3. Output is re-fed to the narrator every turn, so leaks compound (full scrub).", "x": 70, "y": 864, "w": 250, "h": 104}, {"id": "charSummaryFold", "kind": "fold", "label": "Character-Summary Fold", "sub": "per-character witnessed recap", "summary": "Background fold (beside the game recap): folds what each ALIVE character WITNESSED into their private second-person recap (<150 words), built only from witnessed beats so another character's whispers can never enter; one LLM call per qualifying character.", "reads": ["prompts.build_character_summary_messages (prompts.py:409): charsummary.system.md + charsummary.user.md", "character name + prev memory_summary + witnessed_beats_between (their POV only)"], "generates": ["one updated second-person facts-only memory per folded character (scrubbed)"], "writes": ["characters.memory_summary + characters.summarized_through via repo.set_character_summary (stale-guarded)"], "mutators": ["engine/folds.py: maybe_update_character_summaries (llm.chat at folds.py:80)", "prompts.py: build_character_summary_messages", "main.py: scheduled after turns (main.py:295)"], "note": "Gated by CHAR_SUMMARY_ENABLED; folds only when a character crossed CHAR_SUMMARY_EVERY witnessed beats (in practice story-central chars only). temperature 0.3.", "x": 380, "y": 864, "w": 250, "h": 104}, {"id": "annaBackend", "kind": "backend", "label": "ANNA Backend Agent", "sub": "vendor CLI behind an OpenAI face", "summary": "When ANNA=true the text backend itself IS an agent: the vendor Anna copilot CLI runs in its own container, and anna-api flattens every orchestrator chat stack into ONE copilot ask, wraps tools in a JSON contract, parses tool_calls back out, and applies stops/usage client-side, so every Gamentic agent above runs ON the Anna agent.", "reads": ["anna-api main.py: POST /v1/chat/completions (messages + tools)", "wire.build_prompt: flatten_messages (labeled transcript) + tools_instruction (loose-args JSON contract from docs/anna/05-sampling-llm.md)", "agent.py AgentClient.ask -> POST {agent}/api/copilot/ask SSE; session minted from the Web-UI refresh token on the shared anna-data volume"], "generates": ["OpenAI chat.completion: {message:{content, tool_calls}, finish_reason, usage} via wire.parse_reply + wire.chat_response", "501 on /v1/images/* by default (game degrades text-only)"], "writes": ["no game DB; it is the text inference provider. Replaces llm.chat's endpoint via providers.resolve('text') -> ANNA_BASE_URL"], "mutators": ["infra/anna-api/app/main.py: chat_completions (:66)", "infra/anna-api/app/wire.py: build_prompt/parse_reply/apply_stops", "infra/anna-api/app/agent.py: AgentClient.ask/_ask_once", "docker-compose.yml: anna-agent + anna-api services (ANNA=true profile)"], "note": "Stateless ask per call (conversation_id=None); a reply that fails the {prose, tool_calls} contract degrades to prose-only, which the engine tolerates. orchestrator code is unchanged: resolve('text') just points at anna-api.", "x": 70, "y": 1110, "w": 250, "h": 104}];
+const edges = [{"from": "interpreter", "to": "narrator", "kind": "feed", "label": "segments -> composed action", "detail": "interpret_action returns validated segments; run_turn _compose renders them into the action string + directed attempts that build_narrator_messages feeds the narrator (turn.py:240->345->470)."}, {"from": "narrator", "to": "characterPublic", "kind": "cue", "label": "cue_character (agentic tool bridge)", "detail": "The narrator's cue_character tool returns kind='cue'; run_turn queues that character id and _character_reply runs the character agent. This is the narrator->character agentic bridge (tools/characters.py:34, turn.py:537,628,647)."}, {"from": "narrator", "to": "characterPublic", "kind": "trigger", "label": "spawn_character -> reaction enqueue", "detail": "spawn_character returns kind='spawn' with reactions=[cid]; the new character is enqueued and runs _character_reply this turn (tools/characters.py:62-76)."}, {"from": "characterPublic", "to": "characterPublic", "kind": "trigger", "label": "attack/give cascade reaction", "detail": "A character's attack/give_item on another returns reactions; enqueue() queues the target to react, so a turn cascades (bounded by TURN_MAX_ACTOR_STEPS/turn_acts). turn.py:230,647."}, {"from": "narrator", "to": "narratorResolve", "kind": "trigger", "label": "dead-air -> resolve pass", "detail": "When the narrator changed state via tools but emitted no prose (and nobody else will speak), run_turn fires the resolve agent to voice the outcome (turn.py:605-625)."}, {"from": "narrator", "to": "imagePromptWriter", "kind": "trigger", "label": "show_image / LOOK -> image prompt", "detail": "show_image returns kind='image' (image_request); a player LOOK always earns a render. The background image job calls _agentic_prompt (the writer) when IMAGE_AGENTIC_PROMPTS is on (tools/narrative.py:34, turn.py:551, jobs.py:56,255)."}, {"from": "narrator", "to": "characterPrivate", "kind": "trigger", "label": "landed give -> forced private reply", "detail": "Every give that landed maps the receiver; after the public cascade the receiver answers GUARANTEED in a private thread via _character_reply(private_with=cid, impulse='The player just gave you <item>...') (turn.py:575,653-659)."}, {"from": "narrator", "to": "characterPrivate", "kind": "cue", "label": "player whisper -> private exchange", "detail": "Player whisper segments route to the private channel: each addressed character runs _character_reply(private_with=row['id']) once per exchange (turn.py:661-717)."}, {"from": "creatorChat", "to": "finalizeExtractor", "kind": "feed", "label": "[ready] -> finalize", "detail": "Once the creator chat signals ready, the persisted conversation history is handed to finalize, which extracts the WorldSheet via save_world (creator.py:74->118)."}, {"from": "finalizeExtractor", "to": "originEnrich", "kind": "trigger", "label": "creation -> enrich thin origins", "detail": "After create_game, main.py schedules enrich_origins as a background task for any character with a thin origin (main.py:55,115,477 -> creator.py:36)."}, {"from": "finalizeExtractor", "to": "artDirector", "kind": "trigger", "label": "creation -> art direction", "detail": "Creation schedules generate_creation_art -> art_direction, the one art-director call that writes first-sight prompts before any portrait/scene render (jobs.py:153,267)."}, {"from": "artDirector", "to": "imagePromptWriter", "kind": "feed", "label": "direction overrides templates", "detail": "The art director's character descriptors and main_image prompt feed generate_images_for_game / generate_scene_image as overrides; absent direction, the per-render path (template or agentic writer) carries it (jobs.py:205,248,255)."}, {"from": "narrator", "to": "gameSummaryFold", "kind": "fold", "label": "after turn -> fold old chapters", "detail": "After a public turn main.py schedules maybe_update_summary, which folds beats older than the kept window into story_summary, re-fed to the narrator next turn (main.py:293, folds.py:8)."}, {"from": "characterPublic", "to": "charSummaryFold", "kind": "fold", "label": "after turn -> fold witnessed beats", "detail": "After a turn main.py schedules maybe_update_character_summaries; each character that crossed CHAR_SUMMARY_EVERY witnessed beats folds its memory_summary, re-fed to that character agent (main.py:295, folds.py:50)."}, {"from": "annaBackend", "to": "narrator", "kind": "feed", "label": "is the text provider for every agent", "detail": "When ANNA=true, llm.chat resolves providers.resolve('text') to ANNA_BASE_URL=anna-api, so EVERY agent above (narrator, character, interpreter, image-prompt, explain, creator, finalize, artdirector, origin, both folds) runs its inference through the Anna agent. Edge drawn to narrator as representative."}];
+const laneDefs = [{"y": 66, "label": "turn agents  ·  one public turn"}, {"y": 312, "label": "skill agents  ·  single-call, load-then-forget"}, {"y": 558, "label": "creation agents  ·  world building"}, {"y": 804, "label": "background folds  ·  rolling memory"}, {"y": 1050, "label": "backend  ·  the text provider itself"}];
+const NODE_JSON = {"narrator": {"builder": "build_narrator_messages(conn, gid, action, history_limit, lore_budget, attempts, looking, wish)", "messages": [{"role": "system", "content": "narrator.system.md rendered (persona, setting, tone, situation, world_rules, state, lore)"}, {"role": "user", "content": "narrator.user.md (transcript, action, attempts_block, wish_block, summary_block, tool_errors_block)"}], "tools": "NARRATOR_TOOLS [+reject_attempt if adjudicating] [+show_image if images]", "output": {"content": "prose", "tool_calls": [{"name": "cue_character|apply_damage|move_location|...", "arguments": {}}], "finish_reason": "stop|length", "usage": {"prompt_tokens": 0}}}, "narratorResolve": {"builder": "build_narrator_resolve_messages(conn, gid, action, changes)", "messages": [{"role": "system", "content": "narrator.resolve.md (persona, setting, tone, state)"}, {"role": "user", "content": "narrator.resolve.user.md (action, changes)"}], "tools": "none", "output": {"content": "1-2 sentence prose", "finish_reason": "stop|length"}}, "characterPublic": {"builder": "build_character_messages(conn, gid, character, history_limit, impulse)", "messages": [{"role": "system", "content": "character.system.md (name, persona, gender_line, knowledge/origin/traits/state/present/example blocks)"}, {"role": "user", "content": "character.user.md (location, scene transcript, memory_block, anchor, impulse_block)"}], "tools": "CHARACTER_TOOLS [attack, give_item, share_past, mark_moment, admit_trait]", "output": {"content": "[say][whisper]...[/say][do]...[/do]", "tool_calls": [{"name": "attack|give_item|share_past|...", "arguments": {}}]}}, "characterPrivate": {"builder": "build_character_messages(...) called with private_with at the engine, impulse for gifts", "messages": "same shape as characterPublic; user transcript includes (privately)-marked beats", "tools": "CHARACTER_TOOLS", "output": "[say]/[do]/[whisper] all routed private_with=cid"}, "interpreter": {"builder": "build_interpret_messages(conn, gid, message)", "messages": [{"role": "system", "content": "interpret.system.md"}, {"role": "user", "content": "interpret.user.md (characters, inventory, message)"}], "tools": "INTERPRET_TOOL [submit_segments]", "output": {"tool_calls": [{"name": "submit_segments", "arguments": {"segments": [{"type": "give", "item": "brass key", "target": "Mara"}, {"type": "say", "text": "...", "target": "Mara"}]}}]}}, "imagePromptWriter": {"builder": "build_image_prompt_messages(context)", "messages": [{"role": "system", "content": "imageprompt.system.md (FLUX recipe + worked example)"}, {"role": "user", "content": "imageprompt.user.md (context)"}], "tools": "none", "output": {"content": "Wide full-body shot of N people in ... plain unmarked surfaces, no signage."}}, "explain": {"builder": "build_explain_messages(conn, gid, kind, key, beat_id) -> messages | None", "messages": [{"role": "system", "content": "explain.system.md"}, {"role": "user", "content": "explain.user.md (kind, facts)"}], "tools": "none", "output": {"content": "short in-world explanation"}}, "creatorChat": {"builder": "build_creator_messages(history, message)", "messages": [{"role": "system", "content": "creator.system.md"}, "...history...", {"role": "user", "content": "<user message>"}], "tools": "none", "output": {"content": "conversational reply (may end with [ready])"}}, "finalizeExtractor": {"builder": "build_finalize_messages(history)", "messages": [{"role": "system", "content": "finalize.system.md"}, {"role": "user", "content": "finalize.user.md (convo flattened)"}], "tools": "FINALIZE_TOOL [save_world]", "output": {"tool_calls": [{"name": "save_world", "arguments": {"title": "", "opening_scenario": "", "characters": [{"name": "", "persona": "", "sex": "female", "origin": "", "appearance": "", "disposition": "neutral"}], "quests": [], "lore": []}}]}}, "artDirector": {"builder": "build_artdirector_messages(g, chars, time_of_day, start_location)", "messages": [{"role": "system", "content": "artdirector.system.md"}, {"role": "user", "content": "artdirector.user.md (title, setting, tone, art_style, opening_scenario, start_location, time_of_day, cast)"}], "tools": "none", "output": {"content": "{\"characters\": [{\"name\": \"...\", \"descriptor\": \"...\"}], \"main_image\": \"...\"}"}}, "originEnrich": {"builder": "build_origin_messages(g, c)", "messages": [{"role": "system", "content": "origin.system.md"}, {"role": "user", "content": "origin.user.md (setting, tone, name, gender, persona, description, relation, knowledge, origin)"}], "tools": "none", "output": {"content": "5-8 sentence biography prose"}}, "gameSummaryFold": {"builder": "build_summary_messages(prev_summary, transcript)", "messages": [{"role": "system", "content": "summary.system.md"}, {"role": "user", "content": "summary.user.md (summary, transcript)"}], "tools": "none", "output": {"content": "- fact\\n- fact (<400 words)"}}, "charSummaryFold": {"builder": "build_character_summary_messages(name, prev_summary, transcript)", "messages": [{"role": "system", "content": "charsummary.system.md (name)"}, {"role": "user", "content": "charsummary.user.md (name, summary, transcript)"}], "tools": "none", "output": {"content": "- You remember ... (<150 words, second person to the character)"}}, "annaBackend": {"in": {"messages": [], "tools": [], "stop": [], "model": "anna-copilot"}, "copilotAsk": {"message": "<flattened transcript + [RESPONSE FORMAT] tools contract + [ASSISTANT]>", "conversation_id": null, "stream": true}, "out": {"id": "chatcmpl-anna", "choices": [{"message": {"role": "assistant", "content": "prose", "tool_calls": [{"id": "call_0", "type": "function", "function": {"name": "", "arguments": "{}"}}]}, "finish_reason": "tool_calls|stop"}], "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}}}};
+const NODE_HELP = {"narrator": {"what": "The main per-turn agent: reads full world state + recap + lore + the player's composed action, writes second-person present-tense prose and drives all world-state change through the narrator toolset, cuing characters to speak rather than voicing them.", "how": "Never voices a character: it must cue_character and stop. tool_choice='auto', NARRATOR_TEMPERATURE, scaffold + cast-name stop sequences, optional thinking."}, "narratorResolve": {"what": "A short second narrator call fired ONLY when the first pass changed state via tools but wrote no prose (and nobody else will speak); it voices the mechanical outcome in one or two sentences so no turn is dead air.", "how": "Same voice and same stop sequences as the main pass; no tools list passed. Fires when (state_notes or not will_speak) and main prose was empty."}, "characterPublic": {"what": "Each present character runs as its own agent with its own context: only its persona, private knowledge, past, traits, felt-HP and the beats IT witnessed; it replies in [say]/[do]/[whisper] tags and can act on others via its own tools.", "how": "Voiced separately from the narrator; cued via cue_character. One retry if it returns nothing usable. CHARACTER_TEMPERATURE, CHAR_HISTORY_BEATS."}, "characterPrivate": {"what": "The same character agent run with private_with set, so its ENTIRE reply lands in a 1:1 thread no one else witnesses: the whisper channel and the forced gift reply. Built by the same builder; lifecycle and routing differ.", "how": "Same agent, different lifecycle: triggered by player whisper segments or a landed give. Consecutive whispers to the same char form ONE exchange, char replies once."}, "interpreter": {"what": "One small tool-constrained call loaded only for this skill: parses a freeform typed action into ordered structured segments (say/do/attack/give/whisper/look) so typing freely gets the same directed routing and adjudication as the composer buttons.", "how": "Gated by settings.INTERPRET_FREE_TEXT. temperature 0.2, bounded to 6 segments, single forced submit_segments tool."}, "imagePromptWriter": {"what": "Optional agentic image-prompt writer: one LLM call that turns live scene context into a single FLUX.2-klein prompt (poses, the just-happened moment), then CODE hardens it (strips quoted lettering, clips length, appends no-text guard); any failure falls back to the deterministic template prompt.", "how": "Gated by settings.IMAGE_AGENTIC_PROMPTS. Fires for look/show_image renders and current-scene art; temperature 0.4, max_tokens 140. Triggered downstream of the narrator's show_image tool or a player LOOK."}, "explain": {"what": "Answers a player's tap on a thing (item/character/scene/quest/goal/beat) with a short spoiler-safe in-world explanation built ONLY from player-visible facts; returns None (no call) when nothing visible matches the tapped key.", "how": "Spoiler-safe by construction: the facts builder is the gate; if facts is None the messages are None and no LLM call happens."}, "creatorChat": {"what": "A warm story-architect agent that interviews the user across a persisted conversation to design the world, asking 1-2 questions per turn and emitting a [ready] marker (or prose equivalent) when the world is complete enough to forge.", "how": "Free-form chat, no tools. temperature 0.8. Readiness parsed from RAW reply ([ready] mark or prose fallback) before clean_prose strips it."}, "finalizeExtractor": {"what": "Converts the whole creator conversation into one structured WorldSheet via a single forced save_world tool call (title, setting, cast with sex/origin/appearance, quests, lore, opening fiction), which repo.create_game persists to start the game.", "how": "tool_choice='auto', temperature 0.4, max_tokens 1200. No save_world call => ValueError, keep chatting."}, "artDirector": {"what": "ONE creation-time call that reads the whole world bible and writes the first-sight image prompts: each character's reference descriptor plus the main opening image, emitted as strict JSON so portraits and the opening render never depend on a thin per-render template.", "how": "Creation-only; temperature 0.4, max_tokens 700, no tools (parses fenced JSON). Any failure returns None and templates carry the renders."}, "originEnrich": {"what": "Background per-character call (one LLM call each) that gives any character with a thin origin a real 5-8 sentence private biography; the finalize pass under-delivers on backstories, so a focused single-character pass is what the small model does well.", "how": "Runs only for chars whose origin is under ORIGIN_MIN_CHARS (220). temperature 0.7, max_tokens 400. Never blocks/fails creation."}, "gameSummaryFold": {"what": "Background fold: compresses story OLDER than the newest kept turns into a facts-only rolling recap (<400 words) so the narrator knows the whole story at bounded token cost; one LLM call per fold, stale-guarded.", "how": "Gated by SUMMARY_ENABLED; cadence effective_summary_every; KEEP_TURNS never folded. temperature 0.3. Output is re-fed to the narrator every turn, so leaks compound (full scrub)."}, "charSummaryFold": {"what": "Background fold (beside the game recap): folds what each ALIVE character WITNESSED into their private second-person recap (<150 words), built only from witnessed beats so another character's whispers can never enter; one LLM call per qualifying character.", "how": "Gated by CHAR_SUMMARY_ENABLED; folds only when a character crossed CHAR_SUMMARY_EVERY witnessed beats (in practice story-central chars only). temperature 0.3."}, "annaBackend": {"what": "When ANNA=true the text backend itself IS an agent: the vendor Anna copilot CLI runs in its own container, and anna-api flattens every orchestrator chat stack into ONE copilot ask, wraps tools in a JSON contract, parses tool_calls back out, and applies stops/usage client-side, so every Gamentic agent above runs ON the Anna agent.", "how": "Stateless ask per call (conversation_id=None); a reply that fails the {prose, tool_calls} contract degrades to prose-only, which the engine tolerates. orchestrator code is unchanged: resolve('text') just points at anna-api."}};
+
+
+// ---- engine (shared across every Gamentic atlas; do not edit per chart) ----
+const svg = document.getElementById('chart');
+const viewport = document.getElementById('viewport');
+const edgeG = document.getElementById('edges');
+const labelG = document.getElementById('labels');
+const nodeG = document.getElementById('nodes');
+const laneG = document.getElementById('lanes');
+const defs = document.getElementById('defs');
+const tip = document.getElementById('tip');
+
+let transform = (typeof HOME !== 'undefined') ? {...HOME} : {x: 45, y: 100, k: .6};
+let selected = null;
+let selectedEdge = null;
+let draggingNode = null;
+let panning = false;
+let panStart = null;
+
+const nodeById = new Map(nodes.map(n => [n.id, n]));
+const FALLBACK_COLORS = Object.values(C);
+
+function colorFor(kind) { return C[kind] || FALLBACK_COLORS[0]; }
+function edgeColor(kind) { return (typeof EDGE_KIND !== 'undefined' && EDGE_KIND[kind]) || C[kind] || 'var(--muted)'; }
+function nodeFill(kind) { return (typeof NODE_FILL !== 'undefined' && NODE_FILL[kind]) || '#171410'; }
+
+const _markerId = {};
+function buildMarkers() {
+  const colors = [...new Set(edges.map(e => edgeColor(e.kind)))];
+  let html = '';
+  colors.forEach((c, i) => {
+    const id = 'arrow' + i;
+    _markerId[c] = id;
+    html += '<marker id="' + id + '" markerWidth="13" markerHeight="13" refX="11" refY="6.5" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L13,6.5 L0,13 z" fill="' + c + '"></path></marker>';
+  });
+  defs.innerHTML = html;
+}
+function markerFor(kind) { return 'url(#' + (_markerId[edgeColor(kind)] || 'arrow0') + ')'; }
+
+function center(n) { return {x: n.x + n.w / 2, y: n.y + n.h / 2}; }
+function boundaryPoint(a, b) {
+  const ac = center(a), bc = center(b);
+  const dx = bc.x - ac.x, dy = bc.y - ac.y;
+  const sx = Math.abs(dx) / (a.w / 2);
+  const sy = Math.abs(dy) / (a.h / 2);
+  const s = Math.max(sx, sy) || 1;
+  return {x: ac.x + dx / s, y: ac.y + dy / s};
+}
+function edgeEndpoints(e) {
+  const a = nodeById.get(e.from), b = nodeById.get(e.to);
+  return {from: boundaryPoint(a, b), to: boundaryPoint(b, a)};
+}
+function pathFor(e) {
+  const {from: p1, to: p2} = edgeEndpoints(e);
+  const dx = Math.abs(p2.x - p1.x);
+  const bend = Math.max(40, Math.min(170, dx * .42));
+  const c1 = {x: p1.x + Math.sign(p2.x - p1.x || 1) * bend, y: p1.y};
+  const c2 = {x: p2.x - Math.sign(p2.x - p1.x || 1) * bend, y: p2.y};
+  return 'M ' + p1.x + ' ' + p1.y + ' C ' + c1.x + ' ' + c1.y + ', ' + c2.x + ' ' + c2.y + ', ' + p2.x + ' ' + p2.y;
+}
+function edgeVector(e) {
+  const {from, to} = edgeEndpoints(e);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  return {from, to, ux: dx / len, uy: dy / len, nx: -dy / len, ny: dx / len};
+}
+function labelPos(e) {
+  const a = center(nodeById.get(e.from));
+  const b = center(nodeById.get(e.to));
+  const ep = edgeVector(e);
+  const offset = 42;
+  return {x: (a.x + b.x) / 2 + ep.nx * offset, y: (a.y + b.y) / 2 + ep.ny * offset - 7};
+}
+
+function render() {
+  viewport.setAttribute('transform', 'translate(' + transform.x + ' ' + transform.y + ') scale(' + transform.k + ')');
+  laneG.innerHTML = '';
+  edgeG.innerHTML = '';
+  labelG.innerHTML = '';
+  nodeG.innerHTML = '';
+  const worldMaxX = Math.max(...nodes.map(n => n.x + n.w)) + 100;
+  const worldMinX = Math.min(-10, Math.min(...nodes.map(n => n.x)) - 70);
+
+  for (const lane of laneDefs) {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('class', 'laneLine');
+    line.setAttribute('x1', worldMinX);
+    line.setAttribute('x2', worldMaxX);
+    line.setAttribute('y1', lane.y);
+    line.setAttribute('y2', lane.y);
+    laneG.appendChild(line);
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('class', 'laneLabel');
+    text.setAttribute('x', 18);
+    text.setAttribute('y', lane.y - 12);
+    text.textContent = lane.label;
+    laneG.appendChild(text);
+  }
+
+  const related = relatedSet();
+
+  edges.forEach((e, i) => {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const active = selectedEdge === i || !selected || related.edges.has(i);
+    path.setAttribute('class', 'edge' + (active ? '' : ' dim') + (selectedEdge === i ? ' selected' : ''));
+    path.setAttribute('d', pathFor(e));
+    path.setAttribute('stroke', edgeColor(e.kind));
+    path.setAttribute('marker-end', markerFor(e.kind));
+    path.addEventListener('click', ev => { ev.stopPropagation(); selectEdge(i); });
+    edgeG.appendChild(path);
+
+    const v = edgeVector(e);
+    const outDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    outDot.setAttribute('class', 'edgePort' + (active ? '' : ' dim'));
+    outDot.setAttribute('cx', v.from.x);
+    outDot.setAttribute('cy', v.from.y);
+    outDot.setAttribute('r', selectedEdge === i ? 5 : 3.8);
+    outDot.setAttribute('stroke', edgeColor(e.kind));
+    edgeG.appendChild(outDot);
+
+    const inRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    inRing.setAttribute('class', 'edgePort' + (active ? '' : ' dim'));
+    inRing.setAttribute('cx', v.to.x);
+    inRing.setAttribute('cy', v.to.y);
+    inRing.setAttribute('r', selectedEdge === i ? 7 : 5.3);
+    inRing.setAttribute('fill', 'transparent');
+    inRing.setAttribute('stroke', edgeColor(e.kind));
+    edgeG.appendChild(inRing);
+
+    const lp = labelPos(e);
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    const showLabel = selectedEdge === i || (selected && related.edges.has(i)) || e.kind === FLOW_KIND;
+    label.setAttribute('class', 'edgeLabel' + (showLabel ? (active ? '' : ' dim') : ' hidden'));
+    label.setAttribute('x', lp.x);
+    label.setAttribute('y', lp.y);
+    label.setAttribute('text-anchor', 'middle');
+    label.textContent = e.from + ' -> ' + e.to + ': ' + e.label;
+    labelG.appendChild(label);
+
+    if (showLabel) {
+      const outText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      outText.setAttribute('class', 'edgePortText' + (active ? '' : ' dim'));
+      outText.setAttribute('x', v.from.x + v.ux * 26 + v.nx * 15);
+      outText.setAttribute('y', v.from.y + v.uy * 26 + v.ny * 15);
+      outText.setAttribute('text-anchor', 'middle');
+      outText.textContent = 'OUT';
+      labelG.appendChild(outText);
+      const inText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      inText.setAttribute('class', 'edgePortText' + (active ? '' : ' dim'));
+      inText.setAttribute('x', v.to.x - v.ux * 26 + v.nx * 15);
+      inText.setAttribute('y', v.to.y - v.uy * 26 + v.ny * 15);
+      inText.setAttribute('text-anchor', 'middle');
+      inText.textContent = 'IN';
+      labelG.appendChild(inText);
+    }
+  });
+
+  nodes.forEach(n => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const isSelected = selected === n.id;
+    const isConnected = !selected || related.nodes.has(n.id);
+    g.setAttribute('class', 'node ' + (isSelected ? 'selected' : '') + ' ' + (isConnected ? 'connected' : 'dim'));
+    g.setAttribute('transform', 'translate(' + n.x + ' ' + n.y + ')');
+    g.dataset.id = n.id;
+
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('class', 'main');
+    rect.setAttribute('width', n.w);
+    rect.setAttribute('height', n.h);
+    rect.setAttribute('fill', nodeFill(n.kind));
+    rect.setAttribute('stroke', colorFor(n.kind));
+    g.appendChild(rect);
+
+    const kind = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    kind.setAttribute('class', 'kind');
+    kind.setAttribute('x', 14);
+    kind.setAttribute('y', 19);
+    kind.setAttribute('fill', colorFor(n.kind));
+    kind.textContent = n.kind;
+    g.appendChild(kind);
+
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.setAttribute('class', 'label');
+    label.setAttribute('x', 14);
+    label.setAttribute('y', 42);
+    label.textContent = n.label;
+    g.appendChild(label);
+
+    const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    sub.setAttribute('class', 'sub');
+    sub.setAttribute('x', 14);
+    sub.setAttribute('y', 62);
+    sub.textContent = n.sub;
+    g.appendChild(sub);
+
+    [
+      {kind: 'what', label: '?', x: n.w - 74, w: 18},
+      {kind: 'how', label: 'H', x: n.w - 51, w: 18},
+      {kind: 'io', label: 'IO', x: n.w - 28, w: 22},
+    ].forEach(btn => {
+      const bg = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      bg.setAttribute('class', 'helpBtn');
+      bg.setAttribute('transform', 'translate(' + btn.x + ' 10)');
+      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r.setAttribute('width', btn.w);
+      r.setAttribute('height', 18);
+      bg.appendChild(r);
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t.setAttribute('x', btn.w / 2);
+      t.setAttribute('y', 12.5);
+      t.setAttribute('text-anchor', 'middle');
+      t.setAttribute('fill', colorFor(n.kind));
+      t.textContent = btn.label;
+      bg.appendChild(t);
+      bg.addEventListener('pointerdown', ev => ev.stopPropagation());
+      bg.addEventListener('click', ev => { ev.stopPropagation(); showHelp(ev, n, btn.kind); });
+      g.appendChild(bg);
+    });
+
+    g.addEventListener('pointerdown', ev => {
+      ev.stopPropagation();
+      draggingNode = {id: n.id, start: screenToWorld(ev), ox: n.x, oy: n.y, moved: false};
+      g.setPointerCapture(ev.pointerId);
+    });
+    g.addEventListener('pointermove', ev => {
+      if (!draggingNode || draggingNode.id !== n.id) return;
+      const p = screenToWorld(ev);
+      const dx = p.x - draggingNode.start.x;
+      const dy = p.y - draggingNode.start.y;
+      if (Math.abs(dx) + Math.abs(dy) > 2) draggingNode.moved = true;
+      n.x = draggingNode.ox + dx;
+      n.y = draggingNode.oy + dy;
+      render();
+    });
+    g.addEventListener('pointerup', ev => {
+      if (!draggingNode || draggingNode.id !== n.id) return;
+      const moved = draggingNode.moved;
+      draggingNode = null;
+      if (!moved) selectNode(n.id);
+    });
+    g.addEventListener('dblclick', ev => { ev.stopPropagation(); selectNode(n.id); focusNode(n); });
+    nodeG.appendChild(g);
+  });
+}
+
+function relatedSet() {
+  const set = {nodes: new Set(), edges: new Set()};
+  if (!selected) {
+    nodes.forEach(n => set.nodes.add(n.id));
+    edges.forEach((_, i) => set.edges.add(i));
+    return set;
+  }
+  set.nodes.add(selected);
+  edges.forEach((e, i) => {
+    if (e.from === selected || e.to === selected) {
+      set.edges.add(i);
+      set.nodes.add(e.from);
+      set.nodes.add(e.to);
+    }
+  });
+  return set;
+}
+
+function selectNode(id) { hideHelp(); selected = id; selectedEdge = null; detailNode(nodeById.get(id)); render(); }
+function selectEdge(i) { hideHelp(); selectedEdge = i; selected = null; detailEdge(edges[i]); render(); }
+
+function list(items) {
+  if (!items || !items.length) return '<p>None.</p>';
+  return '<ul>' + items.map(x => '<li>' + escapeHtml(x) + '</li>').join('') + '</ul>';
+}
+function chips(items) {
+  if (!items || !items.length) return '<p>None.</p>';
+  return '<div class="chips">' + items.map(x => '<span class="chip">' + escapeHtml(x) + '</span>').join('') + '</div>';
+}
+function nodeFlowSummary(id) {
+  const incoming = edges.filter(e => e.to === id).map(e => e.from + ': ' + e.label);
+  const outgoing = edges.filter(e => e.from === id).map(e => e.to + ': ' + e.label);
+  return {incoming: incoming.length ? incoming : ['none'], outgoing: outgoing.length ? outgoing : ['none']};
+}
+
+function showHelp(ev, n, kind) {
+  const h = (typeof NODE_HELP !== 'undefined' && NODE_HELP[n.id]) || {};
+  let title = 'What is?';
+  let body = h.what || n.summary;
+  if (kind === 'how') { title = 'How works?'; body = h.how || n.lifecycle || n.summary; }
+  else if (kind === 'io') {
+    title = 'Info in / out';
+    const flow = nodeFlowSummary(n.id);
+    body = 'IN: ' + flow.incoming.slice(0, 3).join('; ') + '. OUT: ' + flow.outgoing.slice(0, 3).join('; ') + '.';
+  }
+  tip.innerHTML = '<strong>' + escapeHtml(n.label) + ' - ' + escapeHtml(title) + '</strong><p>' + escapeHtml(body) + '</p>';
+  const wrap = document.getElementById('stageWrap').getBoundingClientRect();
+  const x = Math.min(ev.clientX - wrap.left + 12, wrap.width - 332);
+  const y = Math.min(ev.clientY - wrap.top + 12, wrap.height - 120);
+  tip.style.left = Math.max(10, x) + 'px';
+  tip.style.top = Math.max(10, y) + 'px';
+  tip.style.display = 'block';
+}
+function hideHelp() { tip.style.display = 'none'; }
+
+function highlightJson(value) {
+  const json = JSON.stringify(value, null, 2);
+  return json.replace(/("(?:\\.|[^"\\])*")(\s*:)?|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|\btrue\b|\bfalse\b|\bnull\b|[{}\[\]]/g, (match, str, colon) => {
+    if (str) {
+      const cls = colon ? 'jkey' : 'jstr';
+      return '<span class="' + cls + '">' + escapeHtml(str) + '</span>' + escapeHtml(colon || '');
+    }
+    if (match === '{' || match === '}') return '<span class="jobj">' + match + '</span>';
+    if (match === '[' || match === ']') return '<span class="jarr">' + match + '</span>';
+    if (match === 'true' || match === 'false') return '<span class="jbool">' + match + '</span>';
+    if (match === 'null') return '<span class="jnull">null</span>';
+    return '<span class="jnum">' + match + '</span>';
+  });
+}
+function jsonBlock(value) { return '<pre class="jsonbox">' + highlightJson(value) + '</pre>'; }
+
+function nodeJson(n) {
+  if (typeof NODE_JSON !== 'undefined' && NODE_JSON[n.id]) return NODE_JSON[n.id];
+  return n.json || {[n.id]: n.summary};
+}
+function payloadForEdge(e) { return {flow: 'object passed ' + e.from + ' -> ' + e.to, contract: e.label, kind: e.kind}; }
+function edgeJson(e) {
+  return {edge: {from: e.from, to: e.to, kind: e.kind, label: e.label, payload: payloadForEdge(e), source_shape: nodeJson(nodeById.get(e.from)), target_shape: nodeJson(nodeById.get(e.to))}};
+}
+
+function detailNode(n) {
+  document.getElementById('detailKind').textContent = n.kind;
+  document.getElementById('detailTitle').textContent = n.label;
+  document.getElementById('detailSummary').textContent = n.summary;
+  let html = '<div class="section"><h3>JSON shape</h3>' + jsonBlock(nodeJson(n)) + '</div>';
+  for (const s of SECTIONS) {
+    const v = n[s.field];
+    const body = s.type === 'text' ? ('<p>' + escapeHtml(v || '-') + '</p>') : list(v);
+    html += '<div class="section"><h3>' + s.label + '</h3>' + body + '</div>';
+  }
+  html += '<div class="section"><h3>Key point</h3><p>' + escapeHtml(n.note || '-') + '</p></div>';
+  html += '<div class="section"><h3>Connected edges</h3>' + chips(edges.filter(e => e.from === n.id || e.to === n.id).map(e => e.from + ' -> ' + e.to + ': ' + e.label)) + '</div>';
+  document.getElementById('detail').innerHTML = html;
+}
+function detailEdge(e) {
+  document.getElementById('detailKind').textContent = e.kind + ' edge';
+  document.getElementById('detailTitle').textContent = nodeById.get(e.from).label + ' -> ' + nodeById.get(e.to).label;
+  document.getElementById('detailSummary').textContent = e.detail;
+  document.getElementById('detail').innerHTML =
+    '<div class="section"><h3>JSON edge</h3>' + jsonBlock(edgeJson(e)) + '</div>' +
+    '<div class="section"><h3>Direction</h3><p><span class="code">' + escapeHtml(e.from) + '</span> sends <span class="code">' + escapeHtml(e.label) + '</span> into <span class="code">' + escapeHtml(e.to) + '</span>. Dot = OUT. Ring + arrowhead = IN.</p></div>' +
+    '<div class="section"><h3>Meaning</h3><p>' + escapeHtml(e.detail) + '</p></div>' +
+    '<div class="section"><h3>Source</h3><p><span class="code">' + escapeHtml(e.from) + '</span> - ' + escapeHtml(nodeById.get(e.from).summary) + '</p></div>' +
+    '<div class="section"><h3>Target</h3><p><span class="code">' + escapeHtml(e.to) + '</span> - ' + escapeHtml(nodeById.get(e.to).summary) + '</p></div>';
+}
+
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch])); }
+function screenToWorld(ev) {
+  const r = svg.getBoundingClientRect();
+  return {x: (ev.clientX - r.left - transform.x) / transform.k, y: (ev.clientY - r.top - transform.y) / transform.k};
+}
+function isInteractiveTarget(target) { return target && target.closest && (target.closest('.node') || target.classList.contains('edge')); }
+
+svg.addEventListener('pointerdown', ev => {
+  if (isInteractiveTarget(ev.target)) return;
+  hideHelp();
+  panning = true;
+  panStart = {x: ev.clientX, y: ev.clientY, tx: transform.x, ty: transform.y};
+  svg.classList.add('dragging');
+});
+svg.addEventListener('pointermove', ev => {
+  if (!panning) return;
+  transform.x = panStart.tx + ev.clientX - panStart.x;
+  transform.y = panStart.ty + ev.clientY - panStart.y;
+  render();
+});
+svg.addEventListener('pointerup', () => { panning = false; svg.classList.remove('dragging'); });
+svg.addEventListener('pointerleave', () => { panning = false; svg.classList.remove('dragging'); });
+svg.addEventListener('click', ev => {
+  if (isInteractiveTarget(ev.target)) return;
+  selected = null; selectedEdge = null; hideHelp(); detailIntro(); render();
+});
+svg.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  const r = svg.getBoundingClientRect();
+  const mx = ev.clientX - r.left;
+  const my = ev.clientY - r.top;
+  const before = {x: (mx - transform.x) / transform.k, y: (my - transform.y) / transform.k};
+  const scale = Math.exp(-ev.deltaY * 0.0012);
+  transform.k = Math.max(.22, Math.min(1.8, transform.k * scale));
+  transform.x = mx - before.x * transform.k;
+  transform.y = my - before.y * transform.k;
+  render();
+}, {passive: false});
+
+function fit() {
+  const pad = 70;
+  const topPad = 125;
+  const minX = Math.min(...nodes.map(n => n.x));
+  const minY = Math.min(...nodes.map(n => n.y));
+  const maxX = Math.max(...nodes.map(n => n.x + n.w));
+  const maxY = Math.max(...nodes.map(n => n.y + n.h));
+  const r = svg.getBoundingClientRect();
+  const k = Math.min((r.width - pad * 2) / (maxX - minX), (r.height - topPad - pad) / (maxY - minY));
+  transform.k = Math.max(.18, Math.min(1.25, k));
+  transform.x = pad - minX * transform.k;
+  transform.y = topPad - minY * transform.k;
+  render();
+}
+function homeView() { transform = (typeof HOME !== 'undefined') ? {...HOME} : {x: 45, y: 100, k: .6}; render(); }
+function focusNode(n) {
+  const r = svg.getBoundingClientRect();
+  transform.k = Math.max(.62, Math.min(1.15, transform.k));
+  transform.x = r.width / 2 - (n.x + n.w / 2) * transform.k;
+  transform.y = r.height / 2 - (n.y + n.h / 2) * transform.k;
+  render();
+}
+
+const originalLayout = nodes.map(n => ({id: n.id, x: n.x, y: n.y}));
+document.getElementById('fit').onclick = fit;
+document.getElementById('sideToggle').onclick = () => {
+  const app = document.getElementById('app');
+  const wide = app.classList.toggle('side-wide');
+  document.getElementById('sideToggle').textContent = wide ? 'Collapse' : 'Expand';
+  requestAnimationFrame(render);
+};
+document.getElementById('reset').onclick = () => {
+  for (const p of originalLayout) { const n = nodeById.get(p.id); n.x = p.x; n.y = p.y; }
+  selected = null; selectedEdge = null; hideHelp(); detailIntro(); homeView();
+};
+
+function applyMeta() {
+  document.title = META.title + ' - Gamentic';
+  document.getElementById('metaTitle').textContent = META.title;
+  document.getElementById('metaSub').innerHTML = META.subtitle + ' <a href="index.html">all docs</a>';
+  document.getElementById('legend').innerHTML = (META.legend || []).map(l =>
+    '<span class="pill"><i class="dot" style="background:' + l.color + '"></i>' + escapeHtml(l.label) + '</span>').join('');
+}
+function detailIntro() {
+  document.getElementById('detailKind').textContent = INTRO.kind;
+  document.getElementById('detailTitle').textContent = INTRO.title;
+  document.getElementById('detailSummary').textContent = INTRO.summary;
+  document.getElementById('detail').innerHTML = (INTRO.sections || []).map(s =>
+    '<div class="section"><h3>' + s.h3 + '</h3>' + s.html + '</div>').join('');
+}
+
+applyMeta();
+buildMarkers();
+detailIntro();
+homeView();
+window.addEventListener('resize', render);
+</script>
+</body>
+</html>

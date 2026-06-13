@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gamentic — Docs & Blueprints</title>
+<meta name="description" content="Interactive blueprints and an agent-ready guide for Gamentic, a self-hosted AI dungeon RPG: agents, engine, state, infra and the repo tree.">
+<style>
+  :root {
+    --bg:#070807; --surface:#101210; --surface-2:#151814; --line:#30362d; --line-soft:#222720;
+    --text:#eef2e8; --muted:#aab4a3; --faint:#707b69;
+    --green:#65d08b; --cyan:#62c8d8; --amber:#e7b75f; --pink:#e47ea5; --violet:#a895f2; --blue:#7ba7ff;
+    --shadow:rgba(0,0,0,.55);
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; }
+  body {
+    background:
+      radial-gradient(900px 500px at 80% -10%, rgba(101,208,139,.06), transparent 60%),
+      radial-gradient(800px 500px at 0% 0%, rgba(123,167,255,.06), transparent 55%),
+      linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px),
+      var(--bg);
+    background-size:auto, auto, 36px 36px, 36px 36px, auto;
+    color:var(--text);
+    font:15px/1.55 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    min-height:100vh;
+  }
+  .wrap { max-width:1080px; margin:0 auto; padding:44px 22px 80px; }
+  header { margin-bottom:30px; }
+  .eyebrow { color:var(--faint); text-transform:uppercase; letter-spacing:2px; font-size:11px; font-weight:800; }
+  h1 { margin:8px 0 6px; font-size:30px; letter-spacing:.2px; }
+  .lede { color:var(--muted); max-width:760px; margin:0 0 18px; }
+  .toplinks { display:flex; flex-wrap:wrap; gap:10px; }
+  .btn {
+    display:inline-flex; align-items:center; gap:8px; padding:9px 13px; border:1px solid var(--line);
+    border-radius:9px; background:rgba(16,18,16,.8); color:var(--text); text-decoration:none; font-weight:650; font-size:13px;
+  }
+  .btn:hover { border-color:#46513f; background:var(--surface-2); }
+  .btn .dot { width:8px; height:8px; border-radius:99px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:1.3px; color:var(--faint); margin:38px 0 14px; font-weight:800; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(290px,1fr)); gap:14px; }
+  a.card {
+    display:block; padding:15px 16px; border:1px solid var(--line); border-radius:12px;
+    background:rgba(16,18,16,.72); color:var(--text); text-decoration:none; box-shadow:0 12px 30px var(--shadow);
+    transition:border-color .12s, transform .12s, background .12s;
+  }
+  a.card:hover { border-color:#4a554100; transform:translateY(-2px); background:var(--surface-2); }
+  a.card:hover { border-color:#54614c; }
+  .card .ct { display:flex; align-items:center; gap:9px; margin-bottom:6px; }
+  .card .dot { width:9px; height:9px; border-radius:99px; flex:0 0 auto; }
+  .card h3 { margin:0; font-size:16px; }
+  .card p { margin:0; color:var(--muted); font-size:13px; }
+  .card .tag { margin-top:9px; font:11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--faint); }
+  .note {
+    margin-top:36px; padding:16px 18px; border:1px solid var(--line-soft); border-radius:12px;
+    background:rgba(21,24,20,.6); color:var(--muted); font-size:13.5px;
+  }
+  .note strong { color:var(--text); }
+  .note code, .lede code { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; color:#d9e5d1; }
+  .note a, .lede a { color:var(--cyan); }
+  footer { margin-top:40px; color:var(--faint); font-size:12px; }
+  footer a { color:var(--faint); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Gamentic</div>
+    <h1>Docs &amp; Blueprints</h1>
+    <p class="lede">A navigable blueprint of <strong>Gamentic</strong>, a self-hosted AI dungeon RPG. Each <strong>interactive atlas</strong> is a pannable, clickable map of one slice of the system; each is paired with an <strong>agent-ready</strong> markdown twin (the same data, written for a coding agent to load on demand). Click a node for what it reads, generates, writes and connects to.</p>
+    <div class="toplinks">
+      <a class="btn" href="https://github.com/hec-ovi/gamentic"><span class="dot" style="background:var(--green)"></span>GitHub repo</a>
+      <a class="btn" href="guide/index.md"><span class="dot" style="background:var(--cyan)"></span>Agent guide (resolver)</a>
+      <a class="btn" href="state-atlas.html"><span class="dot" style="background:var(--amber)"></span>Start: State Atlas</a>
+    </div>
+  </header>
+
+  <h2>Interactive atlases</h2>
+  <div class="grid">
+    <a class="card" href="agents-atlas.html">
+      <div class="ct"><span class="dot" style="background:var(--amber)"></span><h3>Agents Atlas</h3></div>
+      <p>Every LLM agent: narrator, characters, skills, creation, folds, the Anna backend, and the agentic-tool bridges that spawn one agent from another.</p>
+      <div class="tag">agents-atlas.html</div>
+    </a>
+    <a class="card" href="engine-atlas.html">
+      <div class="ct"><span class="dot" style="background:var(--cyan)"></span><h3>Engine Atlas</h3></div>
+      <p>How the turn engine wires the browser to the backend: REST + SSE, the <code>run_turn</code> pipeline, the tool dispatcher, provider resolution, and the inference services.</p>
+      <div class="tag">engine-atlas.html</div>
+    </a>
+    <a class="card" href="state-atlas.html">
+      <div class="ct"><span class="dot" style="background:var(--green)"></span><h3>State Atlas</h3></div>
+      <p>The linear ingestion flow and the persistent SQLite state it mutates. The model proposes; tools and the engine write; the UI only projects.</p>
+      <div class="tag">state-atlas.html</div>
+    </a>
+    <a class="card" href="context-atlas.html">
+      <div class="ct"><span class="dot" style="background:var(--violet)"></span><h3>Context Atlas</h3></div>
+      <p>Every distinct LLM context and enhancer path. Character speech is owned by character-agent calls; narrator content is narration; image/voice are enhancers.</p>
+      <div class="tag">context-atlas.html</div>
+    </a>
+    <a class="card" href="infra-atlas.html">
+      <div class="ct"><span class="dot" style="background:var(--pink)"></span><h3>Infra Atlas</h3></div>
+      <p>The Docker stack: nine services on one bridge network, with the <code>ANNA</code> boolean that swaps the whole backend world via the inverted-profile trick.</p>
+      <div class="tag">infra-atlas.html</div>
+    </a>
+    <a class="card" href="folders-atlas.html">
+      <div class="ct"><span class="dot" style="background:var(--blue)"></span><h3>Folders Atlas</h3></div>
+      <p>Where each part of the code lives: a containment tree of the repo, one job per directory and per file, drawn from the owner-maintained INDEX maps.</p>
+      <div class="tag">folders-atlas.html</div>
+    </a>
+    <a class="card" href="state-json-reference.html">
+      <div class="ct"><span class="dot" style="background:var(--green)"></span><h3>State JSON Reference</h3></div>
+      <p>The full example object for the DB state, the API projection, the turn runtime and the frontend copy, with searchable, collapsible field shapes.</p>
+      <div class="tag">state-json-reference.html</div>
+    </a>
+  </div>
+
+  <h2>Agent-ready guide (markdown twins)</h2>
+  <div class="grid">
+    <a class="card" href="guide/index.md">
+      <div class="ct"><span class="dot" style="background:var(--cyan)"></span><h3>RESOLVER</h3></div>
+      <p>Read this first. Routes a task to the one section it needs; each section is fat and self-contained, mirroring its atlas node-for-node.</p>
+      <div class="tag">guide/index.md</div>
+    </a>
+    <a class="card" href="guide/agents/index.md">
+      <div class="ct"><span class="dot" style="background:var(--amber)"></span><h3>agents/</h3></div>
+      <p>Every agent's reads, outputs, writes, owning code and IN/OUT edges. Load for "who writes/decides what".</p>
+      <div class="tag">guide/agents/index.md</div>
+    </a>
+    <a class="card" href="guide/engine/index.md">
+      <div class="ct"><span class="dot" style="background:var(--cyan)"></span><h3>engine/</h3></div>
+      <p>The request path, SSE push, and per-call provider resolution. Load for wiring and timeout questions.</p>
+      <div class="tag">guide/engine/index.md</div>
+    </a>
+    <a class="card" href="guide/state/index.md">
+      <div class="ct"><span class="dot" style="background:var(--green)"></span><h3>state/</h3></div>
+      <p>What is stored, its lifecycle, and what mutates each table. Load for "what column holds X".</p>
+      <div class="tag">guide/state/index.md</div>
+    </a>
+    <a class="card" href="guide/state-json/index.md">
+      <div class="ct"><span class="dot" style="background:var(--green)"></span><h3>state-json/</h3></div>
+      <p>The exact JSON field shapes for state, the API, the turn runtime and the UI copy.</p>
+      <div class="tag">guide/state-json/index.md</div>
+    </a>
+    <a class="card" href="guide/context/index.md">
+      <div class="ct"><span class="dot" style="background:var(--violet)"></span><h3>context/</h3></div>
+      <p>Which LLM context reads what, and the speech-ownership boundary. Load for prompt/context questions.</p>
+      <div class="tag">guide/context/index.md</div>
+    </a>
+    <a class="card" href="guide/infra/index.md">
+      <div class="ct"><span class="dot" style="background:var(--pink)"></span><h3>infra/</h3></div>
+      <p>Docker services, ports, volumes, profiles and ANNA mode. Load for deploy and port questions.</p>
+      <div class="tag">guide/infra/index.md</div>
+    </a>
+    <a class="card" href="guide/folders/index.md">
+      <div class="ct"><span class="dot" style="background:var(--blue)"></span><h3>folders/</h3></div>
+      <p>Where a piece of code lives, one job per file. Load when you need to find the right file to change.</p>
+      <div class="tag">guide/folders/index.md</div>
+    </a>
+  </div>
+
+  <div class="note">
+    <strong>How to read this.</strong> The atlases are self-contained HTML (pan with drag, zoom with the wheel, click a node or edge, <code>?</code>/<code>H</code>/<code>IO</code> for quick help, <em>Fit</em> to frame, <em>Expand</em> to widen the panel). The guide is the same data as plain markdown so a coding agent can load exactly one file and have everything — a hand-written resolver dispatching to fat, self-contained, git-tracked notes, the same idea as <a href="https://github.com/garrytan/gbrain">gbrain</a> ("agent brain in markdown"), in this repo's house style. When a doc and the code disagree, the code (and the in-repo <code>INDEX.md</code> maps) win.
+  </div>
+
+  <footer>Built from the live codebase. Source: <a href="https://github.com/hec-ovi/gamentic">github.com/hec-ovi/gamentic</a>.</footer>
+</div>
+</body>
+</html>
