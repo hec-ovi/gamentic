@@ -290,6 +290,15 @@ def _image_pacing_ok(conn, gid: str, turn: int) -> bool:
 def run_turn(conn, gid: str, action_text: str = "", segments=None,
              continue_story: bool = False, wish: str | None = None,
              echo_text: str | None = None) -> dict:
+    # Claim the story's write lock BEFORE reading the turn counter: background media
+    # jobs land their beats under the same lock (jobs._land_beat), so the index this
+    # turn claims can never be claimed twice. Without it, an image persisting while
+    # this turn ran read the committed MAX and took the SAME turn_index; sorted by
+    # (turn_index, seq) on reload it re-appeared in the middle of this turn's
+    # exchange, and beats?since=<last turn> (strict >) never delivered it live.
+    # Guarded: a caller already inside a transaction holds the lock via its writes.
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
     turn = repo.next_turn_index(conn, gid)
     seq = 0
     new_beats: list[dict] = []

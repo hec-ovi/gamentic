@@ -1150,6 +1150,11 @@ figure.prose-art.art-loading { cursor: default; }
 }
 
 /* ---- simulated streaming: staged beat reveal ---- */
+/* an UNVEILED wrapper lingers in the DOM until the next full render dissolves
+   it: display:contents keeps it out of layout, so a just-revealed whisper
+   bubble still right-aligns in the thread's flex column (a plain block wrapper
+   stretched it full-width) and story cards keep their flow */
+.veil-wrap { display: contents; }
 .veil-wrap.veiled { display: none; }
 .typing .speak-btn { visibility: hidden; } /* controls appear once the line lands */
 .narration.typing > p:last-of-type::after,

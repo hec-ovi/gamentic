@@ -623,6 +623,175 @@ test("optimistic echo in the whisper thread; a failed turn takes the echo back",
   await waitFor(() => expect(document.querySelector("#pmInput").textContent).toBe("psst"));
 }, 10000);
 
+test("a turn resolving mid-reveal never leaves the new echo veiled (the vanished whisper)", async () => {
+  // The composer never locks against READING time: a follow-up whisper can be
+  // sent while the previous reply is still revealing. Its response then REPLACES
+  // g.revealQueue while the old drain loop sits inside revealBeat; the loop's
+  // blind shift() used to eat the new queue's head - the player's own echo -
+  // without unveiling it, so the line stayed display:none and the thread read
+  // as two replies back to back (live: "sometimes the whisper window is messed
+  // up, messages in the wrong position").
+  const u = user();
+  let calls = 0;
+  server.use(
+    http.post(`${API}/games/:id/action`, async ({ request }) => {
+      const body = await request.json();
+      calls += 1;
+      if (calls === 1) {
+        return HttpResponse.json({
+          beats: [
+            makeBeat({ id: "w1e", kind: "action", speaker: "player", text: 'you whisper to Jacker: "first"', private_with: "c1" }),
+            makeBeat({ id: "w1r", kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "Hold on.", private_with: "c1" }),
+            // an image beat holds the drain loop in a fixed 350ms revealBeat
+            // sleep: the deterministic window for the second turn to land in
+            makeBeat({ id: "w1i", kind: "image", speaker: "narrator", text: "a glance", image_url: "/media/w1.png", private_with: "c1" }),
+          ],
+          state: makeState(),
+        });
+      }
+      expect(body.segments).toEqual([{ type: "whisper", text: "second", target: "Jacker", mode: "say" }]);
+      return HttpResponse.json({
+        beats: [
+          makeBeat({ id: "w2e", kind: "action", speaker: "player", text: 'you whisper to Jacker: "second"', private_with: "c1" }),
+          makeBeat({ id: "w2r", kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "Fine. Tonight.", private_with: "c1" }),
+        ],
+        state: makeState(),
+      });
+    }),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getByRole("tab", { name: /whisper/i })).toBeTruthy());
+  await u.click(within(profileEl()).getByRole("tab", { name: /whisper/i }));
+  await waitFor(() => expect(pmBox(/what you say/i)).toBeTruthy());
+
+  await u.type(pmBox(/what you say/i), "first");
+  await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
+  // the image beat unveils at the START of its 350ms reveal step: from here the
+  // drain loop is guaranteed mid-beat, so the second send's response replaces
+  // the queue exactly in the race window
+  await waitFor(() => {
+    const img = document.querySelector('#pmThread [data-beat-id="w1i"]');
+    expect(img).toBeTruthy();
+    expect(img.closest(".veil-wrap")?.classList.contains("veiled")).toBeFalsy();
+  }, { timeout: 5000 });
+
+  await u.type(pmBox(/what you say/i), "second");
+  await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
+
+  // the follow-up's echo AND reply both end up visible, in order, nothing veiled
+  await waitFor(() => {
+    const thread = document.querySelector("#pmThread");
+    const echo = thread.querySelector('[data-beat-id="w2e"]');
+    const reply = thread.querySelector('[data-beat-id="w2r"]');
+    expect(echo).toBeTruthy();
+    expect(reply).toBeTruthy();
+    expect(echo.closest(".veil-wrap")?.classList.contains("veiled")).toBeFalsy();
+    expect(reply.closest(".veil-wrap")?.classList.contains("veiled")).toBeFalsy();
+    expect(echo.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  }, { timeout: 5000 });
+  expect(within(document.querySelector("#pmThread")).getByText("second")).toBeTruthy();
+  // findBy: the reply may still be typewriting when the veil checks pass
+  expect(await within(document.querySelector("#pmThread")).findByText("Fine. Tonight.", undefined, { timeout: 4000 })).toBeTruthy();
+}, 15000);
+
+test("a render landing inside a beat's pacing sleep never re-veils it for good (the profile refetch)", async () => {
+  // While the profile is open, every turn is followed by a profile refetch whose
+  // render lands DURING the staged reveal. Renderers veil whatever is still
+  // queued, and an instant beat (the player's echo) unveils at the START of its
+  // 90ms pacing sleep while still at the queue head: the refetch render used to
+  // re-veil it, the loop shifted it without another unveil, and the line stayed
+  // display:none forever - the whisper thread showed the reply with the
+  // player's own message missing above it.
+  const u = user();
+  server.use(
+    http.get(`${API}/games/:id/characters/:cid/profile`, async () => {
+      await delay(30); // land the refetch render inside the echo's 90ms sleep
+      return HttpResponse.json(makeProfile());
+    }),
+    http.post(`${API}/games/:id/action`, () =>
+      HttpResponse.json({
+        beats: [
+          makeBeat({ id: "pv1e", kind: "action", speaker: "player", text: 'you whisper to Jacker: "still there?"', private_with: "c1" }),
+          makeBeat({ id: "pv1r", kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "Always.", private_with: "c1" }),
+        ],
+        state: makeState(),
+      }),
+    ),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getByRole("tab", { name: /whisper/i })).toBeTruthy());
+  await u.click(within(profileEl()).getByRole("tab", { name: /whisper/i }));
+  await waitFor(() => expect(pmBox(/what you say/i)).toBeTruthy());
+
+  await u.type(pmBox(/what you say/i), "still there?");
+  await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
+
+  // the reply lands and finishes typing...
+  await within(document.querySelector("#pmThread")).findByText("Always.", undefined, { timeout: 5000 });
+  // ...and NOTHING in the thread is left hidden: the echo shows above the reply
+  await waitFor(() => {
+    const thread = document.querySelector("#pmThread");
+    expect(thread.querySelectorAll(".veil-wrap.veiled").length).toBe(0);
+    const echo = thread.querySelector('[data-beat-id="pv1e"]');
+    expect(echo).toBeTruthy();
+    expect(within(thread).getByText("still there?")).toBeTruthy();
+  }, { timeout: 5000 });
+}, 15000);
+
+test("the unread whisper count is exact: new since the window was last open, auto-read while it stays open", async () => {
+  const u = user();
+  vi.stubGlobal("EventSource", FakeEventSource);
+  const arrivals = [];
+  server.use(
+    http.get(`${API}/games/:id/beats`, ({ request }) => {
+      const since = new URL(request.url).searchParams.get("since");
+      if (since === null)
+        return HttpResponse.json({ beats: [makeBeat({ id: "open", turn_index: 1, text: "Rain hammers the window of The Last Breath." })] });
+      return HttpResponse.json({ beats: arrivals.filter((b) => b.turn_index > Number(since)) });
+    }),
+  );
+  try {
+    await gotoPlay(u);
+    const es = () => FakeEventSource.instances[FakeEventSource.instances.length - 1];
+    const cardBadge = () => document.querySelector('.char-col[data-char-id="c1"] .pm-unread');
+    const pm = (id, turn, text) =>
+      makeBeat({ id, turn_index: turn, kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text, private_with: "c1" });
+
+    // two whispers arrive while the window was never open: the badge says exactly 2
+    arrivals.push(pm("pm1", 2, "Psst."));
+    es().emit({ kind: "beat", private_with: "c1" });
+    await waitFor(() => expect(cardBadge()?.textContent).toBe("1"));
+    arrivals.push(pm("pm2", 3, "Hey. Listen."));
+    es().emit({ kind: "beat", private_with: "c1" });
+    await waitFor(() => expect(cardBadge()?.textContent).toBe("2"));
+
+    // opening the whisper window marks everything in hand seen: every badge clears
+    await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+    await screen.findByRole("dialog", { name: /jacker's profile/i });
+    await waitFor(() => expect(within(profileEl()).getByRole("tab", { name: /whisper/i })).toBeTruthy());
+    await u.click(within(profileEl()).getByRole("tab", { name: /whisper/i }));
+    await waitFor(() => expect(document.querySelector(".pm-unread")).toBeNull());
+
+    // a whisper landing WHILE the window is open reads as seen the moment it shows
+    arrivals.push(pm("pm3", 4, "Good, you came."));
+    es().emit({ kind: "beat", private_with: "c1" });
+    await waitFor(() => expect(within(document.querySelector("#pmThread")).getByText("Good, you came.")).toBeTruthy(), { timeout: 5000 });
+    expect(document.querySelector(".pm-unread")).toBeNull();
+
+    // close the window; only what arrives AFTER counts again - exactly one
+    await u.click(within(profileEl()).getByRole("button", { name: /back to the scene/i }));
+    arrivals.push(pm("pm4", 5, "Wait. One more thing."));
+    es().emit({ kind: "beat", private_with: "c1" });
+    await waitFor(() => expect(cardBadge()?.textContent).toBe("1"));
+  } finally {
+    FakeEventSource.instances.length = 0;
+  }
+}, 15000);
+
 test("the speak button walks loading -> playing -> back to idle", async () => {
   const u = user();
   const app = await mountApp();

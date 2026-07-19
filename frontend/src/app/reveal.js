@@ -38,9 +38,23 @@ export async function startReveal(g) {
   g.revealing = true;
   try {
     while (g.revealQueue && g.revealQueue.length && state.active === g && state.view === "play") {
-      const beat = g.beats.find((b) => b.id === g.revealQueue[0]);
+      const id = g.revealQueue[0];
+      const beat = g.beats.find((b) => b.id === id);
       await revealBeat(g, beat);
-      g.revealQueue.shift();
+      // A new turn can REPLACE the queue while this beat reveals (its response
+      // lands mid-typewriter: the composer never locks against reading time).
+      // The head is then a fresh, unrevealed beat - eating it here left its DOM
+      // veiled (display:none) until some later render (live: a quick whisper
+      // follow-up's echo vanished and the two replies read back to back). Only
+      // shift the id this pass actually revealed.
+      if (g.revealQueue && g.revealQueue[0] === id) g.revealQueue.shift();
+      // A render DURING revealBeat's pacing sleep re-veils a beat still at the
+      // head (renderers veil whatever is queued, and refreshProfile lands one
+      // such render right after every turn while the profile is open). The beat
+      // has now left the queue, so no later pass would ever unveil it - assert
+      // the unveil here (idempotent; live: the player's own whisper echo stayed
+      // display:none and the thread read as two replies back to back).
+      root.querySelectorAll(`[data-beat-id="${cssId(id)}"]`).forEach((el) => el.closest(".veil-wrap")?.classList.remove("veiled"));
     }
   } finally {
     if (g.revealOwner === owner) {

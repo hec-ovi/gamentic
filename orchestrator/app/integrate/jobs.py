@@ -10,6 +10,31 @@ from ..config import settings
 from . import events, image_prompts, storage
 
 
+def _land_beat(gid: str, speaker: str, text: str, location, image_url,
+               private_with=None, prepare=None) -> dict | None:
+    """Land a late media beat AFTER any in-flight turn. BEGIN IMMEDIATE takes the
+    story's write lock first (queueing behind a running turn's transaction, same
+    lock run_turn claims), so turn_index/seq are computed over the FINISHED story.
+    Before this, a job that persisted mid-turn read the committed MAX and claimed
+    the same turn_index as the running turn: the client's beats?since=<last turn>
+    (strict >) never delivered the beat live, and reopening the game re-sorted it
+    into the middle of the later exchange (live: a private study's image split a
+    whisper from its reply). `prepare` runs inside the lock and cancels the beat
+    by returning falsy (e.g. the item vanished mid-render). Slow work (renders,
+    file persists) must happen BEFORE this call - the lock is held for the write
+    alone."""
+    with db.get_conn() as conn:
+        # a turn can legitimately run to the LLM transport ceiling; wait it out
+        conn.execute("PRAGMA busy_timeout = 330000")
+        conn.execute("BEGIN IMMEDIATE")
+        if not repo.get_game(conn, gid):
+            return None    # game wiped while rendering/waiting: never resurrect it
+        if prepare is not None and not prepare(conn):
+            return None
+        return repo.add_beat(conn, gid, speaker, None, "image", text, location,
+                             image_url=image_url, private_with=private_with)
+
+
 def _reference_url(stored: str | None) -> str | None:
     """Absolutize a character image URL so the image-api can fetch it (our /media files
     via the compose-internal hostname; its own /image/file paths via IMAGE_API_URL)."""
@@ -67,13 +92,16 @@ def generate_view_snapshot(gid: str, focus: str | None = None,
         caption = image_prompts._concept(
             focus, f"{sc['name']}, {t['label']}",
             image_prompts._clip(image_prompts._strip_quoted(sc["description"]), 30))
+        # unique suffix: two renders can persist while the turn stamp reads the same
+        # value (live: two beats pointed at one overwritten view-t7.png, two captions).
+        # The filename stamp is informational; the beat's REAL turn_index is claimed
+        # under the write lock in _land_beat.
         turn = repo.next_turn_index(conn, gid)
-        # unique suffix: two renders can persist while the turn counter reads the same
-        # value (live: two beats pointed at one overwritten view-t7.png, two captions)
         url = storage._persist(gid, result["image_url"], f"view-t{turn}-{repo._id()}")
-        # private_with: a quiet study from the private panel lands IN that thread
-        beat = repo.add_beat(conn, gid, "narrator", None, "image", caption, loc,
-                             turn_index=turn, image_url=url, private_with=private_with)
+    # private_with: a quiet study from the private panel lands IN that thread
+    beat = _land_beat(gid, "narrator", caption, loc, url, private_with=private_with)
+    if not beat:
+        return None
     events.publish(gid, "beat", private_with=private_with)
     return beat
 
@@ -106,12 +134,13 @@ def generate_directed_image(gid: str, description: str, caption: str = "") -> di
     with db.get_conn() as conn:
         if not repo.get_game(conn, gid):
             return None    # game wiped while rendering: never re-create its media folder
-        turn = repo.next_turn_index(conn, gid)
+        turn = repo.next_turn_index(conn, gid)   # filename stamp only (see _land_beat)
         url = storage._persist(gid, result["image_url"], f"shot-t{turn}-{repo._id()}")
-        # the narrator's own visual description IS the moment's concept
-        beat = repo.add_beat(conn, gid, "narrator", None, "image",
-                             image_prompts._concept(caption, description), loc,
-                             turn_index=turn, image_url=url)
+    # the narrator's own visual description IS the moment's concept
+    beat = _land_beat(gid, "narrator", image_prompts._concept(caption, description),
+                      loc, url)
+    if not beat:
+        return None
     events.publish(gid, "beat")
     return beat
 
@@ -141,11 +170,13 @@ def generate_item_image(gid: str, name: str) -> dict | None:
         if not repo.get_game(conn, gid):
             return None    # game wiped while rendering: never re-create its media folder
         url = storage._persist(gid, result["image_url"], f"item-{image_prompts._slug(name)}")
-        if not repo.set_item_image(conn, gid, name, url):
-            return None                                # the item vanished mid-render
-        beat = repo.add_beat(conn, gid, "system", None, "image",
-                             image_prompts._concept(entry["name"], entry["description"]), loc,
-                             image_url=url)
+    # the slot attach + the unlock card land together, inside the write lock:
+    # if the item vanished while we waited, neither happens
+    beat = _land_beat(gid, "system",
+                      image_prompts._concept(entry["name"], entry["description"]), loc, url,
+                      prepare=lambda conn: repo.set_item_image(conn, gid, name, url))
+    if not beat:
+        return None
     events.publish(gid, "item", name=name)
     return beat
 
