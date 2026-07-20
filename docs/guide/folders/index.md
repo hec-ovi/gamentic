@@ -17,8 +17,6 @@ Self-hosted AI dungeon RPG monorepo: the game brain (orchestrator), the no-build
 
 - **Key files / dirs:** docker-compose.yml; up.sh; gamentic-setup; setup.html; README.md; CHANGELOG.md; .env.example
 - **Entry / owner:** up.sh; gamentic-setup; setup.html; docker-compose.yml
-- **Produces:** the running stack (./up.sh raises whichever world ANNA names)
-- **Key point:** One repo; ./up.sh raises whichever world the ANNA boolean names.
 - **IN:** _none_
 - **OUT:** `orchestrator` (orchestrator/); `frontend` (frontend/); `infra` (infra/); `voice` (voice-api/); `docs` (docs/)
 
@@ -32,8 +30,6 @@ Self-hosted AI dungeon RPG monorepo: the game brain (orchestrator), the no-build
     "comfyui",
     "image-api",
     "voice-api",
-    "anna-api",
-    "anna-agent"
   ],
   "config": ".env (single layer)"
 }
@@ -181,10 +177,9 @@ Glue to the media services: image prompt composition (gender net, no-text guard,
 
 ### app/providers/ — `providers`  ·  _brain_
 
-The inference-providers layer: one interface per modality, dialect classes for pure JSON shaping (httpx only, no SDKs), the config spine, and the Anna preset. Config resolves at call time (env -> default).
+Config resolves at call time (env -> default).
 
 - **Key files / dirs:** base.py; image.py; audio.py; __init__.py; INDEX.md
-- **Entry / owner:** app/providers/base.py: resolve, anna_config; app/providers/image.py; app/providers/audio.py
 - **Produces:** resolved ProviderConfig per call (text/image/audio)
 - **Key point:** .env is the single config layer; defaults reproduce the local stack byte-for-byte.
 - **IN:** `app` (providers/)
@@ -207,7 +202,6 @@ The inference-providers layer: one interface per modality, dialect classes for p
     "local",
     "elevenlabs"
   ],
-  "anna_preset": "base.py"
 }
 ```
 </details>
@@ -379,14 +373,11 @@ Vitest + jsdom suite: component tests mount the real app.js via init(), drive it
 
 ### infra/ — `infra`  ·  _infra_
 
-The accessory build context: the setup faces over one schema, the ComfyUI image, the image-api adapter, the anna-api OpenAI face + anna-agent container.
 
-- **Key files / dirs:** setup/; comfyui/; image-api/; anna-api/; anna-agent/; README.md
 - **Entry / owner:** docker-compose.yml references these contexts
-- **Produces:** the media + setup + anna service images
 - **Key point:** One build context per accessory service.
 - **IN:** `root` (infra/)
-- **OUT:** `infraSetup` (setup/); `infraComfy` (comfyui/); `infraImageApi` (image-api/); `infraAnnaApi` (anna-api/); `infraAnnaAgent` (anna-agent/)
+- **OUT:** `infraSetup` (setup/); `infraComfy` (comfyui/); `infraImageApi` (image-api/)
 
 <details><summary>JSON shape</summary>
 
@@ -396,8 +387,6 @@ The accessory build context: the setup faces over one schema, the ComfyUI image,
     "setup",
     "comfyui",
     "image-api",
-    "anna-api",
-    "anna-agent"
   ]
 }
 ```
@@ -480,55 +469,6 @@ The image-api REST adapter in front of ComfyUI: app (main.py, comfy_client.py, w
 ```
 </details>
 
-### infra/anna-api/ — `infraAnnaApi`  ·  _infra_
-
-The anna-api: an OpenAI-shaped face over the vendor Anna CLI (agent.py, wire.py, main.py, config.py) so the game can drive the cloud agent text-only; flattens the stack into one ask and parses tool calls back out.
-
-- **Key files / dirs:** app/main.py; app/agent.py; app/wire.py; app/config.py; tests/; Dockerfile
-- **Entry / owner:** infra/anna-api/app/agent.py; infra/anna-api/app/wire.py
-- **Produces:** OpenAI-compatible chat responses (text); images answer 501
-- **Key point:** Gives the vendor CLI an OpenAI face; no password ever touches .env.
-- **IN:** `infra` (anna-api/)
-- **OUT:** _none_
-
-<details><summary>JSON shape</summary>
-
-```json
-{
-  "app": [
-    "main.py",
-    "agent.py",
-    "wire.py",
-    "config.py"
-  ],
-  "images": "501"
-}
-```
-</details>
-
-### infra/anna-agent/ — `infraAnnaAgent`  ·  _infra_
-
-The anna-agent container: the vendor Anna CLI running in its own container (Dockerfile + its docker-compose.yml), raised when ANNA mode is on.
-
-- **Key files / dirs:** Dockerfile; docker-compose.yml
-- **Entry / owner:** infra/anna-agent/Dockerfile
-- **Produces:** the running vendor CLI process
-- **Key point:** The vendor CLI runs in its own container.
-- **IN:** `infra` (anna-agent/)
-- **OUT:** _none_
-
-<details><summary>JSON shape</summary>
-
-```json
-{
-  "files": [
-    "Dockerfile",
-    "docker-compose.yml"
-  ]
-}
-```
-</details>
-
 ### voice-api/ — `voice`  ·  _voice_
 
 The Maya1-3B TTS service on llama.cpp Vulkan: app.py (routes), synth.py, voices.py, characters.py (registry), emotion.py, manifest.py (per-game ownership), config.py, bench + samples + tests.
@@ -554,7 +494,6 @@ The Maya1-3B TTS service on llama.cpp Vulkan: app.py (routes), synth.py, voices.
 
 The documentation. The PUBLIC site is ONE page (index.html) whose section views (overview, agents, engine, state, state-json, context, infra, folders) render as a node graph, an indented tree or grouped cards, each paired with an agent-ready guide/ twin. Everything else under docs/ stays private/gitignored.
 
-- **Key files / dirs:** index.html (single-page docs site); guide/ (agent-ready markdown twins); .nojekyll; HANDOFF.md (private); shared/ anna/ frontend/ image/ voice/ feedback/ (private); README.md (private)
 - **Entry / owner:** docs/*.html; docs/shared/inference-providers.md
 - **Produces:** the read-first developer docs + interactive atlases
 - **Key point:** Where the docs live; read HANDOFF and the atlases first.
@@ -573,7 +512,6 @@ The documentation. The PUBLIC site is ONE page (index.html) whose section views 
   "private": [
     "HANDOFF.md",
     "shared/",
-    "anna/",
     "frontend/",
     "image/",
     "voice/",
@@ -809,5 +747,3 @@ Export/import: adventure templates and checkpoint saves, id remapping, media scr
 | `infra` | `infraSetup` | contains | setup/ |
 | `infra` | `infraComfy` | contains | comfyui/ |
 | `infra` | `infraImageApi` | contains | image-api/ |
-| `infra` | `infraAnnaApi` | contains | anna-api/ |
-| `infra` | `infraAnnaAgent` | contains | anna-agent/ |

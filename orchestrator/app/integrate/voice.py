@@ -36,8 +36,8 @@ def assign_voices_for_game(conn, gid: str) -> None:
     a provider; a provider switch re-resolves from the stored design ONCE.
 
     DELIBERATE: this module gates on settings.VOICE_ENABLED, NOT
-    providers.voice_enabled() (the Anna-aware gate every SPEAK surface uses).
-    Identity is engine-owned and composed even in Anna mode - pure CPU, no audio
+    providers.voice_enabled() (the gate every SPEAK surface uses).
+    Identity is engine-owned and composed even with voice off - pure CPU, no audio
     rendered, list_voice_ids() gates itself - so a cloud-born adventure keeps
     designed voices for a later local life (only its narrator voice stays unset:
     the local catalog was absent at creation)."""

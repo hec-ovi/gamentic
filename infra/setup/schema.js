@@ -21,11 +21,6 @@ window.GAMENTIC_SETUP_SCHEMA = {
       "help": "Everything on this machine: text model on Vulkan, ComfyUI images, Maya1 voice. Needs an AMD GPU and the model files on disk. This is the shipping default."
     },
     {
-      "id": "anna",
-      "label": "Anna (no GPU, no local inference)",
-      "help": "Text is served by the Anna agent running in the stack (sign in once at http://localhost:19001 after starting). Images degrade to text-only play, voice is off. Only four light containers run."
-    },
-    {
       "id": "custom",
       "label": "Custom (every knob)",
       "help": "All questions, including cloud providers per modality and the advanced tuning knobs. For people who already know what they want."
@@ -34,7 +29,6 @@ window.GAMENTIC_SETUP_SCHEMA = {
   "groups": [
     { "id": "models", "label": "Models on disk", "modes": ["local", "custom"] },
     { "id": "gpu", "label": "GPU access", "modes": ["local", "custom"] },
-    { "id": "anna", "label": "Anna", "modes": ["anna", "custom"] },
     { "id": "providers", "label": "Inference providers (cloud overrides)", "modes": ["custom"] },
     { "id": "text-llm", "label": "Text model server", "modes": ["custom"] },
     { "id": "image-service", "label": "Image services", "modes": ["custom"] },
@@ -43,11 +37,6 @@ window.GAMENTIC_SETUP_SCHEMA = {
     { "id": "voice", "label": "Voice", "modes": ["custom"] }
   ],
   "settings": [
-    { "key": "ANNA", "group": "anna", "type": "bool", "default": "false",
-      "setByMode": { "local": "false", "anna": "true" },
-      "prompt": "Anna mode?",
-      "help": "LITERAL true/false only. true starts orchestrator + frontend + the Anna agent + its adapter and nothing GPU-shaped; false starts the full local stack. The app reads anything non-'false' as on but compose matches only the literals, so any other value starts NO inference services (./up.sh refuses such values). Switching on a running stack: docker compose down BEFORE flipping, up after; ./up.sh handles that for you." },
-
     { "key": "MODELS_DIR", "group": "models", "type": "path", "default": "/home/hec/models/gguf",
       "prompt": "Folder that holds your GGUF model folders",
       "help": "Host path mounted read-only into the model containers. The text and voice model paths below are relative to this folder." },
@@ -67,28 +56,6 @@ window.GAMENTIC_SETUP_SCHEMA = {
     { "key": "VIDEO_GID", "group": "gpu", "type": "int", "default": "44",
       "prompt": "video group id",
       "help": "The numeric gid of the 'video' group on this host. Find it with: getent group video. The CLI detects this automatically." },
-
-    { "key": "ANNA_API_KEY", "group": "anna", "type": "secret", "default": "",
-      "prompt": "Anna API key (sk-..., optional)",
-      "help": "The hackathon-issued key. The agent stores it as its Nexus credential; the in-stack adapter needs no key of its own. Leave blank if you only sign in through the agent's Web UI." },
-    { "key": "ANNA_BASE_URL", "group": "anna", "type": "string", "default": "", "advanced": true,
-      "prompt": "Anna gateway base URL",
-      "help": "Blank = the in-stack anna-api adapter in front of the Anna agent container (the normal case). Set a real OpenAI-compatible cloud gateway URL only if the organizers hand one out; /v1 optional, normalized per modality." },
-    { "key": "ANNA_TEXT_MODEL", "group": "anna", "type": "string", "default": "", "advanced": true,
-      "prompt": "Anna text model name",
-      "help": "Blank = anna-copilot (the adapter accepts anything). Only matters against a real cloud gateway." },
-    { "key": "ANNA_IMAGE_MODEL", "group": "anna", "type": "string", "default": "", "advanced": true,
-      "prompt": "Anna image model name",
-      "help": "Blank = gpt-image-2. Only matters against a real cloud gateway that serves images." },
-    { "key": "ANNA_AGENT_USERNAME", "group": "anna", "type": "string", "default": "", "advanced": true,
-      "prompt": "Agent local username (fallback)",
-      "help": "Fallback only: the adapter normally rides the Web UI sign-in via the refresh token on the agent's volume, so OAuth accounts need nothing here. Fill for a password account if the volume path ever fails." },
-    { "key": "ANNA_AGENT_PASSWORD", "group": "anna", "type": "secret", "default": "", "advanced": true,
-      "prompt": "Agent local password (fallback)",
-      "help": "Companion to the username above. Stays on this machine; .env is gitignored." },
-    { "key": "ANNA_IMAGE_VIA_COPILOT", "group": "anna", "type": "bool", "default": "false", "advanced": true,
-      "prompt": "Experiment: ask the copilot for images?",
-      "help": "Off by default: the agent's local API has no image endpoint and the copilot was observed to hallucinate image URLs. The game plays text-only without it." },
 
     { "key": "TEXT_PROVIDER", "group": "providers", "type": "choice", "choices": ["local", "openai"], "default": "local",
       "prompt": "Text provider",
@@ -217,7 +184,7 @@ window.GAMENTIC_SETUP_SCHEMA = {
       "prompt": "Voice context size", "help": "SNAC token generation needs little context." }
   ],
   "constants": [
-    { "key": "COMPOSE_PROFILES", "value": "local-inference-anna-false,anna-agent-anna-true",
-      "comment": "DO NOT EDIT: makes the ANNA boolean drive the compose profiles. Local inference services carry local-inference-anna-${ANNA} (match only when ANNA=false); the Anna services carry anna-agent-anna-${ANNA} (match only when ANNA=true). One boolean, two service sets, no overlap." }
+    { "key": "COMPOSE_PROFILES", "value": "local",
+      "comment": "DO NOT EDIT: selects the full local stack (llm-text is the only profiled service). up.sh harness overrides this to run everything except llm-text." }
   ]
 };

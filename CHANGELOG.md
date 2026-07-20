@@ -2,6 +2,13 @@
 
 Notable changes to gamentic, newest first. No version numbers yet: this moves fast, so entries are dated and the README always describes the current state.
 
+## 2026-07-20 (later)
+
+### Anna moves out
+- Gamentic won FIRST PLACE at the Anna hackathon; that cloud mode now lives in its own sibling repo, gamentic-anna, and every trace of it leaves this one: the anna-agent and anna-api containers and their infra folders, the ANNA_* env spine, the provider-layer Anna preset, the mode card in both setup faces, the docs-site nodes and guide sections, and the mode-flip machinery in up.sh. The README keeps the win and points at the sibling repo.
+- The compose profile trick collapses to one rule: llm-text alone carries profiles: ["local"]. The default mode (COMPOSE_PROFILES=local, pinned in .env by the setup faces) runs the full stack; ./up.sh harness selects a profile nothing carries, so llm-text drops out and text goes to the external server. The COMPOSE_PROFILES guard env var and the literal-ANNA validation in up.sh and the doctor are gone with the trick that needed them.
+- .env.example regenerated from the slimmed schema; the doctor's model-file checks now key off TEXT_BASE_URL (external text server = model files optional) instead of the anna boolean. Suites after the removal: 641 backend (the 3 anna-mode tests left with the mode), 226 frontend, 15 setup, all green; both compose modes verified by config resolution and the docs atlas re-checked in a browser.
+
 ## 2026-07-20
 
 ### The turn goes live: real streaming and a stop button

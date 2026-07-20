@@ -8,7 +8,7 @@ byte-for-byte.
 
 | Module | Owns | Key pieces |
 |---|---|---|
-| `base.py` | the config spine + capabilities + the Anna preset + the shared fal queue transport | `resolve`, `ProviderConfig`, `DIALECTS`, `capability_notes`, `fal_queue_run`, `anna_config`, `voice_enabled` |
+| `base.py` | the config spine + capabilities + the shared fal queue transport | `resolve`, `ProviderConfig`, `DIALECTS`, `capability_notes`, `fal_queue_run`, `voice_enabled` |
 | `image.py` | image dialects: `comfy` (the tested local default), `openai` (generations/edits), `gemini` (generateContent parts), `fal` (queue + per-model maps) | `get_provider`, `ImageProvider.generate/character_set` |
 | `audio.py` | audio dialects: `local` (Maya1 voice-api), `openai` (instructions), `elevenlabs` ([tag]), `fal` (maya/batch, \<tag\>) | `get_provider`, `AudioProvider.speak`, `default_voice` |
 
@@ -26,8 +26,4 @@ Conventions:
   decodes it on persist, so the storage path is provider-agnostic.
 - Cloud dialects are pinned by contract tests over mocked HTTP against their PUBLISHED
   schemas; live verification is a real key and a real call. comfy + local are live-tested.
-- ANNA MODE (hackathon): one boolean preset above per-modality resolution. When on,
-  text/image resolve to the openai dialect against `ANNA_BASE_URL` (one URL,
-  normalized per modality) with `ANNA_API_KEY`, and every speak surface gates on
-  `voice_enabled()` (anna has no voice API). Off = resolution byte-identical to
-  before. Spec: docs/shared/inference-providers.md, tests: tests/test_anna_mode.py.
+

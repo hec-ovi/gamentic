@@ -6,24 +6,25 @@ import re
 
 from conftest import SCHEMA_JS, parse_env, run_cli
 
+# the gpu group's promise: these are auto-detected, so their written values may
+# legitimately differ from the schema defaults on any given host
+DETECTED = {"RENDER_GID", "VIDEO_GID"}
 
-def test_anna_yes_writes_true_constant_and_all_defaults(tmp_path, schema):
+
+def test_local_yes_writes_constant_and_all_defaults(tmp_path, schema):
     envf = tmp_path / ".env"
-    r = run_cli("--mode", "anna", "--yes", "--env-file", str(envf))
+    r = run_cli("--mode", "local", "--yes", "--env-file", str(envf))
     assert r.returncode == 0, r.stderr
 
     vals = parse_env(envf)
-    assert vals["ANNA"] == "true"
-
     const = next(c for c in schema["constants"] if c["key"] == "COMPOSE_PROFILES")
     assert vals["COMPOSE_PROFILES"] == const["value"]
     assert f"# {const['comment']}" in envf.read_text()
 
-    # every non-setByMode setting carries its schema default (anna mode asks
-    # only the anna group; gid detection applies only when the gpu group shows)
+    # every setting carries its schema default (gid detection may override its two)
     for s in schema["settings"]:
         assert s["key"] in vals, f"{s['key']} missing from the written .env"
-        if "setByMode" not in s:
+        if s["key"] not in DETECTED:
             assert vals[s["key"]] == s["default"], s["key"]
 
     if os.name == "posix":
@@ -42,15 +43,16 @@ def test_set_with_bad_port_fails_clearly_and_writes_nothing(tmp_path):
 
 def test_set_with_bad_bool_fails(tmp_path):
     envf = tmp_path / ".env"
-    r = run_cli("--mode", "custom", "--yes", "--set", "ANNA=maybe", "--env-file", str(envf))
+    r = run_cli("--mode", "custom", "--yes", "--set", "INTERPRET_FREE_TEXT=maybe",
+                "--env-file", str(envf))
     assert r.returncode != 0
-    assert "ANNA" in r.stderr and "true" in r.stderr
+    assert "INTERPRET_FREE_TEXT" in r.stderr and "true" in r.stderr
     assert not envf.exists()
 
 
 def test_unknown_key_survives_rewrites_under_unmanaged(tmp_path):
     envf = tmp_path / ".env"
-    envf.write_text("ANNA=false\nMY_TUNNEL_TOKEN=abc123\n")
+    envf.write_text("MY_TUNNEL_TOKEN=abc123\n")
     r = run_cli("--mode", "local", "--yes", "--env-file", str(envf))
     assert r.returncode == 0, r.stderr
 
@@ -67,7 +69,7 @@ def test_unknown_key_survives_rewrites_under_unmanaged(tmp_path):
 
 def test_set_unknown_key_warns_and_is_preserved(tmp_path):
     envf = tmp_path / ".env"
-    r = run_cli("--mode", "anna", "--yes", "--set", "WEIRD_KNOB=7", "--env-file", str(envf))
+    r = run_cli("--mode", "local", "--yes", "--set", "WEIRD_KNOB=7", "--env-file", str(envf))
     assert r.returncode == 0
     assert "WEIRD_KNOB" in r.stderr  # warned
     text = envf.read_text()
@@ -79,42 +81,42 @@ def test_wizard_stdin_produces_same_file_as_flags(tmp_path):
     wizard_env = tmp_path / "wizard.env"
     flags_env = tmp_path / "flags.env"
 
-    # 2 = anna mode, Enter keeps the empty ANNA_API_KEY, y confirms the review
-    r = run_cli("--env-file", str(wizard_env), stdin="2\n\ny\n")
+    # 1 = local mode; Enter keeps each asked default (models x3, gpu x2);
+    # y confirms the review
+    r = run_cli("--env-file", str(wizard_env), stdin="1\n\n\n\n\n\ny\n")
     assert r.returncode == 0, r.stderr + r.stdout
     assert "Review" in r.stdout
-    assert "sign in once at http://localhost:19001" in r.stdout
 
-    r2 = run_cli("--mode", "anna", "--yes", "--env-file", str(flags_env))
+    r2 = run_cli("--mode", "local", "--yes", "--env-file", str(flags_env))
     assert r2.returncode == 0, r2.stderr
     assert wizard_env.read_text() == flags_env.read_text()
 
 
 def test_wizard_help_and_decline_writes_nothing(tmp_path):
     envf = tmp_path / ".env"
-    # '?' on the API key prints its help and re-asks; 'n' declines the write
-    r = run_cli("--env-file", str(envf), stdin="2\n?\n\nn\n")
+    # '?' on the first question prints its help and re-asks; 'n' declines the write
+    r = run_cli("--env-file", str(envf), stdin="1\n?\n\n\n\n\n\nn\n")
     assert r.returncode != 0
-    assert "hackathon-issued key" in r.stdout  # schema help text, rendered verbatim
+    assert "mounted read-only" in r.stdout  # schema help text, rendered verbatim
     assert "Nothing written" in r.stderr + r.stdout
     assert not envf.exists()
 
 
 def test_json_masks_secrets_but_file_keeps_them(tmp_path):
     envf = tmp_path / ".env"
-    r = run_cli("--mode", "anna", "--yes", "--json",
-                "--set", "ANNA_API_KEY=sk-verysecret", "--env-file", str(envf))
+    r = run_cli("--mode", "custom", "--yes", "--json",
+                "--set", "TEXT_API_KEY=sk-verysecret", "--env-file", str(envf))
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout)
-    assert out["values"]["ANNA_API_KEY"] == "********"
+    assert out["values"]["TEXT_API_KEY"] == "********"
     assert "sk-verysecret" not in r.stdout
     assert out["values"]["COMPOSE_PROFILES"]  # constants ride along
-    assert parse_env(envf)["ANNA_API_KEY"] == "sk-verysecret"
+    assert parse_env(envf)["TEXT_API_KEY"] == "sk-verysecret"
 
 
 def test_dry_run_writes_nothing(tmp_path):
     envf = tmp_path / ".env"
-    r = run_cli("--mode", "anna", "--yes", "--dry-run", "--json", "--env-file", str(envf))
+    r = run_cli("--mode", "local", "--yes", "--dry-run", "--json", "--env-file", str(envf))
     assert r.returncode == 0
     assert json.loads(r.stdout)["written"] is False
     assert not envf.exists()

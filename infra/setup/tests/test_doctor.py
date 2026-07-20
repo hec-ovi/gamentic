@@ -6,10 +6,14 @@ import sqlite3
 from conftest import run_cli
 
 
-def anna_env(tmp_path):
+def fresh_env(tmp_path):
+    """A written .env with an EXTERNAL text server set, so the model-file checks
+    (host-specific paths) skip and the doctor verdict stays portable."""
     envf = tmp_path / ".env"
-    r = run_cli("--mode", "anna", "--yes", "--env-file", str(envf))
+    r = run_cli("--mode", "local", "--yes", "--env-file", str(envf))
     assert r.returncode == 0, r.stderr
+    envf.write_text(envf.read_text().replace(
+        "TEXT_BASE_URL=", "TEXT_BASE_URL=http://localhost:8090/v1"))
     return envf
 
 
@@ -21,35 +25,25 @@ def doctor_json(envf, db, *extra):
     return r, d
 
 
-def test_doctor_passes_on_fresh_anna_env(tmp_path):
-    envf = anna_env(tmp_path)
+def test_doctor_passes_on_fresh_env(tmp_path):
+    envf = fresh_env(tmp_path)
     r, d = doctor_json(envf, tmp_path / "absent.db")
     assert d["failures"] == 0
-    assert any("ANNA=true (literal)" in c["msg"] for c in d["checks"])
+    assert any("COMPOSE_PROFILES matches the schema constant" in c["msg"] for c in d["checks"])
 
 
-def test_doctor_flags_anna_1_as_hard_failure(tmp_path):
-    envf = anna_env(tmp_path)
-    envf.write_text(envf.read_text().replace("ANNA=true", "ANNA=1"))
+def test_doctor_flags_tampered_compose_profiles(tmp_path):
+    envf = fresh_env(tmp_path)
+    envf.write_text(envf.read_text().replace(
+        "COMPOSE_PROFILES=local", "COMPOSE_PROFILES=oops"))
     r, d = doctor_json(envf, tmp_path / "absent.db")
     assert r.returncode == 1
-    fails = [c for c in d["checks"] if c["level"] == "fail"]
-    assert any("ANNA" in c["msg"] and "LITERAL" in c["msg"] for c in fails)
+    assert any(c["level"] == "fail" and "COMPOSE_PROFILES" in c["msg"] for c in d["checks"])
 
     # human-readable face carries the same verdict
     r2 = run_cli("doctor", "--env-file", str(envf), "--db", str(tmp_path / "absent.db"))
     assert r2.returncode == 1
     assert "[fail]" in r2.stdout
-
-
-def test_doctor_flags_tampered_compose_profiles(tmp_path):
-    envf = anna_env(tmp_path)
-    envf.write_text(envf.read_text().replace(
-        "COMPOSE_PROFILES=local-inference-anna-false,anna-agent-anna-true",
-        "COMPOSE_PROFILES=oops"))
-    r, d = doctor_json(envf, tmp_path / "absent.db")
-    assert r.returncode == 1
-    assert any(c["level"] == "fail" and "COMPOSE_PROFILES" in c["msg"] for c in d["checks"])
 
 
 def test_doctor_missing_env_is_hard_failure(tmp_path):
@@ -67,7 +61,7 @@ def make_override_db(path, rows):
 
 
 def test_doctor_warns_on_stale_overrides_and_clear_removes_them(tmp_path):
-    envf = anna_env(tmp_path)
+    envf = fresh_env(tmp_path)
     db = tmp_path / "gamentic.db"
     make_override_db(db, [("text_api_key", "sk-oldsecret"), ("text_provider", "openai")])
 

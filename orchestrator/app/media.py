@@ -7,7 +7,7 @@ wire behavior is byte-identical to what this module always did.
 
 Every call is wrapped so a missing/slow/erroring service NEVER breaks the game:
 on any failure these return empty/None and the game stays fully playable text-only.
-Gated by IMAGE_ENABLED / voice_enabled() (VOICE_ENABLED, and quiet in Anna mode).
+Gated by IMAGE_ENABLED / voice_enabled().
 """
 import base64
 import threading

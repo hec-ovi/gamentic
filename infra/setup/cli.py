@@ -5,7 +5,7 @@ Both faces (this CLI and setup.html) render that schema and write the same .env;
 neither carries settings of its own. Stdlib only, Python 3.10+.
 
   cli.py                      interactive wizard
-  cli.py --mode anna --yes    non-interactive (agents drive this)
+  cli.py --mode local --yes   non-interactive (agents drive this)
   cli.py doctor               validate the current .env + this host
 """
 
@@ -387,8 +387,6 @@ def finish(schema, mode, values, unmanaged, env_path, args):
     else:
         print(f"\nWrote {env_path}")
     print(schema["doneMessage"])
-    if mode == "anna":
-        print("Anna mode: after the stack is up, sign in once at http://localhost:19001 (the agent's Web UI).")
 
 
 def run_setup(args):
@@ -475,14 +473,6 @@ def run_doctor(argv):
     def val(key):
         return env.get(key, smap[key]["default"])
 
-    anna = env.get("ANNA")
-    if anna in ("true", "false"):
-        ok(f"ANNA={anna} (literal)")
-    else:
-        found = repr(anna) if anna is not None else "missing"
-        fa(f"ANNA must be the LITERAL true or false (found: {found}); compose profiles match "
-           "only the literals, so anything else starts NO inference services. Fix: ./gamentic-setup")
-
     want = next(c["value"] for c in schema["constants"] if c["key"] == "COMPOSE_PROFILES")
     got = env.get("COMPOSE_PROFILES")
     if got == want:
@@ -505,7 +495,8 @@ def run_doctor(argv):
             else:
                 fa(f"'{' '.join(cmd)}' failed; install or fix Docker (compose v2 plugin required)")
 
-    if anna == "false":
+    models_check = env.get("TEXT_BASE_URL", "") == ""   # external text server: model files optional
+    if models_check:
         models = Path(val("MODELS_DIR"))
         if models.is_dir():
             ok(f"MODELS_DIR {models} exists")
@@ -525,8 +516,7 @@ def run_doctor(argv):
         if Path("/dev/dri").exists():
             ok("/dev/dri present (GPU render nodes)")
         else:
-            fa("/dev/dri missing: no GPU render nodes, the local stack cannot run. "
-               "No GPU? Use anna mode: ./gamentic-setup --mode anna")
+            fa("/dev/dri missing: no GPU render nodes, the local stack cannot run.")
         if Path("/dev/kfd").exists():
             ok("/dev/kfd present (ROCm compute)")
         else:

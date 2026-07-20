@@ -500,14 +500,6 @@
           'Saved. Make sure the file is named exactly ".env" and sits in the gamentic folder ' +
           "(the one that contains docker-compose.yml)."));
       }
-      if (state.mode === "anna") {
-        var m = null;
-        schema.modes.forEach(function (x) { if (x.id === "anna") m = x; });
-        if (m) {
-          panel.appendChild(el("h3", "setup-h3", m.label));
-          panel.appendChild(el("p", "setup-done-note", m.help));
-        }
-      }
       return panel;
     }
 

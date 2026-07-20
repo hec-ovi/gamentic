@@ -7,7 +7,6 @@ Every distinct LLM call in Gamentic, plus the agentic tools that bridge to anoth
 
 **Lanes:** `turn agents` · `skill agents` · `creation agents` · `background folds` · `backend`
 
-**Orientation.** One player turn: the **interpreter** structures free text → the **narrator** writes prose and proposes tools → `cue_character` runs each **character agent** (own witnessed context) → if tools changed state but no prose, **narrator-resolve** voices it. **Skills** (image-prompt, explain) load for one call. **Creation** agents build the world; **folds** compress memory in the background. With ANNA=true every one of these runs on the **Anna backend**.
 
 ## Nodes
 
@@ -20,7 +19,7 @@ The main per-turn agent: reads full world state + recap + lore + the player's co
 - **Writes / mutates:** beats (narration); all game/scene/character/quest/item state via apply_tool; g.last_tool_errors (still-invalid calls), g.context_used (global meter), scene.description seed if unfurnished
 - **Owned by (code):** engine/turn.py: run_turn (llm.chat at turn.py:477); prompts.py: build_narrator_messages; tools/__init__.py: narrator_tools, apply_tool
 - **Key point:** Never voices a character: it must cue_character and stop. tool_choice='auto', NARRATOR_TEMPERATURE, scaffold + cast-name stop sequences, optional thinking.
-- **IN:** `interpreter` (segments -> composed action); `annaBackend` (is the text provider for every agent)
+- **IN:** `interpreter` (segments -> composed action)
 - **OUT:** `characterPublic` (cue_character (agentic tool bridge)); `characterPublic` (spawn_character -> reaction enqueue); `narratorResolve` (dead-air -> resolve pass); `imagePromptWriter` (show_image / LOOK -> image prompt); `characterPrivate` (landed give -> forced private reply); `characterPrivate` (player whisper -> private exchange); `gameSummaryFold` (after turn -> fold old chapters)
 
 <details><summary>JSON shape</summary>
@@ -511,64 +510,6 @@ Background fold (beside the game recap): folds what each ALIVE character WITNESS
 ```
 </details>
 
-### ANNA Backend Agent — `annaBackend`  ·  _backend_
-
-When ANNA=true the text backend itself IS an agent: the vendor Anna copilot CLI runs in its own container, and anna-api flattens every orchestrator chat stack into ONE copilot ask, wraps tools in a JSON contract, parses tool_calls back out, and applies stops/usage client-side, so every Gamentic agent above runs ON the Anna agent.
-
-- **Reads / inputs:** anna-api main.py: POST /v1/chat/completions (messages + tools); wire.build_prompt: flatten_messages (labeled transcript) + tools_instruction (loose-args JSON contract from docs/anna/05-sampling-llm.md); agent.py AgentClient.ask -> POST {agent}/api/copilot/ask SSE; session minted from the Web-UI refresh token on the shared anna-data volume
-- **Generates / outputs:** OpenAI chat.completion: {message:{content, tool_calls}, finish_reason, usage} via wire.parse_reply + wire.chat_response; 501 on /v1/images/* by default (game degrades text-only)
-- **Writes / mutates:** no game DB; it is the text inference provider. Replaces llm.chat's endpoint via providers.resolve('text') -> ANNA_BASE_URL
-- **Owned by (code):** infra/anna-api/app/main.py: chat_completions (:66); infra/anna-api/app/wire.py: build_prompt/parse_reply/apply_stops; infra/anna-api/app/agent.py: AgentClient.ask/_ask_once; docker-compose.yml: anna-agent + anna-api services (ANNA=true profile)
-- **Key point:** Stateless ask per call (conversation_id=None); a reply that fails the {prose, tool_calls} contract degrades to prose-only, which the engine tolerates. orchestrator code is unchanged: resolve('text') just points at anna-api.
-- **IN:** _none_
-- **OUT:** `narrator` (is the text provider for every agent)
-
-<details><summary>JSON shape</summary>
-
-```json
-{
-  "in": {
-    "messages": [],
-    "tools": [],
-    "stop": [],
-    "model": "anna-copilot"
-  },
-  "copilotAsk": {
-    "message": "<flattened transcript + [RESPONSE FORMAT] tools contract + [ASSISTANT]>",
-    "conversation_id": null,
-    "stream": true
-  },
-  "out": {
-    "id": "chatcmpl-anna",
-    "choices": [
-      {
-        "message": {
-          "role": "assistant",
-          "content": "prose",
-          "tool_calls": [
-            {
-              "id": "call_0",
-              "type": "function",
-              "function": {
-                "name": "",
-                "arguments": "{}"
-              }
-            }
-          ]
-        },
-        "finish_reason": "tool_calls|stop"
-      }
-    ],
-    "usage": {
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0
-    }
-  }
-}
-```
-</details>
-
 ## Edges (IN → OUT)
 
 | from | to | kind | label |
@@ -587,4 +528,3 @@ When ANNA=true the text backend itself IS an agent: the vendor Anna copilot CLI 
 | `artDirector` | `imagePromptWriter` | feed | direction overrides templates |
 | `narrator` | `gameSummaryFold` | fold | after turn -> fold old chapters |
 | `characterPublic` | `charSummaryFold` | fold | after turn -> fold witnessed beats |
-| `annaBackend` | `narrator` | feed | is the text provider for every agent |

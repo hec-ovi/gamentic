@@ -26,7 +26,7 @@ Screencast*.mp4
 # NOTE: orchestrator/prompts/*.md are runtime game code, NOT docs - they stay tracked.
 # The root README.md IS public (the project's face); every other README/doc stays private.
 # EXCEPTION: the public docs site (GitHub Pages) - the interactive atlases, the hub, and
-# the agent-ready guide. Everything else under docs/ (HANDOFF, shared, anna, lane folders,
+# the agent-ready guide. Everything else under docs/ (HANDOFF, shared, lane folders,
 # feedback) stays private. Ignore docs/ contents, then re-include only the site.
 docs/*
 !docs/.nojekyll

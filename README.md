@@ -81,9 +81,8 @@ Both faces ask the identical questions from one shared schema
 (`infra/setup/schema.js`), write a complete `.env`, and never send your keys
 anywhere (the HTML page makes zero network calls). `./gamentic-setup doctor`
 checks the host first: docker, GPU nodes, model files, free ports, config
-pitfalls. `./up.sh` reads `ANNA` from `.env` and starts the matching stack (the
-full local one by default, or the four-container Anna stack below), cleaning up
-the other mode's leftovers on a flip. `./up.sh down` stops everything.
+pitfalls. `./up.sh` starts the full local stack; `./up.sh harness` swaps only the
+text model for an external server. `./up.sh down` stops everything.
 
 | Service | URL | Tech stack |
 |---|---|---|
@@ -100,7 +99,7 @@ Open the frontend, create a world by chatting with the story creator, and play.
 gamentic/
   orchestrator/   game brain (FastAPI + SQLite, narrator + character agents, tools)
   frontend/       vanilla HTML / CSS / JS client
-  infra/          ComfyUI + image-api, the Anna agent + its adapter, the setup faces
+  infra/          ComfyUI + image-api, the setup faces
   voice-api/      Maya1 TTS service (synthesis + streaming; voice identity lives in the game DB)
   setup.html      the double-click setup face; gamentic-setup is the CLI one
 ```
@@ -142,47 +141,13 @@ implemented against their published schemas and pinned by contract tests, but no
 verified against the paid live services. If you hold a key, your first played turn is
 the verification, and reports are welcome.
 
-### Anna mode (no local inference, no GPU)
+### Cloud play: gamentic-anna
 
-One boolean on top of the provider layer runs the game with zero local
-inference: no Vulkan text model, no ComfyUI, no voice containers. Set
-`ANNA=true` in `.env` and run `./up.sh` (or `docker compose up -d --build`).
-That starts exactly four containers: the orchestrator, the frontend, the
-**Anna agent** (the vendor's CLI agent in a container, `infra/anna-agent/`) and
-**anna-api** (`infra/anna-api/`, a thin adapter giving the agent an
-OpenAI-compatible face: `/v1/chat/completions` in, copilot ask out, tool calls
-wrapped in a JSON contract). Sign the agent in once at
-`http://localhost:19001`; the sign-in persists on a named volume.
-
-Text is served through the agent. Image degrades to text-only play (the agent's
-local API has no image endpoint; the orchestrator absorbs the failure by
-design). Voice is off. Point `ANNA_BASE_URL` at a real OpenAI-compatible gateway
-(with `ANNA_API_KEY` and model names) and the agent container is bypassed with no
-other change.
-
-```bash
-ANNA=true                   # flip, then ./up.sh
-ANNA_BASE_URL=              # blank = the in-stack anna-api adapter
-ANNA_TEXT_MODEL=            # blank = anna-copilot; image blank = gpt-image-2
-```
-
-The setup faces set this boolean for you (pick the Anna mode card). Flip
-`ANNA=false` and the same command brings the full local stack back, byte for
-byte; turning Anna mode on never removes anything from the local stack.
-
-Three things to get right when you flip it:
-
-- `ANNA` takes the literal `true` or `false` only. The app reads anything
-  non-`false` as on, but compose profiles match only the literals, so `ANNA=1`
-  would start no inference services at all; `./up.sh` refuses such values with the
-  reason.
-- `./up.sh` handles mode flips on a running stack (it stops the other mode's
-  leftovers first). With raw compose, `docker compose down` BEFORE flipping
-  `ANNA`, then `up -d`: down only sees the active profile, so flipping first
-  leaves the old containers running.
-- Carrying an `.env` from before Anna mode existed? Copy the new Anna block from
-  `.env.example`: compose refuses to start without the `COMPOSE_PROFILES` line and
-  says exactly what to add.
+Gamentic won FIRST PLACE at the Anna hackathon running fully on Anna's cloud
+agent, zero local inference. That mode now lives in its own sibling repo,
+[gamentic-anna](https://github.com/hec-ovi/gamentic-anna): the Anna agent
+container, its OpenAI-compatible adapter, and the one-boolean stack that plays
+the game with no GPU at all. This repo stays fully local.
 
 ## Status and limits
 

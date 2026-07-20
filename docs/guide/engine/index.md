@@ -255,15 +255,10 @@ The stateful generate_* background orchestrators: each opens its own DB conns ar
 
 ### Providers layer — `providers`  ·  _providers_
 
-Per-modality provider resolution at call time (env -> default): picks local vs cloud vs Anna for text/image/audio and returns a ProviderConfig (base_url, key, model, capabilities) plus the concrete dialect client.
 
-- **Reads / inputs:** env vars TEXT_*/AUDIO_*/IMAGE_* and aliases LLM_BASE_URL/LLM_MODEL; ANNA / ANNA_API_KEY / ANNA_BASE_URL / ANNA_TEXT_MODEL / ANNA_IMAGE_MODEL; settings.LLM_BASE_URL / IMAGE_API_URL / VOICE_API_URL (local defaults)
 - **Generates / outputs:** ProviderConfig per modality; ImageProvider / AudioProvider instances (comfy|openai|gemini|fal ; local|openai|elevenlabs|fal)
 - **Writes / mutates:** nothing (pure resolution)
-- **Owned by (code):** providers/base.py: resolve / anna_config / anna_enabled / voice_enabled / _anna_resolve / fal_queue_run; providers/image.py: get_provider + ComfyProvider/OpenAIProvider/GeminiProvider/FalProvider; providers/audio.py: get_provider + LocalProvider/OpenAIProvider/ElevenLabsProvider/FalProvider
-- **Key point:** Anna mode is one boolean: when ANNA is truthy (anything but unset/empty/'false'), text+image resolve wholesale to the Anna OpenAI-dialect gateway and voice_enabled() returns False (Anna has no TTS). Defaults reproduce the local stack byte-for-byte.
-- **IN:** `llmText` (providers.resolve('text')); `imageApi` (providers.resolve('image') -> get_provider); `voiceApi` (providers.resolve('audio') -> get_provider); `annaApi` (uses Anna ProviderConfig)
-- **OUT:** `llmText` (ANNA on -> text gateway)
+- **IN:** `llmText` (providers.resolve('text')); `imageApi` (providers.resolve('image') -> get_provider); `voiceApi` (providers.resolve('audio') -> get_provider)
 
 <details><summary>JSON shape</summary>
 
@@ -363,9 +358,8 @@ Thin httpx client for the llama.cpp OpenAI-compatible /chat/completions endpoint
 - **Generates / outputs:** LLMReply {content, tool_calls[ToolCall], finish_reason, usage{prompt_tokens,...}}
 - **Writes / mutates:** nothing locally; POSTs to the text service
 - **Owned by (code):** llm.py: chat (builds payload, posts {base_url}/chat/completions, parses tool_calls, one connect-retry)
-- **Key point:** Local default base_url = http://gamentic-llm-text:8080/v1 (host :8080), deployed model gemma-4-26b-a4b-heretic (compose sets LLM_MODEL=${LLM_ALIAS}; gemma-4-12b-heretic is only the bare config.py fallback). stop list sliced to cfg.max_stops; thinking only when cfg.supports_thinking (local). Bearer header only when api_key set (cloud/Anna).
-- **IN:** `turnEngine` (llm.chat(messages, tools, stop, thinking)); `providers` (ANNA on -> text gateway)
-- **OUT:** `providers` (providers.resolve('text')); `annaApi` (POST /v1/chat/completions (Anna mode))
+- **IN:** `turnEngine` (llm.chat(messages, tools, stop, thinking))
+- **OUT:** `providers` (providers.resolve('text'))
 
 <details><summary>JSON shape</summary>
 
@@ -429,7 +423,6 @@ Best-effort HTTP client to the active audio provider (default local = the Maya1 
 - **Generates / outputs:** (audio bytes, content_type) returned as a Response; wav-cache ownership tags (game_id -> manifest) in local mode
 - **Writes / mutates:** nothing locally; purges/cleanup hit voice-api (purge_game_audio, purge_all_audio, delete/register character voice)
 - **Owned by (code):** main.py: audio_speak POST /audio/speak; media.py: list_voice_ids / register_character_voice / delete_character_voice / purge_game_audio / purge_all_audio; providers/audio.py: LocalProvider.speak POST /voice/speak then GET audio_url
-- **Key point:** voice-api listens on :8080 IN-CONTAINER (host maps 9002->8080), so the orchestrator uses VOICE_API_URL=http://gamentic-voice-api:8080. Anna mode forces voice off via voice_enabled(). Browser plays via same-origin /voice nginx proxy, not :9002 directly.
 - **IN:** `restApi` (POST /audio/speak -> provider.speak)
 - **OUT:** `providers` (providers.resolve('audio') -> get_provider)
 
@@ -446,43 +439,6 @@ Best-effort HTTP client to the active audio provider (default local = the Maya1 
   },
   "speak_resp": {
     "audio_url": "/voice/file/xyz.wav"
-  }
-}
-```
-</details>
-
-### anna-api backend — `annaApi`  ·  _service_
-
-A thin in-stack adapter (:9100) giving the Anna copilot agent an OpenAI-compatible face so the orchestrator's Anna mode uses it as the text backend with zero orchestrator code changes; images degrade to a clean 501.
-
-- **Reads / inputs:** request body {messages, tools, model, stop} on POST /v1/chat/completions; config.AGENT_URL (http://gamentic-anna-agent:19001), MODEL_ID (anna-copilot); ANNA_IMAGE_VIA_COPILOT flag
-- **Generates / outputs:** OpenAI chat-completions response {choices, usage} (wire.chat_response); /v1/models list; 501 on /v1/images/* by default
-- **Writes / mutates:** nothing (no GPU, no state); proxies to the Anna agent copilot API
-- **Owned by (code):** infra/anna-api/app/main.py: chat_completions / models / images_generations / images_edits / health; infra/anna-api/app/wire.py: build_prompt / parse_reply / chat_response; infra/anna-api/app/agent.py: AgentClient.ask
-- **Key point:** Reached only when ANNA is on: providers._anna_resolve points text at ANNA_BASE_URL (default http://gamentic-anna-api:9100) with the openai dialect. It flattens messages+tools to one copilot ask and parses tool calls back out; images answer 501 so the game stays text-only.
-- **IN:** `llmText` (POST /v1/chat/completions (Anna mode))
-- **OUT:** `providers` (uses Anna ProviderConfig)
-
-<details><summary>JSON shape</summary>
-
-```json
-{
-  "base_url": "http://gamentic-anna-api:9100",
-  "ANNA_BASE_URL_default": "http://gamentic-anna-api:9100",
-  "agent_url": "http://gamentic-anna-agent:19001",
-  "model_id": "anna-copilot",
-  "chat_resp": {
-    "choices": [
-      {
-        "message": {
-          "content": "...",
-          "tool_calls": []
-        }
-      }
-    ],
-    "usage": {
-      "prompt_tokens": 0
-    }
   }
 }
 ```
@@ -513,6 +469,3 @@ A thin in-stack adapter (:9100) giving the Anna copilot agent an OpenAI-compatib
 | `llmText` | `providers` | call | providers.resolve('text') |
 | `imageApi` | `providers` | call | providers.resolve('image') -> get_provider |
 | `voiceApi` | `providers` | call | providers.resolve('audio') -> get_provider |
-| `providers` | `llmText` | read | ANNA on -> text gateway |
-| `llmText` | `annaApi` | call | POST /v1/chat/completions (Anna mode) |
-| `annaApi` | `providers` | read | uses Anna ProviderConfig |
