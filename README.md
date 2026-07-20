@@ -141,13 +141,10 @@ implemented against their published schemas and pinned by contract tests, but no
 verified against the paid live services. If you hold a key, your first played turn is
 the verification, and reports are welcome.
 
-### Cloud play: gamentic-anna
+### Anna version
 
-Gamentic won FIRST PLACE at the Anna hackathon running fully on Anna's cloud
-agent, zero local inference. That mode now lives in its own sibling repo,
-[gamentic-anna](https://github.com/hec-ovi/gamentic-anna): the Anna agent
-container, its OpenAI-compatible adapter, and the one-boolean stack that plays
-the game with no GPU at all. This repo stays fully local.
+Gamentic won 1st place at the Anna hackathon. That version lives at
+[gamentic-anna](https://github.com/hec-ovi/gamentic-anna).
 
 ## Status and limits
 
