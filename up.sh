@@ -5,6 +5,13 @@
 #                     ANNA=false  -> full local stack (GPU inference containers)
 #                     ANNA=true   -> orchestrator + frontend + anna-agent + anna-api
 #                                    (nothing GPU-shaped is built, pulled or started)
+#   ./up.sh harness [llm-url] [model]
+#                   the WHOLE stack except llm-text: orchestrator, frontend,
+#                   ComfyUI + image-api, Maya voice + voice-api all run; only
+#                   text inference comes from an external OpenAI-compatible
+#                   server (default http://host.docker.internal:8090/v1 = the
+#                   llama-vulkan-strix stack on this box). Model defaults to
+#                   LLM_ALIAS from .env.
 #   ./up.sh down    stop and remove the whole stack, whichever mode is running
 #
 # The compose profile trick does the service selection; this script adds the two
@@ -35,6 +42,31 @@ ALL_PROFILES="local-inference-anna-false,local-inference-anna-true,anna-agent-an
 
 if [ "${1:-}" = "down" ]; then
     COMPOSE_PROFILES="$ALL_PROFILES" docker compose down
+    exit 0
+fi
+
+if [ "${1:-}" = "harness" ]; then
+    url="${2:-http://host.docker.internal:8090/v1}"
+    echo "==> harness mode: the whole stack except llm-text; text inference at $url"
+    # reachability hint, not a gate: 8090 maps to localhost on the host side
+    probe=$(printf '%s' "$url" | sed 's|host.docker.internal|localhost|')
+    curl -fsS -m 5 "$probe/models" >/dev/null 2>&1 \
+        || echo "WARNING: $probe is not answering - start the external llama server first (llama-vulkan-strix: docker compose up -d) or text turns will fail."
+    echo "==> stopping the text-inference/anna leftovers"
+    COMPOSE_PROFILES="$ALL_PROFILES" docker compose rm -sf llm-text anna-agent anna-api >/dev/null 2>&1 || true
+    # The "harness" profile marks every service except llm-text (and the anna pair):
+    # the text container drops out of the project, so the orchestrator's optional
+    # llm-text health wait is skipped and text turns route to the external server.
+    export COMPOSE_PROFILES=harness
+    export TEXT_PROVIDER=local TEXT_BASE_URL="$url"
+    [ -n "${3:-}" ] && export TEXT_MODEL="$3"
+    docker compose up -d --build
+    echo
+    docker compose ps
+    echo
+    echo "frontend     http://localhost:5173"
+    echo "orchestrator http://localhost:8000"
+    echo "text model   $url (external llama server; images + voice run locally)"
     exit 0
 fi
 

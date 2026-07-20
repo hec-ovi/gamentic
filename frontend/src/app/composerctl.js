@@ -55,7 +55,7 @@ export function currentSegment(scope) {
   if (!text) return null;
   const pm = scope === "pm" ? g.profile : null;
   const channel = pm ? { kind: "whisper", target: pm.name } : null;
-  const mode = (pm || g.composer || {}).mode || "do";
+  const mode = (pm || g.composer || {}).mode || "say";
   clearComposer(input);
   return buildSegment({ mode, text, refs, channel });
 }
@@ -85,7 +85,7 @@ export function unstackSegment(holder, index) {
 export function executeComposer() {
   const g = state.active;
   if (!g || g.generating) return;
-  const cmp = g.composer || (g.composer = { mode: "do", stack: [] });
+  const cmp = g.composer || (g.composer = { mode: "say", stack: [] });
   const input = root.querySelector("#cmpInput");
   const { text, refs } = serializeComposer(input);
   clearComposer(input);

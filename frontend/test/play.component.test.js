@@ -73,11 +73,31 @@ test("a free-text Do turn posts a plain action and appends the new narration bea
     }),
   );
   await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /^do$/i }));
   await u.type(cmpBox(), "open the door");
   await u.click(screen.getByRole("button", { name: /send/i }));
 
   await waitFor(() => expect(screen.getByText("The door creaks open.")).toBeTruthy());
   expect(body).toEqual({ action: "open the door" });
+});
+
+test("the composer opens in Say mode, ordered say / do / look (owner request)", async () => {
+  const u = user();
+  let body;
+  server.use(
+    http.post(`${API}/games/:id/action`, async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ beats: [makeBeat({ text: "ok" })], state: makeState() });
+    }),
+  );
+  await gotoPlay(u);
+  const order = [...document.querySelectorAll('.action-form [data-act="cmp-mode"]')].map((b) => b.textContent.trim());
+  expect(order).toEqual(["Say", "Do", "Look"]);
+  // no mode click: the default line IS speech
+  await u.type(screen.getByRole("textbox", { name: /what you say/i }), "hello there");
+  await u.click(screen.getByRole("button", { name: /send/i }));
+  await waitFor(() => expect(body).toBeTruthy());
+  expect(body.segments).toEqual([{ type: "say", text: "hello there" }]);
 });
 
 test("Say mode sends a say segment instead of a plain action", async () => {
@@ -168,6 +188,7 @@ test("tagging an entity chips it into the line and sends segments with refs", as
     }),
   );
   await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /^do$/i }));
   await u.click(screen.getByRole("button", { name: /tag a character or item/i }));
   // the tagger lists the present character and the player's item
   const pop = document.querySelector(".tagger-pop");
@@ -1142,7 +1163,8 @@ test("the wish rides /continue and /action, then clears; it is never echoed as a
   expect(within(document.querySelector("#storyStream")).queryByText(/let someone new arrive/)).toBeNull();
   await waitFor(composerLive);
 
-  // wish + a normal action send
+  // wish + a normal action send (Do mode: the plain freeform path)
+  await u.click(screen.getByRole("button", { name: /^do$/i }));
   await u.type(screen.getByLabelText(/wish to happen next/i), "rain harder");
   await u.type(screen.getByRole("textbox", { name: /what you do/i }), "open the door");
   await u.click(screen.getByRole("button", { name: /send/i }));
@@ -1806,6 +1828,7 @@ test("focus returns to the main composer when a turn resolves", async () => {
     }),
   );
   await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /^do$/i }));
   await u.type(cmpBox(), "open the door");
   await u.click(screen.getByRole("button", { name: /^send$/i })); // focus lands on the button
   await waitFor(composerLive, { timeout: 4000 });

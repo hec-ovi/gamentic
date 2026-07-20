@@ -1,6 +1,9 @@
-"""FastAPI app: the orchestrator REST surface (docs/SPECS.md section 7).
+"""FastAPI app: the orchestrator REST surface.
 
 Plain REST, sequential. One POST /games/{id}/action returns a fully-resolved turn.
+While it resolves, the per-game SSE stream mirrors the work live (engine/live.py):
+phases, beats as they are stored, prose as it decodes. POST /games/{id}/stop
+cancels the turn whole: the transaction rolls back as if the turn was never sent.
 """
 import asyncio
 import logging
@@ -13,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from . import db, repo, engine, creator, integrate, media, prompts, llm, constants, transfer
+from .engine import live
 from .integrate import events as game_events
 from .config import settings
 from .providers import resolve, voice_enabled
@@ -238,31 +242,44 @@ def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
                    segments=None, continue_story: bool = False,
                    wish: str | None = None) -> dict:
     """Run one full turn and schedule its background art (shared by action/continue)."""
-    with db.get_conn() as conn:
-        if not repo.get_game(conn, gid):
-            raise HTTPException(404, "game not found")
-        echo = None
-        if text and not segments:
-            # typed freeform: the agentic interpreter structures it (say/do/attack/give/
-            # whisper with targets) so it gets routing + adjudication; raw text on failure
-            segments = engine.interpret_action(conn, gid, text)
-            if segments:
-                echo = text  # the player beat keeps THEIR exact words, never a paraphrase
-                text = ""    # the segments ARE the action now (else a whisper-only
-                             # message would still open a public turn with the raw text)
-        result = engine.run_turn(conn, gid, action_text=text, segments=segments,
-                                 continue_story=continue_story, wish=wish, echo_text=echo)
-        if result.get("spawned"):
-            integrate.assign_voices_for_game(conn, gid)      # voice for the newcomer (inline)
-        scene = repo.current_scene(conn, gid)
-        scene_id = scene["id"]
-        need_scene_art = settings.IMAGE_ENABLED and not scene["image_url"]
-        # portrait self-heal: a crashed background job leaves characters without their
-        # reference set; any later turn notices and re-schedules (idempotent: done
-        # characters are skipped, files on disk are relinked, not re-rendered)
-        need_portraits = settings.IMAGE_ENABLED and any(
-            c["alive"] and not repo.character_has_images(c)
-            for c in repo.get_characters(conn, gid))
+    live.begin_turn(gid)   # a stale stop from the last turn must not kill this one
+    try:
+        with db.get_conn() as conn:
+            if not repo.get_game(conn, gid):
+                raise HTTPException(404, "game not found")
+            echo = None
+            if text and not segments:
+                # typed freeform: the agentic interpreter structures it (say/do/attack/
+                # give/whisper with targets) so it gets routing + adjudication; raw text
+                # on failure
+                live.phase(gid, "interpret")
+                segments = engine.interpret_action(conn, gid, text)
+                if segments:
+                    echo = text  # the player beat keeps THEIR exact words, never a paraphrase
+                    text = ""    # the segments ARE the action now (else a whisper-only
+                                 # message would still open a public turn with the raw text)
+            result = engine.run_turn(conn, gid, action_text=text, segments=segments,
+                                     continue_story=continue_story, wish=wish, echo_text=echo)
+            if result.get("spawned"):
+                integrate.assign_voices_for_game(conn, gid)      # voice for the newcomer (inline)
+            scene = repo.current_scene(conn, gid)
+            scene_id = scene["id"]
+            need_scene_art = settings.IMAGE_ENABLED and not scene["image_url"]
+            # portrait self-heal: a crashed background job leaves characters without their
+            # reference set; any later turn notices and re-schedules (idempotent: done
+            # characters are skipped, files on disk are relinked, not re-rendered)
+            need_portraits = settings.IMAGE_ENABLED and any(
+                c["alive"] and not repo.character_has_images(c)
+                for c in repo.get_characters(conn, gid))
+    except llm.LLMCancelled:
+        # The stop cancelled the WHOLE turn: get_conn rolled the transaction back, so
+        # the turn never happened - no beats, no player echo, no clock tick, no art.
+        # The client restores the typed words to the composer; state is handed back
+        # fresh so the screen cannot drift.
+        with db.get_conn() as conn:
+            state = repo.game_state(conn, gid)
+        live.publish_done(gid, None, stopped=True)
+        return {"beats": [], "state": state, "stopped": True}
     if settings.IMAGE_ENABLED and (result.get("spawned") or need_portraits):
         background_tasks.add_task(integrate.generate_images_for_game, gid)  # portraits (background)
     if need_scene_art:
@@ -293,7 +310,25 @@ def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
         background_tasks.add_task(engine.maybe_update_summary, gid)  # fold old chapters
     if settings.CHAR_SUMMARY_ENABLED:
         background_tasks.add_task(engine.maybe_update_character_summaries, gid)  # per-character folds
+    # The `with` block above has exited: the turn is COMMITTED. Only now may the live
+    # feed declare it durable (live_beat events during the turn were provisional).
+    beats = result.get("beats") or []
+    live.publish_done(gid, beats[-1]["turn_index"] if beats else None, stopped=False)
     return result
+
+
+@app.post("/games/{gid}/stop")
+def stop_turn(gid: str):
+    """Cancel the running turn. Sets the per-game stop flag: the in-flight LLM call is
+    cancelled and the whole turn ROLLS BACK - no beats, no player echo, no clock tick,
+    as if never sent (the pending POST returns beats=[] + stopped=true and the client
+    restores the typed words). Idempotent; a stop with no turn running is cleared by
+    the next turn's begin."""
+    with db.get_conn() as conn:
+        if not repo.get_game(conn, gid):
+            raise HTTPException(404, "game not found")
+    live.request_stop(gid)
+    return {"stopping": True}
 
 
 @app.post("/games/{gid}/action", response_model=TurnOut)

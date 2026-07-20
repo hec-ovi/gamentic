@@ -5,6 +5,7 @@ import { mapBeats, mapGameState } from "../adapters.js";
 import { diffState } from "../transitions.js";
 import { api, root, state } from "./ctx.js";
 import { applyTransitions, showToast } from "./cues.js";
+import { clearLiveStreams, discardLiveTurn } from "./livefeed.js";
 import { pullBeats } from "./mediastream.js";
 import { refreshProfile } from "./profilectl.js";
 import { startReveal } from "./reveal.js";
@@ -108,6 +109,21 @@ export async function continueStory() {
   await resolveTurn(g, () => api.continueStory(g.id, wish), { wish });
 }
 
+// The stop button: interrupt the running generation. The turn's POST returns
+// early with everything already resolved (stopped: true); nothing rolls back.
+export async function stopTurn() {
+  const g = state.active;
+  if (!g || !g.generating || g.stopping) return;
+  g.stopping = true;
+  render();
+  try {
+    await api.stopTurn(g.id);
+  } catch {
+    g.stopping = false; // the button returns; the turn keeps running
+    render();
+  }
+}
+
 // The wish is a hope whispered to the storyteller, never an action: it rides
 // along on the next send (action or continue) and clears after each send.
 export function captureWish(g) {
@@ -127,13 +143,16 @@ export function captureWish(g) {
 export async function resolveTurn(g, send, { look = false, echo = null, restore = null, wish = null, via = null } = {}) {
   g.generating = true;
   g.skipReveal = true; // fast-forward any reveal still running from last turn
+  g.liveVia = via; // live beats streamed mid-turn mirror to the same panel
   if (echo && echo.length) g.beats = [...g.beats, ...echo];
   render();
   let failed = false;
+  let stopped = false;
 
   try {
     const turn = await send();
     g.beats = g.beats.filter((b) => !b.pending); // the canonical echoes replace ours
+    clearLiveStreams(g); // stream bubbles resolved into real beats by now
     const prevState = g.state;
     g.state = mapGameState(turn.state);
     g.changes = diffState(prevState, g.state); // what transitioned this turn
@@ -144,23 +163,36 @@ export async function resolveTurn(g, send, { look = false, echo = null, restore 
     g.beats = [...g.beats, ...newBeats];
     g.lastVia = via; // late image beats from this turn mirror to the same panel
     g.lastTurnIndex = lastTurnIndexOf(g.beats, g.lastTurnIndex);
-    g.revealQueue = newBeats.map((b) => b.id); // staged reveal, in seq order
+    g.revealQueue = newBeats.map((b) => b.id); // staged reveal ONLY for what the
+    // live feed didn't already show (SSE-less clients get the full staged pass)
     g.skipReveal = false;
     // a look turn may earn an image; it renders in the background and lands as
     // a late image beat (the watcher below catches it)
     g.pendingView = Boolean(look && g.state.imagesEnabled);
+    if (turn.stopped) {
+      // the whole turn rolled back server-side: nothing happened, nothing is
+      // owed - take back what streamed and hand the words back to the composer
+      stopped = true;
+      discardLiveTurn(g);
+      showToast("Stopped. Nothing happened; your words are back below.");
+    }
     state.backendOnline = true;
   } catch (err) {
     failed = true;
     g.beats = g.beats.filter((b) => !b.pending); // the turn never happened
+    discardLiveTurn(g); // ...and neither did its live-streamed content
     if (wish) g.wish = wish; // the wish returns to its line too
     state.backendError = err.message || "Turn failed";
     if (err.status === 0) state.backendOnline = false;
     showToast(err.message || "The backend did not accept that action.");
   } finally {
     g.generating = false;
+    g.stopping = false;
+    g.livePhase = null;
+    g.liveTurnIds = new Set();
+    g.liveVia = null;
     render();
-    if (failed) restoreInput(g, restore);
+    if (failed || stopped) restoreInput(g, restore);
     applyTransitions(g); // notices + one-shot flashes from the diff
     startReveal(g);
     if (g.pullOwed) {

@@ -80,7 +80,7 @@ export async function openGame(gameId) {
     profile: null, // { charId, name, mode, stack, loading, data, error } - the full-screen character view
     give: null,
     inspect: null, // { kind, key|beatId, asking, answer } - the tap-to-inspect modal
-    composer: { mode: "do", stack: [] },
+    composer: { mode: "say", stack: [] },
     wish: "", // the optional "what do you wish to happen next?" line
     lastTurnIndex: 0, // high-water mark for GET /beats?since= polling
     pendingView: false, // a look turn's image may still be rendering

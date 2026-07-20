@@ -7,7 +7,7 @@ from collections import deque
 
 from .. import repo, prompts, tools, llm
 from ..config import settings
-from . import parsing
+from . import live, parsing
 
 
 def _display(s: dict, key: str, conn=None, gid: str | None = None, item: bool = False) -> str:
@@ -181,14 +181,20 @@ def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None):
     'the player just gave you <item>' so X always has something to answer."""
     segs: list[tuple[str, str]] = []
     creply = llm.LLMReply(content="")
+    live.phase(gid, "character", actor=ch["name"])
+    live_c = None
     for _ in range(2):
         # one retry: a character occasionally returns nothing usable (live: spoken to,
         # no reply), and a silent addressed character reads as a bug, not a choice
+        if live_c is not None:
+            live_c.done()   # the retry starts a fresh live stream; clear the first
+        live_c = live.LiveCharacter(gid, ch, private_with)
         creply = llm.chat(
             prompts.build_character_messages(conn, gid, ch, settings.CHAR_HISTORY_BEATS,
                                              impulse=impulse),
             tools=tools.CHARACTER_TOOLS, tool_choice="auto",
             temperature=settings.CHARACTER_TEMPERATURE, max_tokens=settings.CHARACTER_MAX_TOKENS,
+            on_delta=live_c.on_delta, cancel=live.stop_event(gid),
         )
         tok = (creply.usage or {}).get("prompt_tokens", 0) or 0
         if tok:
@@ -210,6 +216,8 @@ def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None):
             emotion = "whisper"
         emit(ch["id"], ch["name"], "dialogue" if kind in ("say", "whisper") else "action", txt,
              private_with=seg_private, emotion=emotion)
+    if live_c is not None:
+        live_c.done()   # after the real beats: the swap is gapless on screen
     reactions = []
     # memory marks written as text count exactly like real calls (live: the 26B
     # narrates its tool use - '{piece: "..."}' inside a [do] - instead of calling;
@@ -247,7 +255,10 @@ def interpret_action(conn, gid: str, text: str) -> list[dict] | None:
     try:
         reply = llm.chat(prompts.build_interpret_messages(conn, gid, text),
                          tools=prompts.INTERPRET_TOOL, tool_choice="auto",
-                         temperature=0.2, max_tokens=settings.INTERPRET_MAX_TOKENS)
+                         temperature=0.2, max_tokens=settings.INTERPRET_MAX_TOKENS,
+                         cancel=live.stop_event(gid))
+    except llm.LLMCancelled:
+        raise   # a stop must stop the TURN, not fall back to the raw text
     except Exception:
         return None
     call = next((tc for tc in reply.tool_calls if tc.name == "submit_segments"), None)
@@ -318,7 +329,12 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                           emotion=emotion)
         seq += 1
         new_beats.append(b)
+        live.publish_beat(gid, b)   # live mirror; the POST response stays the record
         return b
+
+    # The stop flag is cleared by live.begin_turn in the route (before the interpreter),
+    # NOT here: a stop landing between the interpreter and this call must still count.
+    stop_ev = live.stop_event(gid)
 
     queue: deque = deque()
     acted: dict[str, int] = {}
@@ -483,6 +499,12 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         # The failed-call note renders exactly once: consumed by the message build above,
         # cleared now; the retry pass below overwrites it with this turn's new list.
         repo.set_last_tool_errors(conn, gid, [])
+        live.phase(gid, "narrator")
+        live_n = live.LiveNarration(gid)
+        # A stop request raises LLMCancelled (here or in any later call this turn) and
+        # it PROPAGATES: the route's catch rolls the whole transaction back, so a
+        # stopped turn never happened - no beats, no echo, no clock tick (owner
+        # 2026-07-20: stop must take the player's own action back too).
         reply = llm.chat(
             messages,
             tools=tools.narrator_tools(adjudicating=bool(pending),
@@ -490,6 +512,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             tool_choice="auto",
             temperature=settings.NARRATOR_TEMPERATURE, max_tokens=settings.NARRATOR_MAX_TOKENS,
             stop=stops or None, thinking=settings.NARRATOR_THINKING,
+            on_delta=live_n.on_delta, cancel=stop_ev,
         )
         track["ctx"] = max(track["ctx"], (reply.usage or {}).get("prompt_tokens", 0) or 0)
 
@@ -611,11 +634,14 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         prose_emotion, prose = parsing._scrub_narration(prose)
         if prose:
             emit("narrator", "Narrator", "narration", prose, emotion=prose_emotion)
+            live_n.done()
         else:
+            live_n.done()
             # No prose, but state changed (move/furnish/pickup) or nothing else will speak:
             # a short resolve pass voices the outcome so the turn is never dead air.
             will_speak = bool(cues) or bool(queue)
             if state_notes or not will_speak:
+                live_r = live.LiveNarration(gid)
                 resolve = llm.chat(
                     prompts.build_narrator_resolve_messages(conn, gid, narrator_action, state_notes),
                     temperature=settings.NARRATOR_TEMPERATURE,
@@ -624,6 +650,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                     # stops above (static review: a screenplay line passed this pass
                     # verbatim because only the main call was stopped)
                     stop=stops or None,
+                    on_delta=live_r.on_delta, cancel=stop_ev,
                 )
                 track["ctx"] = max(track["ctx"], (resolve.usage or {}).get("prompt_tokens", 0) or 0)
                 rprose = parsing.clean_prose(resolve.content)
@@ -632,6 +659,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                 remotion, rtext = parsing._scrub_narration(rprose)
                 if rtext:
                     emit("narrator", "Narrator", "narration", rtext, emotion=remotion)
+                live_r.done()
         for note in state_notes:
             emit("system", None, "system", note)
         for cue in cues[:turn_voices]:
@@ -640,6 +668,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         location = repo.get_player(conn, gid)["location"]
         steps = 0
         while queue and steps < settings.TURN_MAX_ACTOR_STEPS:
+            if stop_ev.is_set():
+                raise llm.LLMCancelled()   # a stop between calls cancels the turn too
             cid = queue.popleft()["id"]
             # a gift receiver answers PRIVATELY below, never in the public cascade: their
             # whole reply this turn is owed to the player alone, so they are pulled out of
@@ -660,6 +690,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         # gift outright so the model always has the moment to answer (mirrors the whisper
         # channel's directed reply). Other characters' public reactions already ran above.
         for cid, item_name in gift_receivers.items():
+            if stop_ev.is_set():
+                raise llm.LLMCancelled()
             ch = repo.get_character(conn, cid)
             if not ch or not ch["alive"] or not ch["present"] or ch["location"] != location:
                 continue
@@ -723,6 +755,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                 emit("player", None, "action",
                      f'you whisper to {row["name"]}: "{text}"', private_with=row["id"])
         if spoke:
+            if stop_ev.is_set():
+                raise llm.LLMCancelled()
             _character_reply(conn, gid, row, emit, private_with=row["id"])
 
     if arrival_at_start:

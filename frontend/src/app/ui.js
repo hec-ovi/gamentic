@@ -15,7 +15,7 @@ import { closeTagger, doExplain, doGive, onCharAction, openInspect, openTagger, 
 import { openProfile, switchProfileTab } from "./profilectl.js";
 import { applyMemorySetting, patchGameSettings, updateSetting } from "./settingsctl.js";
 import { applySpeakStates, speakBeat } from "./speech.js";
-import { continueStory, takeTurn } from "./turns.js";
+import { continueStory, stopTurn, takeTurn } from "./turns.js";
 
 // ---------------------------------------------------------------------------
 // render + event binding
@@ -306,6 +306,9 @@ export function onAction(act, el) {
       break;
     case "continue-story":
       continueStory();
+      break;
+    case "stop-turn":
+      stopTurn(); // deliberately NOT in MUTATING_ACTS: it only exists mid-turn
       break;
     case "exit":
       takeTurn([{ type: "do", text: "go to " + (el.dataset.label || "") }]);

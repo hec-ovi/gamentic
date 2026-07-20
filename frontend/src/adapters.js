@@ -294,12 +294,13 @@ export function beatOrdinal(beat) {
   return beat.turnIndex * 100000 + (Number(beat.seq) || 0);
 }
 
-// The private beats a CHARACTER has spoken to the player (their dialogue /
-// narration / actions in the 1:1 thread) - never the player's own echoes and
-// never pending optimistic lines. These are what "unread" is measured against.
+// The private beats a CHARACTER has SPOKEN to the player: literal dialogue
+// only (owner 2026-07-20). Actions, gift receipts, trait/memory events and
+// private look images land in the thread but are not "messages", so they never
+// raise the unread badge; player echoes and pending lines never counted.
 function characterPmBeats(g, charId) {
   return (g.beats || []).filter(
-    (b) => b.privateWith === charId && !b.pending && b.speaker !== "player",
+    (b) => b.privateWith === charId && !b.pending && b.speaker !== "player" && b.kind === "dialogue",
   );
 }
 

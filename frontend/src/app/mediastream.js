@@ -13,6 +13,7 @@
 
 import { mapBeats, mapGameState } from "../adapters.js";
 import { api, root, state } from "./ctx.js";
+import { applyLiveEvent, clearLiveStreams } from "./livefeed.js";
 import { announceImage, startReveal } from "./reveal.js";
 import { withVoice } from "./speech.js";
 import { lastTurnIndexOf } from "./turns.js";
@@ -43,11 +44,13 @@ export function watchMedia(g) {
         refreshArt(g); // the slot thumbnail (pack/scene/carrying) lives in /state
         pullBeats(g); // the unlock card is a beat
       } else if (ev.kind === "beat") pullBeats(g);
+      else applyLiveEvent(g, ev); // the live turn feed (phase/live_beat/live_text/...)
     };
     es.onopen = () => {
       if (stream !== es || state.active !== g) return;
       if (dropped) {
         dropped = false;
+        clearLiveStreams(g); // a drop may have orphaned stream bubbles mid-turn
         refreshArt(g); // a drop may have swallowed events: catch up on both
         pullBeats(g);
       }

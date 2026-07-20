@@ -83,6 +83,10 @@ export function createApi(backendUrl) {
     // response shape as /action; no player beat comes back.
     continueStory: (id, wish) =>
       request(`/games/${encodeURIComponent(id)}/continue`, { method: "POST", body: wish ? { wish } : {}, timeout: LLM_TIMEOUT_MS }),
+    // Interrupt the running turn: the in-flight generation is cancelled, whatever
+    // already resolved stays, and the pending /action or /continue returns early
+    // with stopped: true. Fire-and-forget; idempotent.
+    stopTurn: (id) => request(`/games/${encodeURIComponent(id)}/stop`, { method: "POST", body: {} }),
     // Live game settings: any subset of { difficulty, narrator_gender }.
     patchSettings: (id, payload) =>
       request(`/games/${encodeURIComponent(id)}/settings`, { method: "PATCH", body: payload }),

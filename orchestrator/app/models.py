@@ -284,3 +284,6 @@ class GameState(BaseModel):
 class TurnOut(BaseModel):
     beats: list[Beat]
     state: GameState
+    # True when a player stop request cancelled this turn: the whole turn rolled back
+    # (no beats, no echo, no clock tick) and the client restores the typed input.
+    stopped: bool = False

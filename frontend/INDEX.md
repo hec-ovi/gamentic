@@ -4,7 +4,7 @@ Resolver-style map of the UI layer: find the thing you want to change, go straig
 
 ## The flow of one turn
 
-Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> `adapters.mapGameState`/`mapBeats` -> `render.js` morphs the screen with new beats veiled -> `diffState` notices + flashes -> the staged reveal types them out (voice pipelined per beat) -> background media (look shots, item cards, late art) arrives by SSE push: `mediastream.js` listens on `GET /games/{gid}/events` and re-fetches `/state` or `/beats?since=` on signal (60s fallback sweep for SSE-hostile proxies).
+Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> WHILE the POST is in flight, the same SSE stream mirrors the turn live and `livefeed.js` applies it (phase line + Stop button, beats the instant the engine stores them, narrator/character prose growing at real generation speed - no typewriter for streamed text) -> the POST resolves and reconciles (dedup by id; a failed turn takes its live content back) -> `diffState` notices + flashes -> anything the live feed did NOT already show goes through the staged reveal -> background media (look shots, item cards, late art) arrives by SSE push: `mediastream.js` listens on `GET /games/{gid}/events` and re-fetches `/state` or `/beats?since=` on signal (60s fallback sweep for SSE-hostile proxies; such clients get the whole turn staged, exactly as before).
 
 ## Files
 
@@ -20,7 +20,8 @@ Composer submit (`app.js`) -> `api.takeAction` (or `api.continueStory`) -> `adap
 | `src/app/turns.js` | The turn loop: action/continue, the optimistic echo + failure restore, the wish, the post-turn focus return. |
 | `src/app/reveal.js` | The staged reveal: typewriter, veils, voice pacing, follow-scroll, the new-image affordances. |
 | `src/app/game.js` | Library, open/resume, delete, wipe-all, export/import. |
-| `src/app/mediastream.js` | Media-ready SSE push (one EventSource per game), the /state and /beats one-shot fetchers, the 60s fallback sweep. |
+| `src/app/mediastream.js` | Media-ready SSE push (one EventSource per game), the /state and /beats one-shot fetchers, the 60s fallback sweep. Routes live-turn events to `livefeed.js`. |
+| `src/app/livefeed.js` | The live turn feed: phase indicator state, stream bubbles that grow per SSE `live_text`, gapless swap to real beats, discard-on-failure, live voice autoplay chain. |
 | `src/app/playctl.js` | Scene/character action buttons, tap-to-inspect + /explain, the give flow, the @ tagger. |
 | `src/app/profilectl.js` | Profile open/refetch and the in-place (flick-free) tab switch. |
 | `src/app/composerctl.js` | Composer modes, the current line as a segment, stacking, the public/private execute paths. |

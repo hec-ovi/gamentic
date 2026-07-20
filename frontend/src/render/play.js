@@ -40,7 +40,7 @@ export function renderPlay(state) {
           <div class="story-help-row">${help("story")}</div>
           ${renderStory(g)}
           ${g.pendingView && !g.lastVia ? renderViewPending() : ""}
-          ${locked ? renderNarrating() : ""}
+          ${locked ? renderNarrating(g) : ""}
         </main>
 
         <aside class="char-column">
@@ -265,7 +265,7 @@ export function renderActionBar(g, s, locked) {
           id: "cmp",
           mode: cmp.mode,
           locked,
-          modes: ["do", "say", "look"],
+          modes: ["say", "do", "look"],
           placeholders: {
             do: "Do or say anything... (Enter sends)",
             say: "What do you say?",
@@ -287,6 +287,17 @@ export function renderActionBar(g, s, locked) {
     </footer>`;
 }
 
-export function renderNarrating() {
-  return narratingDots("the narrator is thinking...");
+export function renderNarrating(g) {
+  const p = g && g.livePhase;
+  const label = !p
+    ? "the narrator is thinking..."
+    : p.phase === "interpret"
+      ? "reading your words..."
+      : p.phase === "character"
+        ? `${p.name || "someone"} is replying...`
+        : "the narrator is writing...";
+  const stop = g && g.stopping
+    ? `<button type="button" class="holo-btn small stop-btn" disabled>${icon("x")}<span>stopping...</span></button>`
+    : `<button type="button" class="holo-btn small stop-btn" data-act="stop-turn" title="Cancel this turn as if never sent; your words come back">${icon("x")}<span>Stop</span></button>`;
+  return `<div class="narrating-row">${narratingDots(label)}${stop}</div>`;
 }

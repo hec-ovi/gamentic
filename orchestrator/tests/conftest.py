@@ -56,11 +56,26 @@ class FakeLLM:
         self.calls = []
 
     def __call__(self, messages, tools=None, tool_choice="auto", temperature=0.8,
-                 max_tokens=400, stop=None, thinking=None):
+                 max_tokens=400, stop=None, thinking=None, on_delta=None, cancel=None):
         sys = messages[0]["content"] if messages else ""
         names = [t["function"]["name"] for t in (tools or [])]
         self.calls.append({"messages": messages, "tools": tools, "system": sys, "names": names,
                            "max_tokens": max_tokens, "stop": stop, "thinking": thinking})
+        reply = self._dispatch(sys, names)
+        # Mirror the real streaming transport: content arrives as a few fragments, and a
+        # set cancel flag aborts the call mid-delivery exactly like a closed stream.
+        if cancel is not None and cancel.is_set():
+            raise llm.LLMCancelled()
+        if on_delta is not None and reply.content:
+            text = reply.content
+            step = max(1, len(text) // 3)
+            for i in range(0, len(text), step):
+                if cancel is not None and cancel.is_set():
+                    raise llm.LLMCancelled()
+                on_delta(text[i:i + step])
+        return reply
+
+    def _dispatch(self, sys, names):
         if "save_world" in names:
             return self.finalize
         if "submit_segments" in names:               # input interpreter

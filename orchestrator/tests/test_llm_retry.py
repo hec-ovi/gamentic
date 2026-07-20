@@ -1,10 +1,19 @@
 """LLM transport resilience (seen live): a redeploy of the llama.cpp container kills
 in-flight requests, so chat() retries ONCE on connection-level errors. Timeouts are
-never retried (a 180s timeout means the box is busy; retrying doubles the pain)."""
+never retried (a 180s timeout means the box is busy; retrying doubles the pain).
+
+These tests pin the BLOCKING transport (LLM_STREAM=false, the kill-switch path);
+the streaming transport's retry contract is pinned in test_llm_stream.py."""
 import httpx
 import pytest
 
 from app import llm
+from app.config import settings
+
+
+@pytest.fixture(autouse=True)
+def blocking_transport(monkeypatch):
+    monkeypatch.setattr(settings, "LLM_STREAM", False)
 
 _PAYLOAD = {
     "choices": [{"message": {"content": "The dust settles."}, "finish_reason": "stop"}],

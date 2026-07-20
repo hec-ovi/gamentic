@@ -6,6 +6,8 @@ Resolver-style map of the game brain: find what you want to change, go straight 
 
 `POST /games/{id}/action` (main.py) -> interpreter structures free text (engine.interpret_action) -> `engine.run_turn` does everything -> background art is scheduled (main.py) -> one resolved turn returns.
 
+While the turn runs, `app/engine/live.py` mirrors it over the per-game SSE stream (`GET /games/{id}/events`): phase events (who is working), each beat the instant it is stored, and the narrator/character prose as it decodes (scrubbed incrementally by `app/engine/streamscrub.py`). The POST response stays the record; the mirror is display-only. `POST /games/{id}/stop` cancels the in-flight turn whole: the LLM call aborts, the transaction rolls back (no beats, no echo, no clock tick) and the POST returns `beats: []` + `stopped: true`; the client restores the typed words.
+
 ## Files
 
 | Where | What lives there |
@@ -22,7 +24,7 @@ Resolver-style map of the game brain: find what you want to change, go straight 
 | `app/media.py` | Thin HTTP clients for image-api and voice-api. |
 | `app/transfer.py` | Export/import: adventure templates and checkpoint saves, id remapping, media scrubbing. |
 | `app/creator.py` | The story-creator chat sessions (persisted in SQLite) and world finalization. |
-| `app/llm.py` | The one llama.cpp client function, `chat()`. |
+| `app/llm.py` | The one llama.cpp client function, `chat()`. Blocking by default; callers passing `on_delta`/`cancel` get the streaming transport (same reply shape, live fragments, mid-generation abort). |
 | `app/config.py` | Every knob, env-overridable, with defaults. |
 | `app/constants.py` | The finite vocabularies (dispositions, moods, difficulties) the tools enforce. |
 | `tests/` | Deterministic suite (FakeLLM at the `llm.chat` boundary, real routes + real SQLite). One file per feature area. |

@@ -133,6 +133,11 @@ button { font: inherit; cursor: pointer; }
 .narrating .dot:nth-child(2) { animation-delay: 0.2s; }
 .narrating .dot:nth-child(3) { animation-delay: 0.4s; }
 
+/* the working line + its stop button, one row under the story */
+.narrating-row { display: flex; align-items: center; justify-content: center; gap: 0.9rem; }
+.narrating-row .narrating { margin: 0; }
+.stop-btn { flex: 0 0 auto; }
+
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes pop { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
 @keyframes blink { 0%,100%{opacity:0.3} 50%{opacity:1} }
@@ -398,7 +403,9 @@ button { font: inherit; cursor: pointer; }
 .holo-icon {
   display: inline-grid; place-items: center; width: 38px; height: 38px;
   background: color-mix(in srgb, var(--surface-panel) 45%, transparent); border: 1px solid var(--line); color: var(--ink-muted);
-  clip-path: polygon(calc(var(--chamfer) * 8px) 0, 100% 0, 100% calc(100% - calc(var(--chamfer) * 8px)), calc(100% - calc(var(--chamfer) * 8px)) 100%, 0 100%, 0 calc(var(--chamfer) * 8px));
+  /* 4px, not the panels' 8-18px: on a 38px button a big cut (plus the borderless
+     diagonal it leaves) read as a deformed box, not a chamfer (live 2026-07-20) */
+  clip-path: polygon(calc(var(--chamfer) * 4px) 0, 100% 0, 100% calc(100% - calc(var(--chamfer) * 4px)), calc(100% - calc(var(--chamfer) * 4px)) 100%, 0 100%, 0 calc(var(--chamfer) * 4px));
   transition: color 0.25s, border-color 0.25s, box-shadow 0.25s, background 0.25s;
 }
 .holo-icon:hover { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--surface-hover) 55.0%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 30%, transparent); }
@@ -808,7 +815,10 @@ button.slot.item-scenery:hover { border-color: var(--gold); box-shadow: 0 0 10px
 /* action chips */
 .chip-btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.7rem; background: color-mix(in srgb, var(--surface-panel) 50%, transparent); border: 1px solid var(--line); color: var(--ink); font-size: 0.78rem;
   clip-path: polygon(calc(var(--chamfer) * 6px) 0, 100% 0, 100% calc(100% - calc(var(--chamfer) * 6px)), calc(100% - calc(var(--chamfer) * 6px)) 100%, 0 100%, 0 calc(var(--chamfer) * 6px)); transition: border-color 0.2s, background 0.2s, box-shadow 0.2s; }
-.chip-btn:hover { border-color: var(--accent); background: color-mix(in srgb, var(--surface-hover) 60%, transparent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent); }
+.chip-btn:hover:not(:disabled) { border-color: var(--accent); background: color-mix(in srgb, var(--surface-hover) 60%, transparent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent); }
+/* mid-turn lock: a dead chip must LOOK dead (clicks were already blocked, but
+   the un-dimmed chip + hover glow read as clickable - live 2026-07-20) */
+.chip-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .chip-btn svg { width: 0.95em; height: 0.95em; fill: none; stroke: currentColor; stroke-width: 2; }
 .chip-btn.exit { color: var(--accent); }
 .chip-btn.whisper { color: var(--ink-muted); }

@@ -1,19 +1,21 @@
-// Simulated streaming: the staged beat reveal. The backend computes a turn
-// atomically, so the PACING is ours - typewriter prose, instant receipts,
-// fading images, voice pipelined per beat.
+// The staged beat reveal: the FALLBACK pacing for beats that did NOT arrive
+// through the live SSE feed (livefeed.js streams them at real generation speed
+// and they render already unveiled, never queued here). Everything that lands
+// whole - an SSE-less client's full turn, late media beats, catch-up pulls -
+// still gets this simulated pacing: typewriter prose, instant receipts, fading
+// images, voice pipelined per beat.
 
 import { stripWrappingQuotes } from "../render.js";
 import { cssId, root, sleep, state, storyNearBottom, voice } from "./ctx.js";
 import { render } from "./ui.js";
 
 // ---------------------------------------------------------------------------
-// Simulated streaming: the backend computes a turn atomically (real token
-// streaming is impossible by design), so the PACING is ours. Per beat kind, in
-// seq order: system beats + the player's own echo are INSTANT; narration /
-// dialogue / private whispers get a fast typewriter (instant-finish on story
-// click); image beats fade in when reached. With voice autoplay on, a speech
-// beat reveals when ITS audio is ready and the typewriter paces with the
-// audio's duration (the next beat's audio renders while this one plays).
+// Per beat kind, in seq order: system beats + the player's own echo are
+// INSTANT; narration / dialogue / private whispers get a fast typewriter
+// (instant-finish on story click); image beats fade in when reached. With
+// voice autoplay on, a speech beat reveals when ITS audio is ready and the
+// typewriter paces with the audio's duration (the next beat's audio renders
+// while this one plays).
 // ---------------------------------------------------------------------------
 
 export const REVEAL_CPS = 45; // default typewriter speed (chars/second)

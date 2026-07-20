@@ -31,6 +31,8 @@ services:
   llm-text:
     image: ghcr.io/ggml-org/llama.cpp:server-vulkan
     container_name: gamentic-llm-text
+    # NO "harness" profile here, on purpose: harness mode is the whole stack minus
+    # exactly this container (text inference comes from an external server).
     profiles: ["local-inference-anna-${ANNA:-false}"]
     restart: unless-stopped
     # AMD GPU access for the Vulkan backend
@@ -57,6 +59,12 @@ services:
       - "99"
       - --ctx-size
       - "${LLM_CTX:-32768}"
+      # The server's RAM prompt cache (prompt_save on slot reuse) crashes the whole
+      # server on the SECOND request with current builds (b10068, verified live:
+      # "GGML_ASSERT(tensor->data != NULL)" in server_slot::prompt_save). Off until
+      # a fixed build; the rolling :server-vulkan tag makes every pull a lottery.
+      - --cache-ram
+      - "0"
       - --parallel
       - "${LLM_PARALLEL:-4}"
       - --jinja
@@ -79,7 +87,7 @@ services:
     image: gamentic-comfyui-strix:latest
     pull_policy: build
     container_name: gamentic-image
-    profiles: ["local-inference-anna-${ANNA:-false}"]
+    profiles: ["local-inference-anna-${ANNA:-false}", "harness"]
     restart: unless-stopped
     # ComfyUI on ROCm needs full GPU access on Strix Halo
     privileged: true
@@ -125,7 +133,7 @@ services:
     image: gamentic-image-api:latest
     pull_policy: build
     container_name: gamentic-image-api
-    profiles: ["local-inference-anna-${ANNA:-false}"]
+    profiles: ["local-inference-anna-${ANNA:-false}", "harness"]
     restart: unless-stopped
     depends_on:
       image:
@@ -167,7 +175,7 @@ services:
   llm-voice:
     image: ghcr.io/ggml-org/llama.cpp:server-vulkan
     container_name: gamentic-llm-voice
-    profiles: ["local-inference-anna-${ANNA:-false}"]
+    profiles: ["local-inference-anna-${ANNA:-false}", "harness"]
     restart: unless-stopped
     devices:
       - /dev/dri:/dev/dri
@@ -210,7 +218,7 @@ services:
     image: gamentic-voice-api:latest
     pull_policy: build
     container_name: gamentic-voice-api
-    profiles: ["local-inference-anna-${ANNA:-false}"]
+    profiles: ["local-inference-anna-${ANNA:-false}", "harness"]
     restart: unless-stopped
     environment:
       - MAYA1_URL=http://llm-voice:8080
@@ -314,9 +322,16 @@ services:
       anna-api:
         condition: service_healthy
         required: false
+    # host.docker.internal resolves on Linux too: harness mode (up.sh harness)
+    # points text inference at a server on the host instead of llm-text.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - LLM_BASE_URL=http://gamentic-llm-text:8080/v1
       - LLM_MODEL=${LLM_ALIAS:-gemma-4-26b-a4b-heretic}
+      # media kill-switches: harness mode runs text-only (no media containers)
+      - IMAGE_ENABLED=${IMAGE_ENABLED:-true}
+      - VOICE_ENABLED=${VOICE_ENABLED:-true}
       - IMAGE_API_URL=http://gamentic-image-api:9001
       # voice-api listens on 8080 inside the container (host maps 9002->8080)
       - VOICE_API_URL=http://gamentic-voice-api:8080

@@ -10,6 +10,11 @@ class Settings:
     # depth, and an uncapped narrator generation at deep context can pass 180s (live:
     # a hard-mode continue at 10k ctx timed out at exactly 180s and lost the turn).
     LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "300"))
+    # Kill-switch for the streaming transport. When false, calls that ask for live
+    # deltas (on_delta/cancel) fall back to the blocking request: deltas arrive once,
+    # whole, at the end; cancel is honored between calls only. Turn results are
+    # identical either way; this only trades liveness for the old wire behavior.
+    LLM_STREAM = os.getenv("LLM_STREAM", "true").lower() == "true"
     # The model's context window, for the context-usage meter (used/max shown in the UI).
     LLM_CONTEXT_SIZE = int(os.getenv("LLM_CONTEXT_SIZE", "131072"))
 

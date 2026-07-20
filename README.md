@@ -72,6 +72,9 @@ Requires Docker (with GPU access for the model and the image service) and local 
 # 3. expert:      cp .env.example .env    and edit it yourself
 
 ./up.sh                        # start (or: docker compose up -d --build)
+./up.sh harness                # everything except the text model: images and voice
+                               # run locally, text turns go to an external llama
+                               # server (default localhost:8090)
 ```
 
 Both faces ask the identical questions from one shared schema
