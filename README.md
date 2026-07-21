@@ -8,7 +8,7 @@ Pannable, clickable maps of the agents, the engine, the state, the infra and the
 
 > Built and tuned for an AMD Strix Halo APU (Ryzen AI Max), on standard containers.
 
-![status](https://img.shields.io/badge/status-work%20in%20progress-orange) ![local](https://img.shields.io/badge/runs-100%25%20local-success) ![model](https://img.shields.io/badge/LLM-Gemma%2026B%20MoE%20(llama.cpp%2FVulkan)-blue) ![api](https://img.shields.io/badge/backend-FastAPI%20%2B%20SQLite-009688) ![license](https://img.shields.io/badge/license-MIT-green)
+![status](https://img.shields.io/badge/status-stable-success) ![local](https://img.shields.io/badge/runs-100%25%20local-success) ![model](https://img.shields.io/badge/LLM-Gemma%2026B%20MoE%20(llama.cpp%2FVulkan)-blue) ![api](https://img.shields.io/badge/backend-FastAPI%20%2B%20SQLite-009688) ![tests](https://img.shields.io/badge/tests-1000%2B%20green-success) ![license](https://img.shields.io/badge/license-MIT-green)
 
 ## In motion
 
@@ -36,7 +36,7 @@ Pannable, clickable maps of the agents, the engine, the state, the infra and the
 ```mermaid
 flowchart TD
     P["🎮 You act<br>(type freely, tap a button, or just Continue)"]
-    P --> INT["🪄 Interpreter (one small LLM call)<br>structures your text into<br>say · do · attack · give · whisper · look"]
+    P --> INT["🪄 Interpreter (one small LLM call)<br>structures your text into<br>say · do · attack · give · conversation · look"]
     INT --> ADJ["⚖️ Rules first (plain code, no AI)<br>impossible attempts bounce back<br>with an in-world reason"]
     ADJ --> NAR["🧠 Narrator<br>reads the REAL state, reasons the<br>transition, writes prose, adjudicates"]
     NAR == "changes state ONLY<br>through validated tools" ==> DB[("🗄️ SQLite<br>the single source of truth")]
@@ -60,7 +60,7 @@ The world is an explicit state machine, and the narrator is the engine that adva
 
 **Image** is FLUX.2 [klein] 4B distilled in ComfyUI behind a small REST adapter: scene art, a 3-view reference set per character, identity-conditioned story shots, item cards. Every image is art-directed: at creation one pass reads the whole world bible and writes the first-sight prompts (every character's reference look first, then the main opening image, conditioned on the fresh portraits), and after that each render gets its own art-director call that writes a detailed prompt (poses, depth, lighting) from the live scene context, bounded only by the encoder's 512-token window, with deterministic template prompts as the fallback. The model set is the Comfy-Org repack (`flux-2-klein-4b` + `qwen_3_4b` encoder + `flux2-vae`, about 16 GB). The game is fully playable text-only; art fills in as it renders.
 
-**Voice** is Maya1-3B as GGUF on llama.cpp Vulkan, decoded to 24 kHz audio through the SNAC codec on CPU. Each character gets a designed voice composed from their sheet (gender, age, pitch, tone, accent), stored with the character in the game database, so one character is always one voice. Lines carry inline emotion tags (`[whisper]`, `[laugh]`, `[angry]`, ...) and a streaming endpoint delivers first audio in about 0.3s.
+**Voice** is Maya1-3B as GGUF on llama.cpp Vulkan, decoded to 24 kHz audio through the SNAC codec on CPU. Each character gets a designed voice composed from their sheet (gender, age, pitch, tone, accent), stored with the character in the game database, so one character is always one voice. Lines carry inline emotion tags (`[whisper]`, `[laugh]`, `[angry]`, ...) and render at roughly realtime speed on the reference box.
 
 ## Run it
 
@@ -148,20 +148,12 @@ Gamentic won 1st place at the Anna hackathon. That version lives at
 
 ## Status and limits
 
-Active personal project under heavy iteration. The brain, the services and the frontend are covered by automated test suites and the whole loop has been soak-tested with full scripted adventures against the real stack. Where it stands:
+Stable. Over a thousand automated tests cover the brain, the services and the frontend (663 backend, 240 frontend component tests, plus per-service suites), every route exercised against real SQLite with the model faked at the one LLM boundary, and the whole loop soak-tested with full played adventures against the real stack. Known physics of running everything locally:
 
-- Voice is near-realtime, not instant: a 10 second line takes 11-12 seconds to fully render. English only for now.
+- Voice is near-realtime, not instant: a 10 second line takes 11-12 seconds to fully render. English only.
 - Images render in the background and arrive seconds late by design (the turn never waits for art); the 4B image model occasionally sneaks lettering into a corner.
 - Deep story memory costs speed: turn time grows with the story window you choose (prefill measures about 1s per 900 tokens on the reference hardware). The story-memory settings exist precisely to pick your own point on that curve.
 - A local Q4 model, even at 26B, will sometimes narrate a tool call instead of actually making it. The orchestrator handles this with structure rather than hoping the model behaves: a deterministic movement router, validated tools with bounded state, adjudication that accepts by default, output sanitizers on every path, and parsers that read the model's intent even when it writes the call as prose.
-
-## Planned
-
-Three features are next on the list, not yet started:
-
-- **A character workshop.** Create characters yourself with agentic help: personality, portrait set and voice, regenerating each piece until it fits. Finished characters live in a store of their own and can be dropped into any adventure. A stored character keeps its voice, look and personality; memories, whispers and inventory always belong to the story they happened in.
-- **Checkpoints.** Rewind the story to an earlier moment when an outcome lands wrong.
-- **Characters conspiring.** Characters whispering to each other behind your back (alliances, betrayals, double agents); you only ever find out by playing.
 
 ## Models and licenses
 
