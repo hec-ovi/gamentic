@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="hightech">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gamentic - Guided Tour (prototype)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<!-- ==========================================================================
+     GAMENTIC GUIDED-TOUR PROTOTYPE
+     Fully standalone. Double-click this file to open. No build, no CDN, no
+     network, no imports from the real app. The play screen below is a MOCK
+     built only to be spotlighted; the tour engine lives in tutorial.js and
+     the step data in steps.js. All art is inline SVG (no external assets).
+     ========================================================================== -->
+
+<!-- ============================ REUSABLE INLINE-SVG ART (hidden defs) ======= -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#12243a"/><stop offset="1" stop-color="#05080f"/>
+    </linearGradient>
+    <linearGradient id="neonGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2fe6ff"/><stop offset="1" stop-color="#1b9fff"/>
+    </linearGradient>
+    <linearGradient id="figGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="currentColor" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#05080f" stop-opacity="0.95"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div class="app-shell">
+
+<!-- ============================ THE PLAY SCREEN (mock) ====================== -->
+<div class="holo-stage play-stage" data-stage>
+  <div class="menu-fx" aria-hidden="true"><span class="fx-scan"></span></div>
+
+  <!-- ---- the deck (integrated header) ---- -->
+  <header class="play-deck">
+    <div class="deck-nav">
+      <button type="button" class="holo-icon" data-tut="library" title="Library" aria-label="Library">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+    </div>
+
+    <div class="deck-scene">
+      <span class="card-corner tr"></span><span class="card-corner bl"></span>
+      <div class="scene-id">
+        <span class="mood-badge mood-tense" data-tut="mood">tense</span>
+        <span class="time-chip" data-tut="clock" title="Story time, not yours">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          <span>23:47 &middot; Nightcycle</span>
+        </span>
+      </div>
+      <h2 class="scene-name">
+        <button type="button" class="scene-name-btn" data-tut="scene-name" title="What this place is">Rustwater Market</button>
+      </h2>
+      <p class="scene-desc" data-tut="scene-desc">Rain sheets off the tarpaulins of the underlevel bazaar. Steam, neon, and the smell of fried protein. Somewhere a drone is hunting for you.</p>
+    </div>
+
+    <div class="deck-board">
+      <div class="board-cell" data-tut="scene-items">
+        <span class="rail-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9l4-6Z"/><path d="M2 9h20"/></svg><span>Scene items</span></span>
+        <div class="slot-grid scene-items">
+          <button type="button" class="slot filled item-loot" title="Cred-stick: a chipped payment stick, half-charged">
+            <span class="slot-abbr">CS</span><span class="slot-tag loot"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></span>
+          </button>
+          <button type="button" class="slot filled item-scenery" title="Sealed crate: bolted shut, stamped with a corp sigil">
+            <span class="slot-abbr">SC</span><span class="slot-tag fixed"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M4 10h16"/><path d="M6 10v8"/><path d="M18 10v8"/><path d="m12 3 8 5H4l8-5Z"/></svg></span>
+          </button>
+          <span class="slot empty"></span><span class="slot empty"></span>
+        </div>
+      </div>
+      <i class="board-sep"></i>
+      <div class="board-cell" data-tut="scene-actions">
+        <span class="rail-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h8l-1 8 11-14h-8l1-6Z"/></svg><span>Actions</span></span>
+        <div class="act-row">
+          <button type="button" class="chip-btn">Haggle with the vendor</button>
+          <button type="button" class="chip-btn">Pry the crate open</button>
+        </div>
+      </div>
+      <i class="board-sep"></i>
+      <div class="board-cell" data-tut="exits">
+        <span class="rail-label"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m16 8-2.8 6.2L8 16l2.8-6.2L16 8Z"/></svg><span>Ways out</span></span>
+        <div class="act-row">
+          <button type="button" class="chip-btn exit"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 8-2.8 6.2L8 16l2.8-6.2L16 8Z"/></svg><span>Duck into the alley</span></button>
+          <button type="button" class="chip-btn exit back"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg><span>Back to the skybridge</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="deck-vitals">
+      <div class="vital-row" data-tut="vitals">
+        <div class="hud-life">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"/></svg>
+          <div class="life-track"><div class="life-fill" style="width:70%"></div></div>
+          <span class="hud-num">7/10</span>
+        </div>
+        <div class="hud-points"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 3 6 6 .9-4.5 4.4 1 6.2L12 16.4 6.5 19.5l1-6.2L3 8.9 9 8l3-6Z"/></svg><span class="hud-num">320</span></div>
+      </div>
+      <div class="ctx-meter tone-green" data-tut="context" role="meter" title="Story memory: 42.1k / 128k tokens (33%)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14l3.5-3.5"/><path d="M20.2 15.5a8.5 8.5 0 1 0-16.4 0"/><path d="M3.8 15.5h2"/><path d="M18.2 15.5h2"/></svg>
+        <div class="ctx-track"><div class="ctx-fill" style="width:33%"></div></div>
+        <span class="ctx-num">42.1k / 128k</span>
+      </div>
+      <button type="button" class="hud-goal" data-tut="goal" title="Current goal - tap for the quest log">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m16 8-2.8 6.2L8 16l2.8-6.2L16 8Z"/></svg><span>Find the fixer called Vessa</span>
+      </button>
+    </div>
+
+    <div class="deck-nav">
+      <button type="button" class="holo-icon" data-tut="menu" title="Menu / settings" aria-label="Menu">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ---- the body: story feed + character column ---- -->
+  <div class="play-body">
+    <main class="story" data-tut="story">
+      <div class="story-help-row"><span class="help-dot">?</span></div>
+
+      <!-- scene art card (anchored into the prose) -->
+      <figure class="prose-art" data-tut="scene-art" role="button" tabindex="0" aria-label="What this place is">
+        <span class="card-corner tr"></span><span class="card-corner bl"></span>
+        <svg class="art-svg" viewBox="0 0 400 240" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <rect width="400" height="240" fill="url(#skyGrad)"/>
+          <g fill="#0a1424"><rect x="10" y="90" width="60" height="150"/><rect x="80" y="60" width="48" height="180"/><rect x="300" y="70" width="54" height="170"/><rect x="360" y="100" width="40" height="140"/></g>
+          <g fill="#12243a"><rect x="140" y="120" width="120" height="120"/></g>
+          <rect x="150" y="135" width="100" height="8" fill="#2fe6ff" opacity="0.85"/>
+          <rect x="150" y="150" width="60" height="5" fill="#f2b84b" opacity="0.8"/>
+          <rect x="92" y="80" width="6" height="150" fill="#d95f7b" opacity="0.7"/>
+          <g stroke="#2fe6ff" stroke-width="0.6" opacity="0.25"><line x1="30" y1="0" x2="10" y2="240"/><line x1="120" y1="0" x2="95" y2="240"/><line x1="240" y1="0" x2="215" y2="240"/><line x1="350" y1="0" x2="330" y2="240"/></g>
+          <circle cx="330" cy="40" r="14" fill="none" stroke="#d95f7b" stroke-width="2" opacity="0.7"/>
+        </svg>
+        <figcaption>Rustwater Market</figcaption>
+      </figure>
+
+      <!-- narration (prose, no bubble) with a voice/speak button -->
+      <section class="narration" data-tut="narration">
+        <button type="button" class="speak-btn" data-tut="speak" title="Play voice" aria-label="Play voice">
+          <svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15 9.3a4 4 0 0 1 0 5.4"/><path d="M17.7 6.6a8 8 0 0 1 0 10.8"/></svg>
+        </button>
+        <p>The market never really closes. It only lowers its voice. You keep to the wet edge of the light, where the vendors can't read your face, and count the exits out of habit.</p>
+        <p>A woman under the noodle awning is already watching you. She has been for a while.</p>
+      </section>
+
+      <!-- character dialogue bubble (portrait + name + speak button) -->
+      <article class="dialogue" data-tut="dialogue" style="--speaker:#45d2b1">
+        <span class="bubble-avatar fallback" style="background:#45d2b1">VK</span>
+        <div class="bubble">
+          <button type="button" class="speak-btn" title="Play voice" aria-label="Play voice"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15 9.3a4 4 0 0 1 0 5.4"/><path d="M17.7 6.6a8 8 0 0 1 0 10.8"/></svg></button>
+          <span class="bubble-name">Vessa Kade</span>
+          <p>You shouldn't have come down here in the rain, love. Eyes everywhere. What do you want?</p>
+        </div>
+      </article>
+
+      <!-- character action beat (italic deed) -->
+      <p class="char-deed" data-tut="char-action" style="--speaker:#d95f7b"><b>Rourke</b> shifts his weight, one hand drifting toward the seam of his coat.</p>
+
+      <!-- player speech echo (mirrored bubble) -->
+      <article class="dialogue from-player" data-tut="player-speech" style="--speaker:#2fe6ff">
+        <span class="bubble-avatar fallback you" style="background:#2fe6ff">YOU</span>
+        <div class="bubble">
+          <span class="bubble-name">You <i class="bubble-meta">to Vessa</i></span>
+          <p>I'm looking for a fixer. Word is you're the one who knows her.</p>
+        </div>
+      </article>
+
+      <!-- player action echo (quiet inline marker) -->
+      <p class="player-action" data-tut="player-action"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 8-2.8 6.2L8 16l2.8-6.2L16 8Z"/></svg><span>you slide the cred-stick across the counter</span></p>
+
+      <!-- system receipts (tappable badges) -->
+      <button type="button" class="system-badge item" data-tut="system" role="status" title="Tap to inspect">
+        <svg viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9l4-6Z"/><path d="M2 9h20"/></svg><span>Obtained: Cred-stick</span>
+      </button>
+      <button type="button" class="system-badge points" data-tut="explain" role="status" title="Tap to inspect">
+        <svg viewBox="0 0 24 24"><path d="m12 2 3 6 6 .9-4.5 4.4 1 6.2L12 16.4 6.5 19.5l1-6.2L3 8.9 9 8l3-6Z"/></svg><span>+40 points &mdash; a clean approach</span>
+      </button>
+      <button type="button" class="system-badge veto" role="status" title="Tap to inspect">
+        <svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg><span>Rourke blocks the counter. He is not letting you past.</span>
+      </button>
+
+      <!-- image beat: a scene shot (hero, click to lightbox) -->
+      <figure class="beat-image" data-tut="scene-shot">
+        <span class="card-corner tr"></span><span class="card-corner bl"></span>
+        <svg class="art-svg" viewBox="0 0 400 220" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <rect width="400" height="220" fill="url(#skyGrad)"/>
+          <rect x="0" y="0" width="140" height="220" fill="#0a1424"/>
+          <rect x="260" y="0" width="140" height="220" fill="#0a1424"/>
+          <rect x="150" y="40" width="8" height="140" fill="#f2b84b" opacity="0.8"/>
+          <rect x="242" y="30" width="6" height="150" fill="#2fe6ff" opacity="0.8"/>
+          <g stroke="#dff3ff" stroke-width="0.7" opacity="0.35"><line x1="180" y1="0" x2="170" y2="220"/><line x1="210" y1="0" x2="200" y2="220"/><line x1="230" y1="0" x2="220" y2="220"/></g>
+          <ellipse cx="200" cy="205" rx="70" ry="10" fill="#2fe6ff" opacity="0.15"/>
+        </svg>
+        <figcaption>The alley behind the noodle stall, slick with rain and reflected signage.</figcaption>
+      </figure>
+
+      <!-- image beat: an item-unlock card (small square) -->
+      <figure class="beat-image item-card" data-tut="item-card">
+        <span class="card-corner tr"></span><span class="card-corner bl"></span>
+        <svg class="art-svg" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <rect width="200" height="200" fill="url(#skyGrad)"/>
+          <rect x="60" y="70" width="80" height="34" rx="4" fill="none" stroke="url(#neonGrad)" stroke-width="3"/>
+          <path d="M100 104 L100 140" stroke="#2fe6ff" stroke-width="4"/>
+          <path d="M92 128 h16 M92 138 h16" stroke="#f2b84b" stroke-width="3"/>
+        </svg>
+        <figcaption><svg viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9l4-6Z"/><path d="M2 9h20"/></svg><span>Neon-etched key-chip</span></figcaption>
+      </figure>
+
+      <!-- REVEALABLE: the "turn generating" row (dots + phase line + Stop) -->
+      <div class="narrating-row tut-revealable" data-reveal="generating">
+        <div class="narrating" data-tut="generating" role="status">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <em>Vessa is replying...</em>
+        </div>
+        <button type="button" class="holo-btn small stop-btn" data-tut="stop" title="Cancel this turn as if never sent; your words come back">
+          <svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg><span>Stop</span>
+        </button>
+      </div>
+
+      <!-- REVEALABLE: the "rendering the view" hint after a look -->
+      <div class="render-hint tut-revealable" data-reveal="view-pending" data-tut="view-pending" role="status">
+        <span class="art-scan"></span><em>rendering the view...</em>
+      </div>
+    </main>
+
+    <aside class="char-column">
+      <div class="col-head" data-tut="party">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8c2-3 5-4 8-4s6 1 8 4v6c0 4-3 6-8 6s-8-2-8-6V8Z"/><path d="M8 11h3"/><path d="M13 11h3"/><path d="M9 16c2 1 4 1 6 0"/></svg>
+        <span>In the scene</span><span class="help-dot">?</span>
+      </div>
+
+      <div class="char-deck cols-2">
+        <!-- Vessa -->
+        <article class="char-col" style="--speaker:#45d2b1">
+          <button type="button" class="col-art" data-tut="char-card" title="Open Vessa Kade's profile" aria-label="Open Vessa Kade's profile">
+            <svg class="art-svg col-body" viewBox="0 0 120 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style="color:#45d2b1">
+              <rect width="120" height="200" fill="#08101e"/>
+              <ellipse cx="60" cy="52" rx="24" ry="27" fill="url(#figGrad)"/>
+              <path d="M24 200 C24 130 40 96 60 96 C80 96 96 130 96 200 Z" fill="url(#figGrad)"/>
+              <circle cx="60" cy="50" r="26" fill="none" stroke="#45d2b1" stroke-width="1.5" opacity="0.5"/>
+            </svg>
+            <div class="col-grad"></div>
+            <span class="pm-unread on-card" title="2 unread whispers" data-tut="unread">2</span>
+            <span class="col-badges">
+              <span class="relation-badge" data-tut="disposition">ally</span>
+              <span class="disp-badge disp-friendly">friendly</span>
+            </span>
+            <div class="col-plate">
+              <span class="char-name" data-tut="char-name">Vessa Kade <span class="follow-tag" title="Following you"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 8-2.8 6.2L8 16l2.8-6.2L16 8Z"/></svg></span></span>
+              <div class="char-hp" data-tut="char-hp" title="9/10"><div class="hp-track"><div class="hp-fill" style="width:90%"></div></div></div>
+            </div>
+          </button>
+          <div class="ctx-meter mini tone-green" data-tut="char-memory" title="Vessa's memory: 18k / 64k tokens (28%)">
+            <svg viewBox="0 0 24 24"><path d="M12 14l3.5-3.5"/><path d="M20.2 15.5a8.5 8.5 0 1 0-16.4 0"/><path d="M3.8 15.5h2"/><path d="M18.2 15.5h2"/></svg>
+            <div class="ctx-track"><div class="ctx-fill" style="width:28%"></div></div><span class="ctx-num">18k / 64k</span>
+          </div>
+          <div class="char-inv" data-tut="char-carry">
+            <span class="inv-mini-label">Carrying</span>
+            <div class="slot-grid char-items">
+              <button type="button" class="slot filled" title="Data-slate"><span class="slot-abbr">DS</span></button>
+              <span class="slot empty"></span><span class="slot empty"></span>
+            </div>
+          </div>
+          <span class="char-hint" data-tut="expand"><svg viewBox="0 0 24 24"><path d="M3 5h18v14H3z"/><path d="M15 5v14"/><path d="M7 9h4"/><path d="M7 13h4"/></svg><span>expand to interact</span></span>
+        </article>
+
+        <!-- Rourke -->
+        <article class="char-col" style="--speaker:#d95f7b">
+          <button type="button" class="col-art" title="Open Rourke's profile" aria-label="Open Rourke's profile">
+            <svg class="art-svg col-body" viewBox="0 0 120 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style="color:#d95f7b">
+              <rect width="120" height="200" fill="#08101e"/>
+              <ellipse cx="60" cy="50" rx="26" ry="28" fill="url(#figGrad)"/>
+              <path d="M18 200 C18 128 38 92 60 92 C82 92 102 128 102 200 Z" fill="url(#figGrad)"/>
+              <circle cx="60" cy="48" r="28" fill="none" stroke="#d95f7b" stroke-width="1.5" opacity="0.5"/>
+            </svg>
+            <div class="col-grad"></div>
+            <span class="col-badges">
+              <span class="relation-badge">wary</span>
+              <span class="disp-badge disp-hostile">hostile</span>
+            </span>
+            <div class="col-plate">
+              <span class="char-name">Rourke</span>
+              <div class="char-hp" title="10/10"><div class="hp-track"><div class="hp-fill" style="width:100%"></div></div></div>
+            </div>
+          </button>
+          <div class="ctx-meter mini tone-green" title="Rourke's memory: 9k / 64k tokens (14%)">
+            <svg viewBox="0 0 24 24"><path d="M12 14l3.5-3.5"/><path d="M20.2 15.5a8.5 8.5 0 1 0-16.4 0"/><path d="M3.8 15.5h2"/><path d="M18.2 15.5h2"/></svg>
+            <div class="ctx-track"><div class="ctx-fill" style="width:14%"></div></div><span class="ctx-num">9k / 64k</span>
+          </div>
+          <div class="char-inv">
+            <span class="inv-mini-label">Carrying</span>
+            <div class="slot-grid char-items"><span class="slot empty"></span><span class="slot empty"></span><span class="slot empty"></span></div>
+          </div>
+          <span class="char-hint"><svg viewBox="0 0 24 24"><path d="M3 5h18v14H3z"/><path d="M15 5v14"/><path d="M7 9h4"/><path d="M7 13h4"/></svg><span>expand to interact</span></span>
+        </article>
+      </div>
+
+      <div class="cast-roster" data-tut="elsewhere">
+        <div class="col-head sub"><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span>Elsewhere</span></div>
+        <button type="button" class="cast-row" style="--speaker:#a98bff" title="Mireille - at the Spindle">
+          <span class="cast-portrait"><span class="cast-fallback" style="background:#a98bff">MI</span></span>
+          <span class="cast-id"><span class="cast-name">Mireille</span><span class="cast-where">at the Spindle</span></span>
+          <span class="pm-unread on-row" title="1 unread whisper">1</span>
+        </button>
+        <button type="button" class="cast-row dead" style="--speaker:#6f6878" title="Koto - fallen">
+          <span class="cast-portrait"><span class="cast-fallback" style="background:#6f6878">KO</span></span>
+          <span class="cast-id"><span class="cast-name">Koto</span><span class="cast-where">fallen</span></span>
+        </button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ---- the action bar (footer) ---- -->
+  <footer class="play-actionbar">
+    <div class="player-inv" data-tut="pack">
+      <span class="rail-label"><svg viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9l4-6Z"/><path d="M2 9h20"/></svg><span>You</span></span>
+      <div class="slot-grid player-items">
+        <button type="button" class="slot filled" title="Cred-stick"><span class="slot-abbr">CS</span></button>
+        <button type="button" class="slot filled" title="Ramen chit"><span class="slot-abbr">RC</span></button>
+        <button type="button" class="slot filled" title="Old photo"><span class="slot-abbr">OP</span></button>
+        <span class="slot empty"></span><span class="slot empty"></span><span class="slot empty"></span>
+      </div>
+      <span class="action-help"><span class="help-dot">?</span></span>
+    </div>
+
+    <!-- stacked-segment queue (shown so it can be spotlighted) -->
+    <div class="seg-stack" data-tut="stack-queue">
+      <span class="seg-row seg-say">Say &rarr; Vessa: keep your voice down
+        <button type="button" class="seg-del" aria-label="Remove stacked line"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      </span>
+    </div>
+
+    <form class="action-form" onsubmit="return false">
+      <div class="composer">
+        <div class="composer-modes" data-tut="modes" role="group" aria-label="Line kind">
+          <button type="button" class="mode-btn">Say</button>
+          <button type="button" class="mode-btn active">Do</button>
+          <button type="button" class="mode-btn">Look</button>
+        </div>
+        <div class="composer-input holo-input" data-tut="composer" contenteditable="false" role="textbox" aria-label="What you do">give the <span class="ent-chip chip-item" data-tut="tag" contenteditable="false"><svg viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9l4-6Z"/><path d="M2 9h20"/></svg><span class="chip-name">Old photo</span></span> to <span class="ent-chip chip-character" contenteditable="false"><svg viewBox="0 0 24 24"><path d="M4 8c2-3 5-4 8-4s6 1 8 4v6c0 4-3 6-8 6s-8-2-8-6V8Z"/><path d="M8 11h3"/><path d="M13 11h3"/><path d="M9 16c2 1 4 1 6 0"/></svg><span class="chip-name">Vessa</span></span></div>
+        <button type="button" class="holo-icon tag-btn" data-tut="tag-btn" title="Tag a character or item" aria-label="Tag a character or item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg></button>
+        <button type="button" class="holo-icon stack-btn" data-tut="stack" title="Stack this line to send several at once" aria-label="Stack this line"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+        <button type="button" class="holo-btn" data-tut="send"><svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/></svg><span>Send</span></button>
+      </div>
+    </form>
+
+    <div class="turn-aux">
+      <input type="text" class="holo-input wish-input" data-tut="wish" autocomplete="off"
+             placeholder="What do you wish to happen next? (optional)" aria-label="What do you wish to happen next?"
+             value="let it stop raining, just for a minute" />
+      <button type="button" class="holo-btn continue-btn" data-tut="continue" title="Let the story advance on its own, no input needed">
+        <svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></svg><span>Continue</span>
+      </button>
+    </div>
+  </footer>
+</div>
+
+<!-- ============================ OVERLAYS (hidden; the tour opens them) ====== -->
+
+<!-- PROFILE screen -->
+<div class="tut-overlay" data-overlay="profile">
+  <div class="profile-screen" role="dialog" aria-label="Vessa Kade's profile" style="--speaker:#45d2b1">
+    <div class="menu-fx"><span class="fx-scan"></span></div>
+    <header class="profile-bar">
+      <button type="button" class="holo-icon" aria-label="Back to the scene"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+      <span class="hud-tag">// VESSA KADE</span>
+    </header>
+    <div class="profile-main">
+      <div class="profile-cols">
+        <div class="profile-left" data-tut="profile-art">
+          <div class="profile-art-wrap">
+            <svg class="art-svg profile-art" viewBox="0 0 300 380" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style="color:#45d2b1">
+              <rect width="300" height="380" fill="#08101e"/>
+              <ellipse cx="150" cy="120" rx="58" ry="64" fill="url(#figGrad)"/>
+              <path d="M52 380 C52 250 96 190 150 190 C204 190 248 250 248 380 Z" fill="url(#figGrad)"/>
+              <circle cx="150" cy="116" r="62" fill="none" stroke="#45d2b1" stroke-width="2" opacity="0.5"/>
+            </svg>
+            <button type="button" class="art-cycle prev" aria-label="Previous image"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+            <button type="button" class="art-cycle next" aria-label="Next image"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+            <span class="art-dots"><i class="on"></i><i></i><i></i></span>
+          </div>
+          <h3 class="profile-name">Vessa Kade</h3>
+        </div>
+        <div class="profile-right">
+          <div class="profile-tabs" data-tut="profile-tabs" role="tablist">
+            <button type="button" class="profile-tab active"><svg viewBox="0 0 24 24"><path d="M4 8c2-3 5-4 8-4s6 1 8 4v6c0 4-3 6-8 6s-8-2-8-6V8Z"/><path d="M8 11h3"/><path d="M13 11h3"/><path d="M9 16c2 1 4 1 6 0"/></svg><span>Profile</span></button>
+            <button type="button" class="profile-tab"><svg viewBox="0 0 24 24"><path d="m12 3 1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9L12 3Z"/></svg><span>Traits</span></button>
+            <button type="button" class="profile-tab"><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span>Memories</span></button>
+            <button type="button" class="profile-tab"><svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v4"/><path d="M8 22h8"/></svg><span>Whisper</span><span class="pm-unread on-tab">2</span></button>
+          </div>
+          <div class="profile-pane" role="tabpanel">
+            <!-- PROFILE tab -->
+            <div class="profile-id" data-tut="profile-status">
+              <p class="ins-tags">
+                <span class="ins-tag">female</span>
+                <span class="relation-badge">ally</span>
+                <span class="disp-badge disp-friendly">friendly</span>
+                <span class="ins-tag">following you</span>
+              </p>
+              <div class="char-hp" title="9/10"><div class="hp-track"><div class="hp-fill" style="width:90%"></div></div></div>
+              <p class="modal-body">A fixer who works the underlevels. She trades in favors, secrets, and the occasional gun, and she never forgets who owes her.</p>
+              <div class="char-inv"><span class="inv-mini-label">Carrying</span>
+                <div class="slot-grid char-items"><button type="button" class="slot filled" title="Data-slate"><span class="slot-abbr">DS</span></button><span class="slot empty"></span><span class="slot empty"></span></div>
+              </div>
+              <section class="profile-sec">
+                <h4 class="profile-sec-head"><svg viewBox="0 0 24 24"><path d="M13 2 3 14h8l-1 8 11-14h-8l1-6Z"/></svg><span>Actions</span></h4>
+                <div class="char-actions profile-actions">
+                  <button type="button" class="chip-btn">Give&hellip;</button>
+                  <button type="button" class="chip-btn">Ask about the job</button>
+                  <button type="button" class="chip-btn">Offer to split the take</button>
+                </div>
+              </section>
+              <section class="profile-sec">
+                <h4 class="profile-sec-head"><svg viewBox="0 0 24 24"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M6 3h12v10a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V3Z"/><path d="M9 7h6"/><path d="M9 11h6"/></svg><span>Their past</span></h4>
+                <ul class="trait-list origin-list">
+                  <li class="trait origin"><span class="trait-text">She ran couriers on the skybridge before the crash.</span><span class="trait-stamp">learned: last night</span></li>
+                </ul>
+              </section>
+            </div>
+            <!-- (Traits / Memories / Whisper panes are stacked below for the tour to spotlight) -->
+            <div class="profile-extra">
+              <ul class="trait-list" data-tut="profile-traits">
+                <li class="trait"><span class="trait-text">Never works for free.</span><span class="trait-stamp">unlocked: this scene</span></li>
+                <li class="trait"><span class="trait-text">Softer than she lets anyone see.</span><span class="trait-stamp">unlocked: the rooftop</span></li>
+              </ul>
+              <section class="profile-sec" data-tut="profile-memories">
+                <h4 class="profile-sec-head"><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span>Memories</span></h4>
+                <div class="memory-strip">
+                  <figure class="memory">
+                    <svg class="art-svg" viewBox="0 0 160 120" preserveAspectRatio="xMidYMid slice"><rect width="160" height="120" fill="url(#skyGrad)"/><rect x="40" y="30" width="80" height="60" fill="none" stroke="#2fe6ff" stroke-width="2"/></svg>
+                    <figcaption>The night she pulled you off the skybridge.</figcaption>
+                  </figure>
+                </div>
+                <h4 class="profile-sec-head"><svg viewBox="0 0 24 24"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M6 3h12v10a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V3Z"/></svg><span>Moments</span></h4>
+                <ul class="moment-timeline">
+                  <li class="moment-event"><span class="moment-when">02:10</span><span class="moment-text">You promised her a cut of whatever you find.</span></li>
+                </ul>
+              </section>
+              <section class="profile-sec whisper-sec" data-tut="profile-whisper">
+                <h4 class="profile-sec-head"><svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v4"/><path d="M8 22h8"/></svg><span>Whisper</span></h4>
+                <p class="pm-hint">Only Vessa will ever know this.</p>
+                <div class="pm-thread">
+                  <div class="pm-line pm-you">Is Rourke with you, or a problem?</div>
+                  <div class="pm-line pm-them"><span class="pm-face"><span class="pm-face-abbr" style="background:#45d2b1">VK</span></span><span class="pm-text">A problem. Keep him talking and follow my lead.</span></div>
+                </div>
+                <form class="pm-form" onsubmit="return false">
+                  <div class="composer">
+                    <div class="composer-modes"><button type="button" class="mode-btn active">Say</button><button type="button" class="mode-btn">Do</button><button type="button" class="mode-btn">Look</button></div>
+                    <div class="composer-input holo-input" contenteditable="false" data-placeholder="Whisper to Vessa..."></div>
+                    <button type="button" class="holo-btn"><svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/></svg><span>Whisper</span></button>
+                  </div>
+                </form>
+              </section>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- GIVE modal -->
+<div class="tut-overlay" data-overlay="give">
+  <div class="modal-overlay">
+    <div class="holo-modal give-modal" data-tut="give" role="dialog" aria-label="Give to Vessa">
+      <span class="card-corner tr"></span><span class="card-corner bl"></span>
+      <h3 class="modal-title give"><span class="ic"><svg viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9l4-6Z"/><path d="M2 9h20"/></svg></span><span>Give to Vessa</span></h3>
+      <p class="modal-body">Choose an item to hand over.</p>
+      <div class="slot-grid give-items">
+        <button type="button" class="slot filled give-pick"><span class="give-art"><span class="slot-abbr">CS</span></span><span class="give-name">Cred-stick</span></button>
+        <button type="button" class="slot filled give-pick"><span class="give-art"><span class="slot-abbr">RC</span></span><span class="give-name">Ramen chit</span></button>
+        <button type="button" class="slot filled give-pick"><span class="give-art"><span class="slot-abbr">OP</span></span><span class="give-name">Old photo</span></button>
+        <span class="slot empty"></span><span class="slot empty"></span><span class="slot empty"></span>
+      </div>
+      <div class="modal-actions"><button type="button" class="holo-btn">Cancel</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS screen -->
+<div class="tut-overlay" data-overlay="settings">
+  <div class="holo-stage set-stage">
+    <div class="menu-fx"><span class="fx-scan"></span></div>
+    <header class="holo-bar">
+      <button type="button" class="holo-icon" aria-label="Back"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+      <span class="hud-tag">// SYSTEM</span>
+    </header>
+    <main class="set-main">
+      <div class="set-col">
+        <section class="holo-panel" data-tut="settings-audio">
+          <span class="card-corner tr"></span><span class="card-corner bl"></span>
+          <h3 class="panel-head"><svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v4"/><path d="M8 22h8"/></svg><span>Audio</span></h3>
+          <label class="set-row"><span class="set-label">Voice<small>Narration &amp; character speech</small></span><span class="holo-switch"><input type="checkbox" checked><span class="switch-track"></span></span></label>
+          <label class="set-row"><span class="set-label">Narrator voice<small>Auto-speak narration as it arrives</small></span><span class="holo-switch"><input type="checkbox"><span class="switch-track"></span></span></label>
+          <label class="set-row"><span class="set-label">Character voices<small>Auto-speak character lines as they arrive</small></span><span class="holo-switch"><input type="checkbox" checked><span class="switch-track"></span></span></label>
+          <label class="set-row"><span class="set-label">Master volume<small>Overall loudness</small></span><span class="holo-range"><input type="range" min="0" max="1" step="0.05" value="0.7"><span class="range-val">70%</span></span></label>
+        </section>
+        <section class="holo-panel memory-settings" data-tut="settings-memory">
+          <span class="card-corner tr"></span><span class="card-corner bl"></span>
+          <h3 class="panel-head"><svg viewBox="0 0 24 24"><path d="M12 14l3.5-3.5"/><path d="M20.2 15.5a8.5 8.5 0 1 0-16.4 0"/><path d="M3.8 15.5h2"/><path d="M18.2 15.5h2"/></svg><span>Story memory</span></h3>
+          <p class="set-note">The narrator re-reads recent story word for word and compresses older chapters into a recap, so the story is never lost.</p>
+          <label class="set-row mem-row"><span class="set-label">Memory depth<small>How much recent story rides verbatim (8-400).</small></span><input type="number" class="holo-input mem-input" value="80"></label>
+          <label class="set-row mem-row"><span class="set-label">Context budget (auto)<small>Hard size target; this caps turn latency.</small></span><input type="number" class="holo-input mem-input" value="120000"></label>
+          <div class="ctx-meter tone-green" title="Story memory"><svg viewBox="0 0 24 24"><path d="M12 14l3.5-3.5"/><path d="M20.2 15.5a8.5 8.5 0 1 0-16.4 0"/><path d="M3.8 15.5h2"/><path d="M18.2 15.5h2"/></svg><div class="ctx-track"><div class="ctx-fill" style="width:33%"></div></div><span class="ctx-num">42.1k / 128k</span></div>
+        </section>
+      </div>
+      <div class="set-col">
+        <section class="holo-panel game-settings" data-tut="settings-difficulty">
+          <span class="card-corner tr"></span><span class="card-corner bl"></span>
+          <h3 class="panel-head"><svg viewBox="0 0 24 24"><path d="M12 2 4 7v10l8 5 8-5V7l-8-5Z"/><path d="m8 9 4-3 4 3-4 9-4-9Z"/></svg><span>This adventure</span></h3>
+          <fieldset class="set-group">
+            <legend class="set-legend">Difficulty</legend>
+            <label class="set-radio"><input type="radio" name="difficulty"><span class="set-label">Easy<small>The story bends toward you: attempts succeed, danger warns first, wishes come true.</small></span></label>
+            <label class="set-radio active"><input type="radio" name="difficulty" checked><span class="set-label">Normal<small>A fair world: the narrator weighs your attempts and wishes on their merits.</small></span></label>
+            <label class="set-radio"><input type="radio" name="difficulty"><span class="set-label">Hard<small>The world is strict: attempts can be refused, mistakes cost you, wishes are just whispers.</small></span></label>
+          </fieldset>
+          <fieldset class="set-group">
+            <legend class="set-legend">Narrator voice</legend>
+            <label class="set-radio active"><input type="radio" name="ng" checked><span class="set-label">Default<small>The voice the world was born with</small></span></label>
+            <label class="set-radio"><input type="radio" name="ng"><span class="set-label">Female</span></label>
+            <label class="set-radio"><input type="radio" name="ng"><span class="set-label">Male</span></label>
+          </fieldset>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- LIGHTBOX -->
+<div class="tut-overlay" data-overlay="lightbox">
+  <div class="lightbox" data-tut="lightbox">
+    <svg class="art-svg" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <rect width="400" height="300" fill="url(#skyGrad)"/>
+      <rect x="0" y="0" width="140" height="300" fill="#0a1424"/><rect x="260" y="0" width="140" height="300" fill="#0a1424"/>
+      <rect x="150" y="60" width="8" height="180" fill="#f2b84b" opacity="0.85"/><rect x="242" y="50" width="6" height="190" fill="#2fe6ff" opacity="0.85"/>
+      <g stroke="#dff3ff" stroke-width="0.7" opacity="0.35"><line x1="180" y1="0" x2="170" y2="300"/><line x1="210" y1="0" x2="200" y2="300"/></g>
+    </svg>
+    <p class="lightbox-cap">The alley behind the noodle stall, slick with rain and reflected signage.</p>
+  </div>
+</div>
+
+</div><!-- /app-shell -->
+
+<!-- ============================ THE TOUR ENGINE ============================= -->
+<div id="tut" class="tut" hidden>
+  <div class="tut-hole" id="tutHole"></div>
+  <div class="tut-catch" id="tutCatch"></div>
+  <aside class="tut-card" id="tutCard" role="dialog" aria-live="polite" aria-label="Guided tour">
+    <div class="tut-eyebrow"><span id="tutRegion">Tour</span><span class="tut-count"><span id="tutNow">1</span> / <span id="tutTotal">1</span></span></div>
+    <h3 class="tut-title" id="tutTitle">Title</h3>
+    <p class="tut-body" id="tutBody">Body</p>
+    <p class="tut-example" id="tutExample"></p>
+    <div class="tut-dots" id="tutDots" aria-hidden="true"></div>
+    <div class="tut-controls">
+      <button type="button" class="tut-btn ghost" id="tutSkip">Skip tour</button>
+      <span class="tut-spacer"></span>
+      <button type="button" class="tut-btn" id="tutBack">Back</button>
+      <button type="button" class="tut-btn primary" id="tutNext">Next</button>
+    </div>
+    <p class="tut-hint">Click anywhere &middot; &larr; &rarr; to move &middot; Esc to exit</p>
+  </aside>
+</div>
+
+<button type="button" id="tutReplay" class="tut-replay" hidden>
+  <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg><span>Replay tour</span>
+</button>
+
+<script src="steps.js"></script>
+<script src="tutorial.js"></script>
+</body>
+</html>
