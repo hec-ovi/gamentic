@@ -48,10 +48,14 @@ def _sane_amount(v):
     return min(n, settings.DAMAGE_CAP)
 
 
-def _compose(segments, conn=None, gid: str | None = None) -> tuple[str, list[dict]]:
-    """Render tagged segments into a readable action string + the directed actions to apply.
-    conn/gid let _display resolve a bare id (no entity chip) against the DB, so the give
-    picker's {item:'<id>', target:'<name>'} echoes the item NAME, never the raw id."""
+def _compose(segments, conn=None, gid: str | None = None) -> tuple[list[str], list[dict]]:
+    """Render tagged segments into per-segment echo lines + the directed actions to apply.
+    Returns the lines UNJOINED, in segment order: the caller echoes one player beat per
+    line (each keeps its own visual shape client-side - a say is a speech bubble, a do an
+    act - a single semicolon-joined beat read terribly), and joins them only for the
+    narrator's action text. conn/gid let _display resolve a bare id (no entity chip)
+    against the DB, so the give picker's {item:'<id>', target:'<name>'} echoes the item
+    NAME, never the raw id."""
     parts, directed = [], []
     for s in segments:
         t = (s.get("type") or "do").lower()
@@ -101,7 +105,7 @@ def _compose(segments, conn=None, gid: str | None = None) -> tuple[str, list[dic
                 parts.append("you look around")
         else:  # do
             parts.append(text or "you wait")
-    return "; ".join(p for p in parts if p), directed
+    return [p for p in parts if p], directed
 
 
 def _why_impossible(conn, gid, d) -> str | None:
@@ -369,16 +373,29 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
 
     # ---- public turn (narrator + cascade) ----
     if has_public:
-        action_text, directed = _compose(public, conn, gid) if public else (action_text, [])
+        echo_parts: list[str] = []
+        directed: list[dict] = []
+        if public:
+            echo_parts, directed = _compose(public, conn, gid)
+            action_text = "; ".join(echo_parts)
         if not continue_story:
             # the player's echo is THEIR words: typed input echoes verbatim (echo_text);
             # the composed rendition is for the narrator, never put in the player's mouth.
             # EXCEPT when the input split into public + whisper segments: the verbatim
             # text carries the whispered words and this beat is witnessed by EVERYONE
             # (static-confirmed leak: the secret entered every bystander's recap), so a
-            # mixed turn echoes the composed public-only rendition instead.
-            emit("player", None, "action",
-                 (echo_text if not whispers else "") or action_text or "...")
+            # mixed turn echoes the public-only lines instead.
+            if echo_text and not whispers:
+                emit("player", None, "action", echo_text)
+            elif echo_parts:
+                # ONE echo beat PER stacked line, in stack order (owner 2026-07-21):
+                # the client renders each line in its own shape (say = speech bubble,
+                # do = an act, look = a study); a single semicolon-joined beat
+                # flattened them into one unreadable row.
+                for p in echo_parts:
+                    emit("player", None, "action", p)
+            else:
+                emit("player", None, "action", action_text or "...")
 
         # Deterministic movement router FIRST: an explicit step through a REVEALED exit
         # moves the player before anything else resolves, so a stacked composer turn like

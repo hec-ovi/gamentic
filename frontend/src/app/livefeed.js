@@ -96,12 +96,21 @@ function applyLiveBeat(g, wire) {
   if (g.beats.some((x) => x.id === b.id)) return;
   if (g.liveVia) b.viaProfile = g.liveVia;
   (g.liveTurnIds || (g.liveTurnIds = new Set())).add(b.id);
-  // a canonical player echo arriving live replaces its optimistic twin NOW
-  // (resolveTurn's pending sweep only runs when the POST lands - without this,
-  // the player's line shows twice for the whole generation)
+  // A canonical player echo arriving live replaces its optimistic twin NOW,
+  // IN ITS TWIN'S PLACE (resolveTurn's pending sweep only runs when the POST
+  // lands - without this, the player's line shows twice for the whole
+  // generation). Appending it instead scrambled a stacked turn's order for as
+  // long as the narrator wrote (live: [do, say, do] read as [say, do, do]).
+  // Echoes arrive ONE PER STACKED LINE, in stack order (public and private
+  // alike), so each swaps one-for-one with the oldest pending twin on its
+  // channel and every line keeps its own visual shape.
   if ((!b.speaker || b.speaker === "player") && b.kind === "action") {
     const twin = g.beats.findIndex((x) => x.pending && (x.privateWith || null) === (b.privateWith || null));
-    if (twin >= 0) g.beats = [...g.beats.slice(0, twin), ...g.beats.slice(twin + 1)];
+    if (twin >= 0) {
+      g.beats = [...g.beats.slice(0, twin), b, ...g.beats.slice(twin + 1)];
+      liveRender(g);
+      return;
+    }
   }
   const match = g.beats.findIndex(
     (x) =>
@@ -163,9 +172,11 @@ function liveRender(g) {
   followStory();
 }
 
-// Voice autoplay for live beats: the staged reveal used to pace playback one
-// beat at a time; live beats bypass it, so a minimal chain serializes the same
-// prepare -> play order (synthesis needs the full line, which a live_beat has).
+// Voice autoplay for live beats. The chain serializes SYNTHESIS in beat order
+// (one GPU, and the order the prepares land is the order playback queues);
+// playback itself goes through voice.playQueued, so a line whose audio is
+// ready still WAITS for the line speaking now - the next line synthesizes
+// while this one plays (pipelining), but never talks over it.
 let voiceChain = Promise.resolve();
 
 function queueLiveVoice(g, beat) {
@@ -176,7 +187,10 @@ function queueLiveVoice(g, beat) {
     .then(async () => {
       if (state.active !== g) return;
       const prepared = await voice.prepare(req);
-      if (prepared && state.active === g) await voice.playUrl(prepared.audioUrl, beat.speaker);
+      // re-check at play time: the player may have entered or left the whisper
+      // window while this line synthesized (the audio follows the eyes), and
+      // playQueued is NOT awaited - the next line's synthesis starts now.
+      if (prepared && state.active === g && autoplayFor(beat)) voice.playQueued(prepared.audioUrl, beat.speaker);
     })
     .catch(() => {});
 }

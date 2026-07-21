@@ -53,6 +53,19 @@ test("narration renders as prose, with NO speaker-label element and NO 'Narrator
   assert.ok(narration.textContent.includes("The stair creaks beneath you."));
 });
 
+test("speak icons render BEFORE their text so the float wraps the prose short of them (no overlap)", () => {
+  const el = parse(renderApp(playState()));
+  const narration = el.querySelector(".narration");
+  const nBtn = narration.querySelector(".speak-btn");
+  assert.ok(nBtn, "voiced narration carries its speak button");
+  // DOCUMENT_POSITION_FOLLOWING (4): the paragraph comes after the button
+  assert.ok(nBtn.compareDocumentPosition(narration.querySelector("p")) & 4, "narration button precedes the prose");
+  const bubble = el.querySelector(".dialogue .bubble");
+  const bBtn = bubble.querySelector(".speak-btn");
+  assert.ok(bBtn, "voiced dialogue carries its speak button");
+  assert.ok(bBtn.compareDocumentPosition(bubble.querySelector("p")) & 4, "bubble button precedes the line");
+});
+
 test("dialogue renders as a distinct named bubble with the character's name", () => {
   const el = parse(renderApp(playState()));
   const dialogue = el.querySelector(".dialogue");

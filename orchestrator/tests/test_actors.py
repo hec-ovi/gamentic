@@ -245,7 +245,10 @@ def test_untagged_character_output_is_dialogue(client, fake_llm):
                and "Hello there" in b["text"] for b in beats)
 
 
-def test_multi_segment_turn_composes(client, fake_llm):
+def test_multi_segment_turn_echoes_one_beat_per_line_in_stack_order(client, fake_llm):
+    """A stacked turn echoes one player beat PER segment, in the order stacked
+    (owner 2026-07-21): the client renders each in its own shape (say = speech
+    bubble, do = act). The narrator still receives the joined rendition."""
     gid = _new(client, [_char("Mara")])
     fake_llm.narrator = llm.LLMReply(content="The room watches.")
     d = client.post(f"/games/{gid}/action", json={"segments": [
@@ -253,6 +256,17 @@ def test_multi_segment_turn_composes(client, fake_llm):
         {"type": "say", "text": "quiet night"},
         {"type": "do", "text": "lean on the counter"},
     ]}).json()
-    action_beat = next(b for b in d["beats"] if b["kind"] == "action")
-    assert "walk to the bar" in action_beat["text"]
-    assert "quiet night" in action_beat["text"]
+    echoes = [b for b in d["beats"] if b["speaker"] == "player" and b["kind"] == "action"]
+    assert [b["text"] for b in echoes] == [
+        "walk to the bar",
+        'you say "quiet night"',
+        "lean on the counter",
+    ]
+    # in stack order, before anything the narrator wrote
+    assert [b["seq"] for b in echoes] == sorted(b["seq"] for b in echoes)
+    narration = next(b for b in d["beats"] if b["kind"] == "narration")
+    assert all(b["seq"] < narration["seq"] for b in echoes)
+    # the narrator's prompt saw the joined rendition of the whole stack
+    nar_call = fake_llm.narrator_calls()[-1]
+    joined = "walk to the bar; you say \"quiet night\"; lean on the counter"
+    assert any(joined in str(m.get("content", "")) for m in nar_call["messages"])

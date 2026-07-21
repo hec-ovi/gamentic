@@ -22,6 +22,10 @@
 //  - ONE GPU serves one generation: synthesis requests go through a strict
 //    FIFO queue, never in parallel. Identical requests hit the server cache
 //    (stable audio_url) and our local cache.
+//  - ONE mouth speaks at a time: autoplay goes through playQueued(), a strict
+//    FIFO playback queue - a line whose audio is ready WAITS for the line
+//    still speaking to finish, never cuts it off. playUrl() stays the manual
+//    take-over (the per-beat button): it interrupts on purpose.
 
 export class Voice {
   constructor({ fetchImpl, AudioImpl } = {}) {
@@ -46,6 +50,16 @@ export class Voice {
     // Optional callback fired whenever a key's status changes (queued, done),
     // so the UI can repaint the speak icons without a full render.
     this.onStatus = null;
+    // FIFO playback queue (autoplay): the next line starts only when the one
+    // speaking now ends. stopAll()/flush() bump the generation so queued-but-
+    // unstarted lines are abandoned instead of talking over what follows.
+    this._playChain = Promise.resolve();
+    this._playGen = 0;
+    // The audio_url speaking right now (drives the per-beat "playing" icon),
+    // and a promise that settles when it is done - queued lines await it, so
+    // they never talk over a MANUALLY played line either.
+    this._playing = null;
+    this._playingDone = Promise.resolve();
     // set once the browser has granted media playback (see unlock()).
     this._unlocked = false;
   }
@@ -58,13 +72,15 @@ export class Voice {
     return `${gameId || ""}|${voiceId}|${emotion || ""} ${clean}`;
   }
 
-  // Per-beat voice status for the icon: "ready" (audio cached, plays instantly),
-  // "generating" (queued or synthesizing now), or "idle" (not made yet). "none"
-  // when the line can't be voiced at all (no voice id / disabled).
+  // Per-beat voice status for the icon: "playing" (its audio is the one out
+  // loud right now), "ready" (audio cached, plays instantly), "generating"
+  // (queued or synthesizing now), or "idle" (not made yet). "none" when the
+  // line can't be voiced at all (no voice id / disabled).
   status(req) {
     const key = this._statusKey(req);
     if (!key) return "none";
-    if (this._cache.has(key)) return "ready";
+    const hit = this._cache.get(key);
+    if (hit) return this._playing && this._playing === hit.audioUrl ? "playing" : "ready";
     if (this._inflight.has(key)) return "generating";
     return "idle";
   }
@@ -193,14 +209,40 @@ export class Voice {
     }
   }
 
-  // Play an already-rendered audio_url. Returns the element (or null headless).
-  playUrl(audioUrl, speakerId) {
+  // Play an already-rendered audio_url NOW, interrupting whatever speaks
+  // (the manual per-beat button; autoplay uses playQueued). Returns the
+  // element (or null headless). `onSettle` (internal) fires exactly once when
+  // this playback is over - ended, paused/stopped, errored, or blocked - so
+  // the playback queue can move on even when play() is silently rejected.
+  playUrl(audioUrl, speakerId, onSettle) {
     if (!this.enabled || !audioUrl || !this._Audio) return null;
     this.stop();
     try {
       const el = new this._Audio(audioUrl);
       el.volume = this.volumeFor(speakerId);
       this._audio = el;
+      this._playing = audioUrl;
+      this._emitStatus(); // the beat's icon flips to "playing"
+      let resolveDone;
+      this._playingDone = new Promise((r) => (resolveDone = r));
+      let settled = false;
+      const settle = () => {
+        if (this._audio === el) this._audio = null;
+        if (this._playing === audioUrl) {
+          this._playing = null;
+          this._emitStatus(); // ...and back to "ready" (generated, replayable)
+        }
+        if (!settled) {
+          settled = true;
+          resolveDone();
+          if (typeof onSettle === "function") onSettle();
+        }
+      };
+      if (typeof el.addEventListener === "function") {
+        el.addEventListener("ended", settle);
+        el.addEventListener("pause", settle); // stop() pauses
+        el.addEventListener("error", settle);
+      }
       const p = el.play();
       // surface a block instead of swallowing it silently: the console line is how
       // we tell "autoplay blocked" (unlock() needed) from "file 404" (proxy) apart.
@@ -209,6 +251,7 @@ export class Voice {
           if (typeof console !== "undefined" && console.warn) {
             console.warn("[voice] playback did not start:", (e && e.message) || e);
           }
+          settle(); // a blocked line must not look "playing" nor stall the queue
         });
       }
       return el;
@@ -216,6 +259,25 @@ export class Voice {
       if (typeof console !== "undefined" && console.warn) console.warn("[voice] play error:", e);
       return null;
     }
+  }
+
+  // Queue an already-rendered audio_url behind whatever is speaking: the
+  // autoplay path. Lines play whole, one at a time, in the order queued -
+  // a ready line never cuts off the one still out loud. Resolves when THIS
+  // line finishes (or was dropped by stopAll()/flush()/disable).
+  playQueued(audioUrl, speakerId) {
+    const gen = this._playGen;
+    const turn = this._playChain.then(async () => {
+      if (gen !== this._playGen || !this.enabled || !audioUrl) return undefined;
+      await this._playingDone; // a MANUALLY played line finishes first too
+      if (gen !== this._playGen || !this.enabled) return undefined; // stopped while waiting
+      return new Promise((resolve) => {
+        const el = this.playUrl(audioUrl, speakerId, resolve);
+        if (!el) resolve();
+      });
+    });
+    this._playChain = turn.catch(() => {}); // the queue itself never rejects
+    return turn;
   }
 
   // Synthesize + play a single beat (the per-beat play button). Returns the
@@ -229,16 +291,30 @@ export class Voice {
   }
 
   // Abandon every queued-but-unstarted synthesis job (a left game's lines must
-  // not delay the next game's first voiced beat). The cache survives.
+  // not delay the next game's first voiced beat). The cache survives. The
+  // playback queue empties with it: a left game's rendered lines must not
+  // keep talking over the menu or the next game.
   flush() {
     this._gen += 1;
     this._queue = Promise.resolve();
+    this._playGen += 1;
+    this._playChain = Promise.resolve();
     // queued-but-unstarted jobs are abandoned; their beats are no longer
     // generating (a running job clears its own key in its finally).
     if (this._inflight.size) {
       this._inflight.clear();
       this._emitStatus();
     }
+  }
+
+  // Take over the single audio channel: drop every queued-but-unstarted line
+  // AND halt the one speaking. The manual play/stop button calls this - an
+  // explicit click means "this now" (or "silence"), never "and then the rest
+  // of the old queue resumes".
+  stopAll() {
+    this._playGen += 1;
+    this._playChain = Promise.resolve();
+    this.stop();
   }
 
   stop() {
@@ -250,6 +326,10 @@ export class Voice {
         /* ignore */
       }
       this._audio = null;
+    }
+    if (this._playing) {
+      this._playing = null;
+      this._emitStatus();
     }
   }
 }

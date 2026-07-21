@@ -84,8 +84,11 @@ export function profileBody(s, g, d) {
        <button type="button" class="art-cycle next" data-act="profile-img-next" aria-label="Next image">${icon("chevronLeft")}</button>
        <span class="art-dots" aria-hidden="true">${uniqViews.map((_, i) => `<i class="${i === idx ? "on" : ""}"></i>`).join("")}</span>`
     : "";
+  // every view sits in the same fixed tall frame: the square face view rides a
+  // blurred cover copy of itself (.profile-art-bg) filling the bands, so the
+  // frame never changes height and the cycle arrows / dots never jump
   const art = uniqViews.length
-    ? `<div class="profile-art-wrap">${artImg({ url: uniqViews[idx], alt: d.name, caption: artCaption, cls: "profile-art" })}${cycler}</div>`
+    ? `<div class="profile-art-wrap"><img class="profile-art-bg" src="${escapeHtml(uniqViews[idx])}" alt="" aria-hidden="true" loading="lazy" />${artImg({ url: uniqViews[idx], alt: d.name, caption: artCaption, cls: "profile-art" })}${cycler}</div>`
     : `<div class="profile-art fallback" role="img" aria-label="${escapeHtml(d.name)}"><span class="col-initial">${escapeHtml(initials(d.name))}</span></div>`;
 
   // the Whisper tab carries the same unread alert as the cast card (one count,

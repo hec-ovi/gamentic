@@ -81,7 +81,9 @@ button { font: inherit; cursor: pointer; }
   color: var(--ink-prose); margin: 0 0 1rem; letter-spacing: 0.005em;
   animation: rise 0.5s ease both;
 }
-.narration .speak-btn { position: absolute; top: 0; right: -0.5rem; }
+/* floated, not absolute: the prose WRAPS around the icon instead of running
+   underneath it (the icon renders before the paragraphs for exactly this) */
+.narration .speak-btn { float: right; margin: 0.15rem 0 0.35rem 0.8rem; }
 
 /* DIALOGUE: a named character bubble with identity. Looks like someone talking. */
 .dialogue {
@@ -97,7 +99,9 @@ button { font: inherit; cursor: pointer; }
 }
 .bubble-name { display: block; font-size: 0.8rem; font-weight: 700; color: var(--speaker); margin-bottom: 0.15rem; }
 .bubble p { margin: 0; line-height: 1.5; color: var(--card-ink); }
-.bubble .speak-btn { position: absolute; top: 0.5rem; right: 0.5rem; }
+/* floated for the same reason as the narration icon: a long first line wraps
+   short of the icon instead of running underneath it */
+.bubble .speak-btn { float: right; margin: 0 0 0.3rem 0.6rem; }
 
 /* PLAYER action: quiet inline marker, right-aligned. Not a competing bubble. */
 .player-action {
@@ -1011,8 +1015,12 @@ figure.prose-art.art-loading { cursor: default; }
 .mode-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* free typing is THE main path (the backend interprets plain text into
-   say/do/attack/give/whisper); make the line generous */
-.composer-input { flex: 1; min-height: 3em; display: block; font-size: 1.02rem; line-height: 1.55; overflow-x: hidden; overflow-y: auto; max-height: 6em; cursor: text; }
+   say/do/attack/give/whisper); make the line generous. ONE continuous line:
+   long input scrolls sideways instead of wrapping, so the row keeps a constant
+   height and the buttons flanking it never stretch */
+.composer-input { flex: 1; min-height: 3em; display: block; font-size: 1.02rem; line-height: 1.55;
+  white-space: pre; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; cursor: text; }
+.composer-input::-webkit-scrollbar { display: none; }
 .composer-input:empty::before { content: attr(data-placeholder); color: var(--ink-muted); pointer-events: none; }
 .composer-input[contenteditable="false"] { opacity: 0.55; cursor: not-allowed; }
 
@@ -1327,8 +1335,16 @@ button.cast-row:hover { border-color: var(--accent); }
   box-shadow: 0 18px 50px color-mix(in srgb, var(--shadow-tint) 55.0%, transparent), 0 0 30px color-mix(in srgb, var(--accent) 8%, transparent); cursor: zoom-in; }
 .profile-art.fallback { aspect-ratio: 9 / 16; display: grid; place-items: center; background: color-mix(in srgb, var(--surface-well) 80%, transparent); }
 .profile-art.fallback .col-initial { font-size: 3rem; color: var(--speaker); font-family: var(--font-display); }
-/* portrait cycler: prev/next over the art + view dots */
-.profile-art-wrap { position: relative; }
+/* portrait cycler: prev/next over the art + view dots. Every view shares ONE
+   fixed window (5:9, the tall 640x1152 body shape): the square face view sits
+   vertically centered over a blurred cover copy of itself (.profile-art-bg)
+   that fills the bands, so the frame never changes height and the arrows and
+   dots never jump between views */
+.profile-art-wrap { position: relative; aspect-ratio: 5 / 9; overflow: hidden;
+  clip-path: polygon(calc(var(--chamfer) * 14px) 0, 100% 0, 100% calc(100% - calc(var(--chamfer) * 14px)), calc(100% - calc(var(--chamfer) * 14px)) 100%, 0 100%, 0 calc(var(--chamfer) * 14px)); }
+.profile-art-wrap .profile-art { position: relative; z-index: 1; height: 100%; object-fit: contain; }
+.profile-art-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  transform: scale(1.15); filter: blur(14px) brightness(0.85); }
 .art-cycle { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
   width: 30px; height: 30px; display: grid; place-items: center; border-radius: 999px;
   background: color-mix(in srgb, var(--surface-scrim) 70%, transparent); border: 1px solid var(--line);
@@ -1427,22 +1443,23 @@ button.cast-row:hover { border-color: var(--accent); }
 .trait.origin { border-color: color-mix(in srgb, var(--accent) 25%, transparent); background: color-mix(in srgb, var(--accent) 4%, transparent); }
 .trait.origin .trait-stamp { color: var(--accent); }
 
-/* ---- the speak button as a state machine ----
+/* ---- the speak button as a state machine (one color per state) ----
    idle (base .speak-btn, dim): not synthesized yet
-   generating: dim glyph + a ring SPINNING AROUND it (audio not ready; may be
+   generating: RED glyph + a ring SPINNING AROUND it (audio not ready; may be
      queued behind other lines - one GPU, FIFO)
-   ready: bright/gold glyph, audio cached and plays instantly
-   playing: gold + pulsing */
+   ready: GREEN glyph, audio cached and plays instantly (an already-played
+     line rests here too: generated is generated)
+   playing: YELLOW/gold + the pulsing scale, while its audio is out loud */
 .speak-btn { position: relative; }
-.speak-btn.speak-generating { color: var(--ink-muted); cursor: progress; }
-.speak-btn.speak-generating svg { opacity: 0.35; }
+.speak-btn.speak-generating { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, transparent); cursor: progress; }
+.speak-btn.speak-generating svg { opacity: 0.55; }
 .speak-btn.speak-generating::after {
   content: ""; position: absolute; inset: -1px; border-radius: 50%;
-  border: 1.5px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent);
+  border: 1.5px solid transparent; border-top-color: var(--danger); border-right-color: var(--danger);
   animation: spin 0.8s linear infinite;
 }
-.speak-btn.speak-ready { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
-.speak-btn.speak-ready svg { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--gold) 45%, transparent)); }
+.speak-btn.speak-ready { color: var(--success); border-color: color-mix(in srgb, var(--success) 55%, transparent); }
+.speak-btn.speak-ready svg { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--success) 45%, transparent)); }
 .speak-btn.speak-playing { color: var(--gold); border-color: var(--gold); }
 .speak-btn.speak-playing svg { animation: speak-pulse 1s ease-in-out infinite; }
 @keyframes speak-pulse {
@@ -1453,7 +1470,8 @@ button.cast-row:hover { border-color: var(--accent); }
 @media (max-width: 760px) {
   .profile-cols { grid-template-columns: 1fr; }
   .profile-left { position: static; flex-direction: row; align-items: flex-start; }
-  .profile-left .profile-art { width: 40%; }
+  /* direct children only: the art inside .profile-art-wrap stays 100% of it */
+  .profile-left > .profile-art-wrap, .profile-left > .profile-art { width: 40%; }
   .turn-aux { flex-wrap: wrap; }
 }
 

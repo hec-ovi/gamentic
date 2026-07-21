@@ -24,8 +24,9 @@ export async function speakBeat(beatId) {
   const beat = g && g.beats.find((b) => b.id === beatId);
   if (!beat) return;
   if (speaking && speaking.beatId === beatId) {
-    // clicking the busy beat again stops it
-    voice.stop();
+    // clicking the busy beat again stops it - and empties the autoplay queue
+    // too (an explicit stop means silence, not "the next line starts")
+    voice.stopAll();
     setSpeaking(null);
     return;
   }
@@ -35,6 +36,7 @@ export async function speakBeat(beatId) {
   const prepared = await voice.prepare({ text: beat.text, voiceId: beat.voiceId, emotion: beat.emotion, gameId: g.id });
   if (!speaking || speaking.beatId !== beatId) return; // stopped or superseded meanwhile
   if (!prepared) return setSpeaking(null); // synth failed; the text is on screen
+  voice.stopAll(); // an explicit play takes the channel: queued autoplay lines drop
   const el = voice.playUrl(prepared.audioUrl, beat.speaker);
   if (!el) return setSpeaking(null);
   setSpeaking({ beatId, phase: "playing" });
@@ -52,14 +54,16 @@ export function setSpeaking(next) {
 }
 
 // The speak icon reflects the beat's VOICE state, so autoplay (which prepares
-// audio in the background) shows progress too, not just a click. Four looks on
-// the speaker glyph:
+// audio in the background and now also PLAYS through the queue) shows the
+// same lifecycle a click does. Four looks on the speaker glyph:
 //   idle       - not synthesized yet (dim) -> click to voice it
-//   generating - queued or synthesizing now (dim + a ring spinning around it)
-//   ready      - audio cached, plays instantly (bright/gold)
-//   playing    - audio is playing right now (pulsing gold)
+//   generating - queued or synthesizing now (red + a ring spinning around it)
+//   ready      - audio cached, plays instantly; already-played lines rest
+//                here too (green)
+//   playing    - audio is out loud right now (yellow, pulsing scale)
 // The click state (speaking) wins while it is set; otherwise the voice cache /
-// in-flight queue decides. voice.onStatus repaints these as prepares land.
+// in-flight queue / live playback decide. voice.onStatus repaints these as
+// prepares land and as playback starts and ends.
 const SPEAK_LABEL = {
   generating: "Preparing voice...",
   ready: "Play voice (ready)",
@@ -74,7 +78,7 @@ function speakState(g, id) {
   const beat = g && g.beats.find((b) => b.id === id);
   if (!beat) return "idle";
   const vs = voice.status({ text: beat.text, voiceId: beat.voiceId, emotion: beat.emotion, gameId: g.id });
-  return vs === "generating" ? "generating" : vs === "ready" ? "ready" : "idle";
+  return vs === "generating" || vs === "ready" || vs === "playing" ? vs : "idle";
 }
 
 // Patch the speak buttons in place (no full render: never disturb reading or a

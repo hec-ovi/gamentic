@@ -19,7 +19,9 @@ function makeFetch({ ok = true, audioUrl = "/audio/abc.wav", throws = false } = 
   return fn;
 }
 
-// A fake Audio element capturing src + volume + play().
+// A fake Audio element capturing src + volume + play(), with just enough of
+// the event surface (addEventListener + pause/ended dispatch) for the
+// playback queue to see a line finish.
 function makeAudio() {
   const made = [];
   class FakeAudio {
@@ -28,7 +30,14 @@ function makeAudio() {
       this.volume = 1;
       this.currentTime = 0;
       this.played = false;
+      this._listeners = {};
       made.push(this);
+    }
+    addEventListener(type, fn) {
+      (this._listeners[type] = this._listeners[type] || []).push(fn);
+    }
+    dispatch(type) {
+      (this._listeners[type] || []).forEach((fn) => fn());
     }
     play() {
       this.played = true;
@@ -36,11 +45,18 @@ function makeAudio() {
     }
     pause() {
       this.paused = true;
+      this.dispatch("pause"); // the real element fires pause on pause()
+    }
+    end() {
+      this.dispatch("ended"); // playback ran to its natural end
     }
   }
   FakeAudio.made = made;
   return FakeAudio;
 }
+
+// settle the promise chains between queue steps
+const tick = () => new Promise((r) => setTimeout(r, 0));
 
 test("speak() POSTs /voice/speak with {text, voice_id} and plays the returned audio_url", async () => {
   const fetchImpl = makeFetch({ audioUrl: "/audio/xyz.wav" });
@@ -178,6 +194,109 @@ test("synthesis is a strict FIFO queue: one render at a time, never parallel", a
   assert.deepEqual(order, ["first", "second"], "FIFO order preserved");
   assert.equal(a.audioUrl, "/audio/first.wav");
   assert.equal(b.audioUrl, "/audio/second.wav");
+});
+
+// ---------------------------------------------------------------------------
+// the playback queue: one mouth at a time - a ready line never interrupts the
+// line still speaking, order is FIFO, stopAll() takes the channel back
+// ---------------------------------------------------------------------------
+
+test("playQueued(): the next line WAITS for the one speaking - never cuts it off", async () => {
+  const AudioImpl = makeAudio();
+  const v = new Voice({ fetchImpl: makeFetch(), AudioImpl });
+  const done = [];
+  v.playQueued("/audio/a.wav", "n").then(() => done.push("a"));
+  v.playQueued("/audio/b.wav", "n").then(() => done.push("b"));
+  await tick();
+  // b is ready but a is still speaking: b must not start, a must not pause
+  assert.equal(AudioImpl.made.length, 1, "only the first line plays");
+  assert.equal(AudioImpl.made[0].src, "/audio/a.wav");
+  assert.notEqual(AudioImpl.made[0].paused, true, "the speaking line was never interrupted");
+  AudioImpl.made[0].end();
+  await tick();
+  assert.equal(AudioImpl.made.length, 2, "the next line starts only after the first ends");
+  assert.equal(AudioImpl.made[1].src, "/audio/b.wav");
+  AudioImpl.made[1].end();
+  await tick();
+  assert.deepEqual(done, ["a", "b"], "FIFO order preserved");
+});
+
+test("stopAll() halts the speaking line AND drops the queued ones", async () => {
+  const AudioImpl = makeAudio();
+  const v = new Voice({ fetchImpl: makeFetch(), AudioImpl });
+  v.playQueued("/audio/a.wav", "n");
+  v.playQueued("/audio/b.wav", "n");
+  await tick();
+  v.stopAll();
+  await tick();
+  assert.equal(AudioImpl.made[0].paused, true, "the speaking line stops");
+  assert.equal(AudioImpl.made.length, 1, "the queued line never starts");
+  // the channel is free again for whatever plays next
+  v.playQueued("/audio/c.wav", "n");
+  await tick();
+  assert.equal(AudioImpl.made[1].src, "/audio/c.wav");
+});
+
+test("a queued line waits for a MANUALLY played line too (the button never gets talked over)", async () => {
+  const AudioImpl = makeAudio();
+  const v = new Voice({ fetchImpl: makeFetch(), AudioImpl });
+  v.playUrl("/audio/manual.wav", "n"); // the player clicked play on a beat
+  v.playQueued("/audio/next.wav", "n"); // an autoplay line lands ready meanwhile
+  await tick();
+  assert.equal(AudioImpl.made.length, 1, "the queued line waits for the manual one");
+  assert.notEqual(AudioImpl.made[0].paused, true, "the manual line keeps speaking");
+  AudioImpl.made[0].end();
+  await tick();
+  assert.equal(AudioImpl.made.length, 2, "then the queued line takes its turn");
+  assert.equal(AudioImpl.made[1].src, "/audio/next.wav");
+});
+
+test("status() walks ready -> playing -> ready as a line's audio starts and ends", async () => {
+  const fetchImpl = makeFetch({ audioUrl: "/audio/s.wav" });
+  const AudioImpl = makeAudio();
+  const v = new Voice({ fetchImpl, AudioImpl });
+  const req = { text: "the line", voiceId: "vx" };
+  await v.prepare(req);
+  assert.equal(v.status(req), "ready");
+  v.playQueued("/audio/s.wav", "n");
+  await tick();
+  assert.equal(v.status(req), "playing");
+  AudioImpl.made[0].end();
+  await tick();
+  assert.equal(v.status(req), "ready", "an already-played line rests at ready (generated is generated)");
+});
+
+test("a blocked play() (autoplay not granted) never stalls the playback queue", async () => {
+  const made = [];
+  class BlockedAudio {
+    constructor(src) {
+      this.src = src;
+      this.volume = 1;
+      this._listeners = {};
+      made.push(this);
+    }
+    addEventListener(type, fn) {
+      (this._listeners[type] = this._listeners[type] || []).push(fn);
+    }
+    dispatch(type) {
+      (this._listeners[type] || []).forEach((fn) => fn());
+    }
+    play() {
+      // the FIRST line is rejected the way a browser blocks autoplay
+      return made.length === 1 ? Promise.reject(new Error("NotAllowedError")) : Promise.resolve();
+    }
+    pause() {
+      this.paused = true;
+      this.dispatch("pause");
+    }
+  }
+  const v = new Voice({ fetchImpl: makeFetch(), AudioImpl: BlockedAudio });
+  v.playQueued("/audio/a.wav", "n");
+  v.playQueued("/audio/b.wav", "n");
+  await tick();
+  await tick();
+  assert.equal(made.length, 2, "the queue moved on past the blocked line");
+  assert.equal(made[1].src, "/audio/b.wav");
 });
 
 test("prepare() failures resolve null and do not poison the queue", async () => {

@@ -115,7 +115,11 @@ export async function revealBeat(g, beat) {
 
   const el = unveil();
   if (!el) return;
-  if (prepared) voice.playUrl(prepared.audioUrl, beat.speaker);
+  // QUEUED, never over the top: a line whose audio is ready waits for the one
+  // still speaking. Re-check autoplayFor at play time - the player may have
+  // opened/closed the whisper window while this line synthesized, and the
+  // audio follows the eyes (a silenced line still shows its ready icon).
+  if (prepared && autoplayFor(beat)) voice.playQueued(prepared.audioUrl, beat.speaker);
   if (instant) return;
 
   const chars = String(beat.text || "").length || 1;
@@ -123,8 +127,20 @@ export async function revealBeat(g, beat) {
   await typewrite(g, beat, cps);
 }
 
+// Whether this beat's voice should AUTO-play right now. Two gates:
+//   1. the setting - narration follows autoplayNarrator, character lines
+//      (public dialogue AND private whispers) follow autoplayCharacters;
+//   2. the surface - audio follows the eyes (owner 2026-07-21): a PRIVATE
+//      line autoplays only while ITS whisper window is open, a PUBLIC line
+//      only while no whisper window is open. Closing the whisper mid-turn
+//      silences the reply that lands after; its icon still offers it by hand.
 export function autoplayFor(beat) {
-  return beat.kind === "narration" ? Boolean(state.settings.autoplayNarrator) : Boolean(state.settings.autoplayCharacters);
+  const on = beat.kind === "narration" ? Boolean(state.settings.autoplayNarrator) : Boolean(state.settings.autoplayCharacters);
+  if (!on) return false;
+  const pf = state.active && state.active.profile;
+  const whisperOpen = Boolean(pf && pf.tab === "whisper");
+  if (beat.privateWith) return whisperOpen && pf.charId === beat.privateWith;
+  return !whisperOpen;
 }
 
 export function nextVoicedBeat(g, afterId) {

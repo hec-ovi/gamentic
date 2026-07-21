@@ -206,3 +206,123 @@ test("a turn taken elsewhere (no POST of ours) still lands live and reconciles o
   await waitFor(() => expect(screen.queryByText(/the narrator is writing/i)).toBeNull());
   expect(screen.getAllByText(/another hand moves the story/).length).toBe(1);
 });
+
+// ---------------------------------------------------------------------------
+// autoplay follows the eyes (owner 2026-07-21): a PUBLIC line autoplays only
+// while no whisper window is open; a PRIVATE line only inside ITS whisper
+// window. Playback goes through the queue (playQueued), never playUrl.
+// ---------------------------------------------------------------------------
+
+test("a public live line does NOT autoplay while a whisper window is open; it does once closed", async () => {
+  const u = user();
+  server.use(http.get(`${API}/games/:id/characters/:cid/profile`, () => HttpResponse.json(makeProfile())));
+  const app = await mountApp();
+  await u.click(await screen.findByRole("button", { name: /enter your saved worlds/i }));
+  await u.click(await screen.findByRole("button", { name: /^enter$/i }));
+  await screen.findAllByText("The Last Breath");
+  app.state.settings.autoplayNarrator = true;
+  const prepared = vi.spyOn(app.voice, "prepare").mockResolvedValue({ audioUrl: "/audio/n.wav", duration: 1 });
+  const queued = vi.spyOn(app.voice, "playQueued").mockResolvedValue(undefined);
+
+  // into Jacker's whisper window
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(document.querySelector(".profile-screen")).getByRole("tab", { name: /whisper/i })).toBeTruthy());
+  await u.click(within(document.querySelector(".profile-screen")).getByRole("tab", { name: /whisper/i }));
+
+  // a public narration lands live: eyes are in the whisper window, so SILENCE
+  es().emit({ kind: "live_beat", beat: makeBeat({ id: "pub1", turn_index: 3, text: "Far off, the market roars." }) });
+  await waitFor(() => expect(app.state.active.beats.some((b) => b.id === "pub1")).toBe(true));
+  expect(prepared).not.toHaveBeenCalled();
+  expect(queued).not.toHaveBeenCalled();
+
+  // back to the scene: the next public line speaks, through the QUEUE
+  await u.click(within(document.querySelector(".profile-screen")).getByRole("button", { name: /back to the scene/i }));
+  es().emit({ kind: "live_beat", beat: makeBeat({ id: "pub2", turn_index: 3, text: "The rain returns." }) });
+  await waitFor(() => expect(queued).toHaveBeenCalledWith("/audio/n.wav", "narrator"));
+  expect(prepared).toHaveBeenCalledTimes(1);
+});
+
+test("a private live line autoplays ONLY inside its whisper window", async () => {
+  const u = user();
+  const voiced = makeState();
+  voiced.characters[0].voice_id = "vx-jacker";
+  server.use(
+    http.get(`${API}/games/:id/state`, () => HttpResponse.json(voiced)),
+    http.get(`${API}/games/:id/characters/:cid/profile`, () => HttpResponse.json(makeProfile())),
+  );
+  const app = await mountApp();
+  await u.click(await screen.findByRole("button", { name: /enter your saved worlds/i }));
+  await u.click(await screen.findByRole("button", { name: /^enter$/i }));
+  await screen.findAllByText("The Last Breath");
+  app.state.settings.autoplayCharacters = true;
+  const prepared = vi.spyOn(app.voice, "prepare").mockResolvedValue({ audioUrl: "/audio/w.wav", duration: 1 });
+  const queued = vi.spyOn(app.voice, "playQueued").mockResolvedValue(undefined);
+  const priv = (id, text) => makeBeat({ id, turn_index: 3, kind: "dialogue", speaker: "c1",
+    speaker_name: "Jacker", text, private_with: "c1", emotion: "whisper" });
+
+  // whisper window CLOSED: the private line stays silent
+  es().emit({ kind: "live_beat", beat: priv("pw1", "They must not hear this.") });
+  await waitFor(() => expect(app.state.active.beats.some((b) => b.id === "pw1")).toBe(true));
+  expect(prepared).not.toHaveBeenCalled();
+  expect(queued).not.toHaveBeenCalled();
+
+  // inside Jacker's whisper window: the next private line speaks, queued
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(document.querySelector(".profile-screen")).getByRole("tab", { name: /whisper/i })).toBeTruthy());
+  await u.click(within(document.querySelector(".profile-screen")).getByRole("tab", { name: /whisper/i }));
+  es().emit({ kind: "live_beat", beat: priv("pw2", "Good. Lean closer.") });
+  await waitFor(() => expect(queued).toHaveBeenCalledWith("/audio/w.wav", "c1"));
+  expect(prepared).toHaveBeenCalledTimes(1);
+});
+
+test("a stacked turn's echoes land one per line, in place, each keeping its own shape", async () => {
+  const u = user();
+  // the wire echoes ONE player beat PER stacked line, in stack order
+  const wireEchoes = [
+    makeBeat({ id: "e1", turn_index: 2, seq: 0, kind: "action", speaker: "player", speaker_name: null, text: "check the door" }),
+    makeBeat({ id: "e2", turn_index: 2, seq: 1, kind: "action", speaker: "player", speaker_name: null, text: 'you say "we should run"' }),
+    makeBeat({ id: "e3", turn_index: 2, seq: 2, kind: "action", speaker: "player", speaker_name: null, text: "bolt for the window" }),
+  ];
+  const narration = makeBeat({ id: "n1", turn_index: 2, seq: 3, text: "You bolt." });
+  const release = pendingAction({ beats: [...wireEchoes, narration], state: makeState(), stopped: false });
+  await gotoPlay(u);
+  // stack [do, say] and send with a third DO line: one turn, three lines
+  await u.click(screen.getByRole("button", { name: /^do$/i }));
+  await u.type(cmpBox(), "check the door");
+  await u.click(screen.getByRole("button", { name: /stack this line/i }));
+  await u.click(screen.getByRole("button", { name: /^say$/i }));
+  await u.type(cmpBox(), "we should run");
+  await u.click(screen.getByRole("button", { name: /stack this line/i }));
+  await u.click(screen.getByRole("button", { name: /^do$/i }));
+  await u.type(cmpBox(), "bolt for the window");
+  await u.click(screen.getByRole("button", { name: /send/i }));
+
+  // three optimistic lines show, in the stacked order
+  await waitFor(() => expect(document.querySelectorAll('#storyStream [data-beat-id^="pending-"]').length).toBe(3));
+
+  // the canonical echoes stream in: each replaces its twin IN PLACE (appending
+  // them scrambled the stack's order for as long as the narrator kept writing)
+  for (const e of wireEchoes) es().emit({ kind: "live_beat", beat: e });
+  await waitFor(() => expect(story().querySelector('[data-beat-id="e3"]')).toBeTruthy());
+  expect(document.querySelectorAll('[data-beat-id^="pending-"]').length).toBe(0);
+
+  // order preserved: do, say, do - and the SAY still renders as a speech bubble
+  const ids = [...story().querySelectorAll("[data-beat-id]")].map((n) => n.getAttribute("data-beat-id"));
+  expect(ids.filter((id) => /^e\d$/.test(id))).toEqual(["e1", "e2", "e3"]);
+  expect(story().querySelector('[data-beat-id="e2"] .bubble')).toBeTruthy();
+  expect(story().querySelector('[data-beat-id="e1"] .bubble')).toBeFalsy(); // a do stays an act row
+
+  // whatever streams next stays BELOW the echoes
+  es().emit({ kind: "live_beat", beat: narration });
+  await waitFor(() => expect(story().querySelector('[data-beat-id="n1"]')).toBeTruthy());
+  const posAfter = story().querySelector('[data-beat-id="e3"]').compareDocumentPosition(story().querySelector('[data-beat-id="n1"]'));
+  expect(posAfter & 4).toBeTruthy(); // DOCUMENT_POSITION_FOLLOWING: echoes first, narration after
+
+  // the POST resolves with the same beats: still exactly one copy of each line
+  es().emit({ kind: "turn_done", turn_index: 2, stopped: false });
+  release();
+  await waitFor(() => expect(screen.getAllByText(/we should run/).length).toBe(1));
+  expect(screen.getAllByText(/check the door/).length).toBe(1);
+});

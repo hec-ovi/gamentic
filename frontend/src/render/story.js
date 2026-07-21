@@ -188,9 +188,11 @@ export function renderNarration(beat, embed = "") {
          ${artImg({ url: beat.imageUrl, alt: "" })}
        </figure>`
     : "";
+  // the speak button renders BEFORE the paragraphs: it floats right and the
+  // prose wraps around it (after the text it would overlap the first line)
   const playable = beat.voiceId ? speakBtn(beat) : "";
   return `<section class="narration" data-beat-id="${escapeHtml(beat.id)}">
-            ${embed}${beatArt}${paras}${playable}
+            ${embed}${beatArt}${playable}${paras}
           </section>`;
 }
 
@@ -210,9 +212,9 @@ export function renderDialogue(beat, g) {
     <article class="dialogue" data-beat-id="${escapeHtml(beat.id)}" style="--speaker:${escapeHtml(color)}">
       ${avatar}
       <div class="bubble">
+        ${beat.voiceId ? speakBtn(beat) : ""}
         <span class="bubble-name">${escapeHtml(name)}</span>
         <p>${escapeHtml(stripWrappingQuotes(beat.text))}</p>
-        ${beat.voiceId ? speakBtn(beat) : ""}
       </div>
     </article>`;
 }

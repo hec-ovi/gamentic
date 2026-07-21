@@ -584,6 +584,46 @@ test("whisper replies SPEAK with the character's voice through the speak pipelin
   );
 }, 10000);
 
+test("closing the whisper mid-turn SILENCES the private reply (no synthesis, no play)", async () => {
+  const u = user();
+  const voiced = makeState();
+  voiced.characters[0].voice_id = "vx-jacker";
+  server.use(
+    http.get(`${API}/games/:id/state`, () => HttpResponse.json(voiced)),
+    http.post(`${API}/games/:id/action`, async () => {
+      await delay(250);
+      return HttpResponse.json({
+        beats: [makeBeat({ id: "hushed", kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "Hush now.", private_with: "c1", emotion: "whisper" })],
+        state: voiced,
+      });
+    }),
+  );
+  const app = await mountApp();
+  app.state.settings.autoplayCharacters = true;
+  const prepared = vi.spyOn(app.voice, "prepare").mockResolvedValue({ audioUrl: "/audio/h.wav", duration: 1 });
+  const queued = vi.spyOn(app.voice, "playQueued").mockResolvedValue(undefined);
+  await u.click(await screen.findByRole("button", { name: /enter your saved worlds/i }));
+  await u.click(await screen.findByRole("button", { name: /^enter$/i }));
+  await screen.findAllByText("The Last Breath");
+
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  await waitFor(() => expect(within(profileEl()).getByRole("tab", { name: /whisper/i })).toBeTruthy());
+  await u.click(within(profileEl()).getByRole("tab", { name: /whisper/i }));
+  await waitFor(() => expect(pmBox(/what you say/i)).toBeTruthy());
+  await u.type(pmBox(/what you say/i), "shh");
+  await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
+
+  // the model is thinking; the player leaves the whisper window
+  await u.click(within(profileEl()).getByRole("button", { name: /back to the scene/i }));
+
+  // the reply lands - eyes are elsewhere, so it must stay silent
+  await waitFor(() => expect(app.state.active.beats.some((b) => b.id === "hushed")).toBe(true), { timeout: 4000 });
+  await waitFor(() => expect(app.state.active.generating).toBe(false), { timeout: 4000 });
+  expect(prepared).not.toHaveBeenCalled();
+  expect(queued).not.toHaveBeenCalled();
+}, 10000);
+
 test("optimistic echo: the player's line shows the moment it is sent, then the canonical echo replaces it", async () => {
   const u = user();
   server.use(
@@ -1945,14 +1985,21 @@ test("the character view cycles its generated portrait views (front / side / fac
   await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
   await screen.findByRole("dialog", { name: /jacker's profile/i });
   const artSrc = () => profileEl().querySelector(".profile-art").getAttribute("src");
+  const bgSrc = () => profileEl().querySelector(".profile-art-bg").getAttribute("src");
   // opens on the front (body) view; prev/next + dots appear because 3 views exist
   await waitFor(() => expect(artSrc()).toBe("/media/g/char-c1-front.png"));
   expect(profileEl().querySelectorAll(".art-dots i").length).toBe(3);
+  // the blurred backdrop that fills the fixed frame's bands mirrors the view,
+  // and stays out of the accessibility tree (decoration, not a second portrait)
+  expect(bgSrc()).toBe("/media/g/char-c1-front.png");
+  expect(profileEl().querySelector(".profile-art-bg").getAttribute("aria-hidden")).toBe("true");
   const next = () => within(profileEl()).getByRole("button", { name: /next image/i });
   await u.click(next());
   await waitFor(() => expect(artSrc()).toBe("/media/g/char-c1-side.png"));
   await u.click(next());
   await waitFor(() => expect(artSrc()).toBe("/media/g/char-c1-face.png"));
+  // the backdrop follows the cycle too (the square face rides its own blur)
+  expect(bgSrc()).toBe("/media/g/char-c1-face.png");
   // wraps around back to the front
   await u.click(next());
   await waitFor(() => expect(artSrc()).toBe("/media/g/char-c1-front.png"));
