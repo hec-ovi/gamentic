@@ -99,17 +99,6 @@ def recent_beats_at(conn, gid: str, location: str, limit: int):
     return list(reversed(rows))
 
 
-def scene_beats_for_character(conn, gid: str, location: str, char_id: str, limit: int):
-    """A character's POV: public beats at the location PLUS private beats addressed to THEM.
-    Private beats meant for other characters are excluded (knowledge stays where it belongs)."""
-    rows = conn.execute(
-        "SELECT * FROM beats WHERE game_id=? AND location=? AND kind!='image' "
-        "AND (private_with IS NULL OR private_with=?) "
-        "ORDER BY turn_index DESC, seq DESC LIMIT ?",
-        (gid, location, char_id, limit)).fetchall()
-    return list(reversed(rows))
-
-
 # Witnessed windows: membership in the stamped witnesses list (ids are 12-hex, so the
 # quote-delimited LIKE is an exact membership test). Legacy rows (witnesses IS NULL,
 # stamped before the column existed) fall back to the old location-match rule against

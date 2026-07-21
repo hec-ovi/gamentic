@@ -51,7 +51,7 @@ def health():
 def create_game(sheet: WorldSheet, background_tasks: BackgroundTasks):
     with db.get_conn() as conn:
         gid = repo.create_game(conn, sheet)
-        creator._seed_sheet_extras(conn, gid, sheet)         # opening possessions + clock,
+        creator.seed_sheet_extras(conn, gid, sheet)         # opening possessions + clock,
         integrate.assign_voices_for_game(conn, gid)          # exactly like the finalize path
         scene_id = repo.current_scene(conn, gid)["id"]
     # origins first: fast text calls, and the narrator's first turns deserve real pasts;
@@ -68,8 +68,10 @@ def create_game(sheet: WorldSheet, background_tasks: BackgroundTasks):
 
 @app.get("/media/{gid}/{name}")
 def media_file(gid: str, name: str):
-    """Serve a game's persisted image from its per-game folder."""
-    if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
+    """Serve a game's persisted image from its per-game folder. Both path pieces are
+    validated before they touch the filesystem (a raw-path request can smuggle dot
+    segments past the router)."""
+    if not re.fullmatch(r"[0-9a-f]{12}", gid) or not re.fullmatch(r"[A-Za-z0-9._-]+", name):
         raise HTTPException(404, "not found")
     path = os.path.join(settings.GAMES_DATA_DIR, gid, "images", name)
     if not os.path.isfile(path):
@@ -440,7 +442,7 @@ def explain(gid: str, body: ExplainIn):
         messages = prompts.build_explain_messages(conn, gid, body.kind, body.key, body.beat_id)
     if not messages:
         raise HTTPException(404, "nothing like that in sight")
-    reply = llm.chat(messages, temperature=0.6, max_tokens=160)
+    reply = llm.chat(messages, temperature=0.6)
     # Same hygiene as every other model-text surface (e2e 2026-06-11: this returned
     # reply.content raw, so think spans, scaffold and markup shipped straight to the tap).
     text = engine.parsing.scrub_model_text(reply.content or "")

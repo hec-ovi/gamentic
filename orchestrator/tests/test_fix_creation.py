@@ -167,7 +167,7 @@ def test_origin_skill_demands_five_to_eight_sentences():
 
 def test_direct_post_games_seeds_extras_like_finalize(client, fake_llm):
     # the FE's POST /games path must make the sheet's opening fiction true in state
-    # exactly like the creator finalize path does (it shares _seed_sheet_extras)
+    # exactly like the creator finalize path does (it shares seed_sheet_extras)
     world = _finalize_world(
         player_items=[{"name": "sealed letter", "description": "wax stamped with a gull"}],
         start_time_of_day="night")

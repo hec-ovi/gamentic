@@ -46,7 +46,7 @@ def enrich_origins(gid: str) -> None:
                 if c["alive"] and len((c["origin"] or "").strip()) < ORIGIN_MIN_CHARS]
     for cid, messages in work:
         try:
-            reply = llm.chat(messages, temperature=0.7, max_tokens=400)
+            reply = llm.chat(messages, temperature=0.7)
         except Exception:
             continue
         text = engine.clean_prose(reply.content or "")
@@ -77,7 +77,6 @@ def message(session_id: str, user_message: str) -> dict:
     reply = llm.chat(
         prompts.build_creator_messages(history, user_message),
         temperature=0.8,
-        max_tokens=400,
     )
     # Sanitize BEFORE storing or returning (static-confirmed: this path shipped raw model
     # content): a leaked think-span or tool-call line would otherwise reach the player AND
@@ -102,7 +101,7 @@ def get_session(conn, session_id: str) -> list[dict] | None:
     return db.loads(row["history"], []) if row else None
 
 
-def _seed_sheet_extras(conn, gid: str, sheet: WorldSheet) -> None:
+def seed_sheet_extras(conn, gid: str, sheet: WorldSheet) -> None:
     """Make the sheet's opening fiction TRUE in state at creation (live 2026-06-11: the
     creator's opening prose put a sealed ledger in the player's satchel and quested about
     it, but the inventory started empty and the narrator never managed to reify it; and
@@ -113,24 +112,33 @@ def _seed_sheet_extras(conn, gid: str, sheet: WorldSheet) -> None:
     minutes = repo.start_minutes(sheet.start_time_of_day)
     if minutes:
         repo.advance_time(conn, gid, minutes)
+    # keep the DESIGNED opening state on the game row: the pack and the clock move on
+    # from here, and the template export restates the world as designed, not as played
+    conn.execute(
+        "UPDATE games SET opening_items=?, opening_time_of_day=? WHERE id=?",
+        (json.dumps([{"name": it.name, "description": it.description}
+                     for it in sheet.player_items]),
+         (sheet.start_time_of_day or "").strip().lower(), gid))
 
 
 def finalize(conn, session_id: str) -> str:
     history = _history(conn, session_id)
     if not history:
         raise ValueError("unknown or empty creator session")
+    # Uncapped on purpose: the save_world tool JSON carries the whole world bible, and
+    # a token ceiling here truncated rich worlds into unparseable JSON (finish_reason
+    # 'length' -> args {} -> WorldSheet ValidationError), failing the primary flow.
     reply = llm.chat(
         prompts.build_finalize_messages(history),
         tools=prompts.FINALIZE_TOOL,
         tool_choice="auto",
         temperature=0.4,
-        max_tokens=1200,
     )
     call = next((tc for tc in reply.tool_calls if tc.name == "save_world"), None)
     if not call:
         raise ValueError("creator did not produce a world; keep chatting and try again")
     sheet = WorldSheet(**call.arguments)
     gid = repo.create_game(conn, sheet)
-    _seed_sheet_extras(conn, gid, sheet)
+    seed_sheet_extras(conn, gid, sheet)
     conn.execute("DELETE FROM creator_sessions WHERE id=?", (session_id,))
     return gid

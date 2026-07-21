@@ -196,7 +196,7 @@ def _agentic_prompt(context: str, fallback: str) -> str:
     """One LLM call that writes the image prompt; guarded, with the template as the net."""
     try:
         reply = llm.chat(prompts.build_image_prompt_messages(context),
-                         temperature=0.4, max_tokens=140)
+                         temperature=0.4)
         text = (reply.content or "").strip()
     except Exception:
         return fallback

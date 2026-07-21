@@ -22,7 +22,7 @@ class Settings:
     NARRATOR_TEMPERATURE = float(os.getenv("NARRATOR_TEMPERATURE", "0.8"))
     # A/B knob for the 26B hybrid model: request-level enable_thinking on the NARRATOR
     # call only (llama.cpp merges it over the server's global chat-template kwargs).
-    # Utility and character calls never think. Default off.
+    # Utility and character calls never think. Default on.
     NARRATOR_THINKING = os.getenv("NARRATOR_THINKING", "true").lower() == "true"
     CHARACTER_TEMPERATURE = float(os.getenv("CHARACTER_TEMPERATURE", "0.9"))
     NARRATOR_MAX_TOKENS = int(os.getenv("NARRATOR_MAX_TOKENS", "0"))    # 0 = uncapped (prompt governs length)
@@ -50,7 +50,6 @@ class Settings:
     SUMMARY_EVERY_TURNS = int(os.getenv("SUMMARY_EVERY_TURNS", "10"))  # fold cadence
     SUMMARY_KEEP_TURNS = int(os.getenv("SUMMARY_KEEP_TURNS", "8"))     # newest turns never folded
     SUMMARY_MAX_TOKENS = int(os.getenv("SUMMARY_MAX_TOKENS", "640"))
-    SCENE_BEATS = int(os.getenv("SCENE_BEATS", "14"))       # legacy location window (scene_beats_for_character)
     # Character memory (each character agent has its OWN whole context, bounded):
     # verbatim window = the newest beats THEY witnessed (stamped per beat, follows them
     # across scenes); everything older folds into their private recap below.

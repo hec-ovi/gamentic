@@ -302,11 +302,11 @@ The stateful generate_* background orchestrators: each opens its own DB conns ar
 
 The authoritative game state in SQLite (WAL, stdlib, no ORM). repo/state.py projects the GameState the UI renders; tool handlers and the engine are the only writers.
 
-- **Reads / inputs:** db.connect (settings.DB_PATH, WAL, busy_timeout 60s); tables: games, player_state, characters, quests, objectives, lore, beats, scenes, creator_sessions
+- **Reads / inputs:** db.connect (settings.DB_PATH, WAL, busy_timeout 330s); tables: games, player_state, characters, quests, objectives, lore, beats, scenes, creator_sessions
 - **Generates / outputs:** GameState dict (repo/state.game_state); beat rows, scene/character/item updates, game-row dials
 - **Writes / mutates:** every game-state table; schema + _MIGRATIONS in db.py applied on init_db()
 - **Owned by (code):** db.py: init_db / connect / get_conn / _migrate / loads; repo/state.py: game_state; repo/* domain modules: add_beat, advance_time, set_*_image, set_context_used, set_game_status, etc.
-- **Key point:** The model never owns state; it only proposes changes through validated tools. WAL + 60s busy_timeout lets background media persists queue behind a multi-second turn transaction instead of raising 'database is locked'.
+- **Key point:** The model never owns state; it only proposes changes through validated tools. WAL + a 330s busy_timeout (sized to outlast a worst-case turn at LLM_TIMEOUT) lets background media persists queue behind a long turn transaction instead of raising 'database is locked'.
 - **IN:** `promptsAssembly` (read state for prompt); `toolDispatcher` (handler mutates state); `turnEngine` (emit beats + game-row dials); `restApi` (repo.game_state / get_beats); `mediaJobs` (persist image beats + url columns)
 - **OUT:** _none_
 

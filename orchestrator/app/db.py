@@ -38,6 +38,10 @@ CREATE TABLE IF NOT EXISTS games (
     turn_acts INTEGER DEFAULT 0,     -- per-game cap on acts per character per turn (0 = settings.TURN_MAX_PER_CHARACTER)
     last_tool_errors TEXT DEFAULT '[]',  -- narrator tool calls that did not apply last turn (JSON list of
                                      -- reason strings; fed back to the narrator once, then overwritten)
+    opening_items TEXT DEFAULT '[]', -- the DESIGNED opening possessions (JSON [{name, description}]);
+                                     -- consumed into the pack at creation, kept here so a template
+                                     -- export can restate the world as designed, not as played
+    opening_time_of_day TEXT DEFAULT '',  -- the DESIGNED opening clock part, same reason
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -165,15 +169,17 @@ CREATE INDEX IF NOT EXISTS idx_lore_game ON lore(game_id);
 
 
 def connect() -> sqlite3.Connection:
-    # A turn holds its transaction for seconds (LLM calls happen inside it), while
-    # background tasks (image persists) write concurrently. WAL lets readers proceed
-    # and the long busy timeout makes writers QUEUE instead of raising
-    # "database is locked" (seen live when a scene-art persist hit a running turn).
-    conn = sqlite3.connect(settings.DB_PATH, timeout=60)
+    # A turn holds its transaction across its LLM calls, which can legitimately run to
+    # the LLM transport ceiling (LLM_TIMEOUT=300s), while background tasks (image and
+    # portrait persists) write concurrently. WAL lets readers proceed, and the busy
+    # timeout must OUTLAST a worst-case turn so background writers QUEUE instead of
+    # raising "database is locked" (seen live: a long turn cost a rendered scene image
+    # its persist under the old 60s timeout).
+    conn = sqlite3.connect(settings.DB_PATH, timeout=330)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA busy_timeout = 60000")
+    conn.execute("PRAGMA busy_timeout = 330000")
     return conn
 
 
@@ -216,6 +222,8 @@ _MIGRATIONS = {
         "turn_voices": "INTEGER DEFAULT 0",   # per-game turn-economy dial (0 = env default)
         "turn_acts": "INTEGER DEFAULT 0",     # per-game turn-economy dial (0 = env default)
         "last_tool_errors": "TEXT DEFAULT '[]'",  # narrator's failed-call note (JSON list of reasons)
+        "opening_items": "TEXT DEFAULT '[]'",     # designed opening possessions (template export)
+        "opening_time_of_day": "TEXT DEFAULT ''",  # designed opening clock part (template export)
     },
     "beats": {
         "private_with": "TEXT",

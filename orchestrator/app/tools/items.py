@@ -54,6 +54,10 @@ def add_item(conn, gid, args, actor):
 def remove_item(conn, gid, args, actor):
     nm = (args.get("name") or "").strip()
     qty = int(args.get("qty", 1) or 1)
+    if qty <= 0:
+        # symmetric to add_item's guard: a negative qty here INCREASED the count
+        # while printing 'Lost'
+        return _invalid("remove_item: qty must be positive; use add_item to give the player things")
     removed = repo.remove_item(conn, gid, nm, qty)
     if not removed:
         # near-miss net (live: remove_item('room key') against a pack holding 'heavy

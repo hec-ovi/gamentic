@@ -2,6 +2,18 @@
 
 Notable changes to gamentic, newest first. No version numbers yet: this moves fast, so entries are dated and the README always describes the current state.
 
+## 2026-07-21
+
+### Groundwork repairs (evolve branch, milestone 0)
+- The art director was writing blind: `artdirector.user.md` used single-brace placeholders where the renderer substitutes only double braces, so every game creation sent the template verbatim, with literal `{title}` and `{cast}` instead of the world bible. Fixed; the art director now actually reads the world it is directing.
+- The LLM output caps in the creation and art path are gone (the prompt governs length, never a token ceiling): creator finalize (1200, which truncated rich worlds into unparseable save_world JSON and failed creation), the art-director call (700), agentic image prompts (140), tap-to-explain (160, which shipped mid-sentence cuts), origin enrichment (400) and the creator chat (400). `llm.chat` now defaults to uncapped.
+- Background image persists no longer lose art to long turns: `db.connect` uses a 330s busy timeout sized to outlast a worst-case turn holding the write lock (the beat-landing path already had it; scene and portrait row updates did not).
+- Two tool guards: `remove_item` rejects non-positive quantities (a negative qty INCREASED the count while printing "Lost"), and `heal` refuses dead characters (it half-resurrected them into alive with present still 0).
+- Template export now restates the world as designed: per-character gender, origin and relation travel (gender was re-inferred on import and could flip), and the designed opening possessions and start time of day are stored on the game row at creation and exported, so imported templates seed the same opening state. Template import also runs the same seeding as the other creation paths (it skipped it).
+- Checkpoint import validates the incoming game id against the 12-hex id shape before using it as a path segment, and the `/media` route validates the game id the same way.
+- Dead code removed: the `SCENE_BEATS` config value and `scene_beats_for_character` (superseded by the witnessed-beats window) are gone; the stale "Default off" comment on `NARRATOR_THINKING` (default is on) is corrected.
+- 13 new tests in `tests/test_groundwork.py`; suite at 652 backend, all green.
+
 ## 2026-07-20 (later)
 
 ### Anna moves out

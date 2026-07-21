@@ -24,8 +24,6 @@ def _land_beat(gid: str, speaker: str, text: str, location, image_url,
     file persists) must happen BEFORE this call - the lock is held for the write
     alone."""
     with db.get_conn() as conn:
-        # a turn can legitimately run to the LLM transport ceiling; wait it out
-        conn.execute("PRAGMA busy_timeout = 330000")
         conn.execute("BEGIN IMMEDIATE")
         if not repo.get_game(conn, gid):
             return None    # game wiped while rendering/waiting: never resurrect it
@@ -197,7 +195,7 @@ def art_direction(gid: str) -> dict | None:
         messages = prompts.build_artdirector_messages(g, chars, time_of_day=part,
                                                       start_location=start)
     try:
-        reply = llm.chat(messages, temperature=0.4, max_tokens=700)
+        reply = llm.chat(messages, temperature=0.4)
         raw = re.sub(r"^```(?:json)?|```$", "", (reply.content or "").strip(),
                      flags=re.M).strip()
         data = json.loads(raw)

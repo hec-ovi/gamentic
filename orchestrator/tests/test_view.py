@@ -193,8 +193,9 @@ def test_image_beats_stay_out_of_model_transcripts(client, fake_llm, monkeypatch
     client.post(f"/games/{gid}/view")
     with db.get_conn() as conn:
         assert all(b["kind"] != "image" for b in repo.recent_beats(conn, gid, 50))
-        assert all(b["kind"] != "image" for b in
-                   repo.scene_beats_for_character(conn, gid, "harbor", "whoever", 50))
+        for c in repo.get_characters(conn, gid):
+            assert all(b["kind"] != "image" for b in
+                       repo.witnessed_beats_for_character(conn, gid, c["id"], 50))
         assert any(b["kind"] == "image" for b in repo.all_beats(conn, gid))   # FE still gets it
 
 

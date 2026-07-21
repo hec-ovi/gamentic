@@ -9,7 +9,7 @@ from .. import db  # noqa: F401  (prompts uses repo.db.loads on row blobs)
 from .base import _id, norm_location, norm_name  # noqa: F401
 from .beats import (  # noqa: F401
     add_beat, all_beats, beats_between, clear_beats, last_image_turn, next_turn_index,
-    recent_beats, recent_beats_at, scene_beats_for_character,
+    recent_beats, recent_beats_at,
     witnessed_beats_between, witnessed_beats_for_character,
 )
 from .characters import (  # noqa: F401

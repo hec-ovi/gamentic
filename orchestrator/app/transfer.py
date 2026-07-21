@@ -14,6 +14,7 @@ background; story image beats without their file are dropped).
 """
 import json
 import os
+import re
 import shutil
 
 from . import db, repo
@@ -40,10 +41,17 @@ def export_template(conn, gid: str) -> dict | None:
         "opening_scenario": g["opening_scenario"] or "",
         "start_location": (first_scene["name"] if first_scene else p["location"]),
         "player_life": p["max_life"],
+        # the DESIGNED opening state, stored at creation (never the live pack/clock:
+        # a template starts fresh and must not carry progress)
+        "player_items": db.loads(g["opening_items"], []) if "opening_items" in g.keys() else [],
+        "start_time_of_day": (g["opening_time_of_day"] or "") if "opening_time_of_day" in g.keys() else "",
         "characters": [{"name": c["name"], "persona": c["persona"],
                         "description": c["description"] or "",
                         "knowledge": c["knowledge"] or "",
                         "appearance": c["appearance"] or "",
+                        "gender": c["gender"] or "",
+                        "origin": c["origin"] or "",
+                        "relation": c["relation"] or "",
                         "disposition": c["disposition"] or "neutral"}
                        for c in repo.get_characters(conn, gid) if c["alive"]],
         "quests": [{"title": q["title"], "description": q["description"] or "",
@@ -92,7 +100,11 @@ def import_payload(conn, payload: dict) -> str:
             sheet = WorldSheet(**(payload.get("world") or {}))
         except Exception as e:
             raise ValueError(f"invalid adventure template: {e}")
-        return repo.create_game(conn, sheet)
+        gid = repo.create_game(conn, sheet)
+        # same seeding as the other two creation paths: opening possessions + clock
+        from . import creator
+        creator.seed_sheet_extras(conn, gid, sheet)
+        return gid
     if kind == "checkpoint":
         return _import_checkpoint(conn, payload)
     raise ValueError("not a gamentic export (missing 'gamentic': adventure|checkpoint)")
@@ -115,6 +127,11 @@ def _import_checkpoint(conn, data: dict) -> str:
     old_gid = (data["game"] or {}).get("id")
     if not old_gid:
         raise ValueError("invalid checkpoint: game has no id")
+    # the id is used as a path segment below; only the repo._id shape may pass
+    # (a hostile checkpoint with '../' or an absolute path would otherwise pull
+    # arbitrary readable directories into the new game's served media folder)
+    if not isinstance(old_gid, str) or not re.fullmatch(r"[0-9a-f]{12}", old_gid):
+        raise ValueError("invalid checkpoint: malformed game id")
     new_gid = repo._id()
 
     # same-box resume: bring the image folder along so every URL keeps working
