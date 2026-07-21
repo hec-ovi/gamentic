@@ -9,6 +9,9 @@
 #                   server (default http://host.docker.internal:8090/v1 = the
 #                   llama-vulkan-strix stack on this box). Model defaults to
 #                   LLM_ALIAS from .env.
+#   ./up.sh app     rebuild + restart ONLY the app pair (orchestrator + frontend),
+#                   leaving ComfyUI, text inference and the voice stack running
+#                   untouched. The fast path while iterating on brain/frontend code.
 #   ./up.sh down    stop and remove the whole stack, whichever mode is running
 #
 # The profile trick is one rule: llm-text alone carries profiles: ["local"].
@@ -21,6 +24,18 @@ cd "$(dirname "$0")"
 
 if [ "${1:-}" = "down" ]; then
     COMPOSE_PROFILES=local docker compose down
+    exit 0
+fi
+
+if [ "${1:-}" = "app" ]; then
+    echo "==> rebuilding the app pair only (orchestrator + frontend); inference containers stay up"
+    # --no-deps: never touch image/voice/text services, whatever mode is running
+    COMPOSE_PROFILES=local docker compose up -d --build --no-deps orchestrator frontend
+    echo
+    COMPOSE_PROFILES=local docker compose ps orchestrator frontend
+    echo
+    echo "frontend     http://localhost:5173"
+    echo "orchestrator http://localhost:8000"
     exit 0
 fi
 
