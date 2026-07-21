@@ -116,13 +116,22 @@ def import_game(payload: dict, background_tasks: BackgroundTasks):
             raise HTTPException(400, str(e))
         integrate.assign_voices_for_game(conn, gid)
         scene = repo.current_scene(conn, gid)
-        need_scene_art = settings.IMAGE_ENABLED and not scene["image_url"]
         scene_id = scene["id"]
+        needs_art = (not scene["image_url"]
+                     or any(not repo.character_has_images(c)
+                            for c in repo.get_characters(conn, gid)))
     background_tasks.add_task(creator.enrich_origins, gid)   # imported templates may be thin too
-    if settings.IMAGE_ENABLED:
-        background_tasks.add_task(integrate.generate_images_for_game, gid)  # missing portraits
-    if need_scene_art:
-        background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)
+    if settings.IMAGE_ENABLED and needs_art:
+        if payload.get("gamentic") == "adventure":
+            # a template starts fresh: the same composed first-sight pass as creation
+            # (art director reads the world, portraits first, cards, the opening image)
+            background_tasks.add_task(integrate.generate_creation_art, gid, scene_id)
+        else:
+            # a checkpoint resumes mid-story: heal what did not travel, no opening pass
+            # (each render is still art-directed from its own live context)
+            background_tasks.add_task(integrate.generate_images_for_game, gid)
+            if not scene["image_url"]:
+                background_tasks.add_task(integrate.generate_scene_image, gid, scene_id)
     return {"game_id": gid}
 
 

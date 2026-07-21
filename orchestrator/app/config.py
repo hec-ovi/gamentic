@@ -116,14 +116,13 @@ class Settings:
     # Where the image-api can fetch OUR persisted /media files from (compose-internal
     # hostname). Used to absolutize character reference URLs for identity conditioning.
     MEDIA_INTERNAL_BASE = os.getenv("MEDIA_INTERNAL_BASE", "http://gamentic-orchestrator:8000")
-    # Agentic image prompts: the text model writes the scene/view image prompt from live
-    # context (poses and the just-happened action included) instead of the code template.
-    # Adds one LLM call per image (a few seconds, and it shares the single llama.cpp
-    # server with turns). Deterministic guards + template fallback still apply. A/B this.
-    IMAGE_AGENTIC_PROMPTS = os.getenv("IMAGE_AGENTIC_PROMPTS", "false").lower() == "true"
-    # The creation-time art-director agent (owner direction 2026-06-11): one call that
-    # writes every character descriptor + the main opening image prompt from the whole
-    # world bible. Templates remain the fallback on any failure.
+    # The art director (owner direction 2026-07-21: EVERY image gets one). At creation,
+    # one call reads the whole world bible and writes every character descriptor + the
+    # main opening image prompt. After that, every render (scene art, See/look snapshots,
+    # narrator shots, item cards) spins up a per-image art-director call that writes the
+    # prompt from the whole live context. Adds one LLM call per image (it shares the
+    # single llama.cpp server with turns). Deterministic guards + template fallback
+    # still apply on any failure.
     IMAGE_ART_DIRECTOR = os.getenv("IMAGE_ART_DIRECTOR", "true").lower() == "true"
     # Item unlock images: a small square card rendered when an item first becomes visible
     # (obtained, revealed, placed in view), shown as a system image beat and attached to

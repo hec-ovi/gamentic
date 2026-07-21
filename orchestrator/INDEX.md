@@ -44,7 +44,7 @@ The narrator core stays lean; protocol blocks inject ONLY when state triggers th
 | `narrator.resolve.md` | second pass when tools fired but no prose came back (no dead air) |
 | `character.system.md` | every character agent call (persona + unlocked traits + private knowledge) |
 | `interpret.system.md` | the one-call skill that structures freeform typed actions |
-| `imageprompt.system.md` | the one-call skill that writes agentic image prompts |
+| `imageprompt.system.md` | the per-image art director: one call that writes each render's prompt from live context |
 | `explain.system.md` | the one-call skill behind tap-to-explain |
 | `creator.system.md` / `finalize.system.md` | world-builder chat / world sheet extraction |
 

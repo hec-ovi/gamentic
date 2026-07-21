@@ -219,7 +219,7 @@ def test_state_exposes_images_enabled_flag(client, fake_llm, monkeypatch):
 def test_images_not_scheduled_when_disabled(client, fake_llm, monkeypatch):
     calls = []
     monkeypatch.setattr(integrate, "generate_images_for_game", lambda gid: calls.append(gid))
-    monkeypatch.setattr(integrate, "generate_scene_image", lambda gid, sid: calls.append((gid, sid)))
+    monkeypatch.setattr(integrate, "generate_scene_image", lambda gid, sid, references=None: calls.append((gid, sid)))
     monkeypatch.setattr(settings, "IMAGE_ENABLED", False)
     _new(client, chars=[{"name": "Mara", "persona": "a guard"}])
     assert calls == []                                    # nothing scheduled with images off
@@ -234,7 +234,7 @@ def test_images_scheduled_when_enabled(client, fake_llm, monkeypatch):
     monkeypatch.setattr(jobs, "generate_images_for_game",
                         lambda gid, direction=None: calls.append("portraits"))
     monkeypatch.setattr(jobs, "generate_scene_image",
-                        lambda gid, sid, prompt_override="": calls.append("scene"))
+                        lambda gid, sid, prompt_override="", references=None: calls.append("scene"))
     monkeypatch.setattr(settings, "IMAGE_ENABLED", True)
     _new(client, chars=[{"name": "Mara", "persona": "a guard"}])
     assert "portraits" in calls and "scene" in calls

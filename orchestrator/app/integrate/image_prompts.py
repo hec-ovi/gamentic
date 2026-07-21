@@ -29,7 +29,7 @@ def _place_text(sc) -> str:
     the magma cathedral sat unused in background) - fall back to it."""
     desc = _strip_quoted(sc["description"])
     if not desc and "background" in sc.keys():
-        desc = _clip(_strip_quoted(sc["background"]), 40)
+        desc = _clip(_strip_quoted(sc["background"]), 80)
     name = (sc["name"] or "").strip()
     if not desc:
         return name
@@ -66,10 +66,13 @@ def scene_prompt(sc, style: str) -> str:
 
 
 # ---------- the 'See' snapshot (scene + present characters, grounded in state) ----------
-# Built to the FLUX.2 klein recipe (official BFL prompting guide): subjects first, ONE
-# positionally anchored sentence per character so traits don't bleed, at most 3 people
+# Built to the FLUX.2 klein recipe (official BFL prompting guide): subjects first,
+# positionally anchored sentences per character so traits don't bleed, at most 3 people
 # (the 4B blending ceiling), style named once for the whole frame, exclusions phrased
-# positively, total kept tight (klein degrades past ~100 words).
+# positively. Length is bounded ONLY by the encoder: klein conditions on Qwen3-4B with a
+# hard 512-token window (~350 words) and silently truncates past it; detail up to that
+# boundary helps, so these templates stay compact only because they are the DETERMINISTIC
+# FALLBACK behind the art-directed prompt, not because short is better.
 
 _VIEW_POSITIONS = {1: ("in the center",), 2: ("on the left", "on the right"),
                    3: ("on the left", "in the center", "on the right")}
@@ -115,12 +118,12 @@ def view_prompt(conn, gid: str, focus: str | None = None) -> str:
     pd = repo.get_player(conn, gid)
     sc = repo.current_scene(conn, gid)
     chars = list(repo.present_characters(conn, gid, pd["location"]))[:3]
-    env = _clip(_place_text(sc), 20)
-    focus = _clip(_strip_quoted(focus or ""), 20).rstrip(".")
+    env = _clip(_place_text(sc), 40)
+    focus = _clip(_strip_quoted(focus or ""), 40).rstrip(".")
     if focus:
         fc = _focus_character(conn, gid, focus)
         if fc:
-            lead = f"Full-body shot of {_clip(_gendered_base(fc), 18).rstrip('.')}, {focus}, in {env}"
+            lead = f"Full-body shot of {_clip(_gendered_base(fc), 40).rstrip('.')}, {focus}, in {env}"
         else:
             lead = f"Detailed shot of {focus}, in {env}"
         lead += "" if lead.rstrip().endswith(".") else "."
@@ -129,7 +132,7 @@ def view_prompt(conn, gid: str, focus: str | None = None) -> str:
         count = ("one person", "two people", "three people")[len(chars) - 1]
         lead = f"Wide full-body shot of {count} in {env}"
         lead += "" if lead.rstrip().endswith(".") else "."
-        people = " ".join(f"{p.capitalize()}, {_clip(_gendered_base(c), 18).rstrip('.')}."
+        people = " ".join(f"{p.capitalize()}, {_clip(_gendered_base(c), 40).rstrip('.')}."
                           for p, c in zip(_VIEW_POSITIONS[len(chars)], chars))
     else:
         lead = f"Wide shot of {env}"
@@ -154,36 +157,51 @@ def item_prompt(name: str, description: str, style: str) -> str:
         style, NO_TEXT_GUARD) if x)
 
 
-# ---------- agentic image prompts (optional, settings.IMAGE_AGENTIC_PROMPTS) ----------
-# Hybrid: the text model writes the prompt from live context (it can express poses and
-# the just-happened moment, which a template cannot), then CODE enforces the invariants
-# (quoted words become rendered lettering, length kills klein, the no-text tail). Any
-# failure falls back to the deterministic template prompt.
+# ---------- art-directed image prompts (settings.IMAGE_ART_DIRECTOR) ----------
+# EVERY render spins up the per-image art director: one LLM call that writes the prompt
+# from the whole live context (it can express poses, depth, lighting and the just-
+# happened moment, which a template cannot), then CODE enforces the invariants (quoted
+# words become rendered lettering, the encoder boundary, the no-text tail). Any failure
+# falls back to the deterministic template prompt.
+
+# The one real length limit: klein's Qwen3-4B encoder hard-truncates conditioning at
+# 512 tokens; ~350 words keeps the whole prompt inside the window so the style tail
+# and the no-text guard are never the part that gets cut.
+ENCODER_WORD_BOUNDARY = 350
+
 
 def _harden_image_prompt(text: str) -> str:
     text = text.strip().strip('"').strip()
     text = _QUOTED.sub("", text).strip()
-    text = _clip(text, 90)
+    text = _clip(text, ENCODER_WORD_BOUNDARY)
     if NO_TEXT_GUARD.lower() not in text.lower():
         text = text.rstrip(".") + ". " + NO_TEXT_GUARD + "."
     return text
 
 
-def _image_context(conn, gid: str, include_chars: bool, focus: str | None = None) -> str:
+def _image_context(conn, gid: str, include_chars: bool, focus: str | None = None,
+                   sc=None, extra: list[str] | None = None) -> str:
+    """The whole context the per-image art director reads: world, place, moment,
+    everyone present with their full looks, and what just happened. `sc` renders a
+    specific scene (background scene art) instead of where the player stands."""
     g = repo.get_game(conn, gid)
     pd = repo.get_player(conn, gid)
-    sc = repo.current_scene(conn, gid)
+    sc = sc if sc is not None else repo.current_scene(conn, gid)
     t = repo.game_time(conn, gid)
-    lines = [f"PLACE: {_place_text(sc)}",
+    lines = [f"WORLD: {g['title']}. {g['setting'] or ''}".strip(),
+             f"TONE: {g['tone'] or 'cinematic'}",
+             f"PLACE: {_place_text(sc)}",
              f"TIME OF DAY: {t.get('part') or 'day'}    MOOD: {sc['status']}"]
     if (focus or "").strip():
-        lines.append(f"THE PLAYER WANTS TO LOOK AT: {_clip(_strip_quoted(focus), 25)}")
+        lines.append(f"THE PLAYER WANTS TO LOOK AT: {_clip(_strip_quoted(focus), 60)}")
+    for line in extra or []:
+        lines.append(line)
     if include_chars:
         chars = list(repo.present_characters(conn, gid, pd["location"]))[:3]
         if chars:
             lines.append("CHARACTERS PRESENT (depict them):")
             lines += [f"- {c['name']}: {_gendered_base(c)}" for c in chars]
-        recent = [b for b in repo.recent_beats_at(conn, gid, pd["location"], 6)
+        recent = [b for b in repo.recent_beats_at(conn, gid, pd["location"], 8)
                   if not b["private_with"]]
         if recent:
             lines.append("JUST HAPPENED (use for poses and action):")
@@ -192,7 +210,7 @@ def _image_context(conn, gid: str, include_chars: bool, focus: str | None = None
     return "\n".join(lines)
 
 
-def _agentic_prompt(context: str, fallback: str) -> str:
+def _artdirected_prompt(context: str, fallback: str) -> str:
     """One LLM call that writes the image prompt; guarded, with the template as the net."""
     try:
         reply = llm.chat(prompts.build_image_prompt_messages(context),

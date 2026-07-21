@@ -211,13 +211,13 @@ One small tool-constrained call loaded only for this skill: parses a freeform ty
 
 ### Image-Prompt Writer — `imagePromptWriter`  ·  _skill_
 
-Optional agentic image-prompt writer: one LLM call that turns live scene context into a single FLUX.2-klein prompt (poses, the just-happened moment), then CODE hardens it (strips quoted lettering, clips length, appends no-text guard); any failure falls back to the deterministic template prompt.
+The per-image art director: one LLM call per render that turns the whole live context into a single FLUX.2-klein prompt (poses, depth, lighting, the just-happened moment), then CODE hardens it (strips quoted lettering, clips at the encoder's 512-token boundary, appends the no-text guard); any failure falls back to the deterministic template prompt.
 
 - **Reads / inputs:** prompts.build_image_prompt_messages (prompts.py:595): imageprompt.system.md + imageprompt.user.md; _image_context (image_prompts.py:172): PLACE, time/mood, focus, present characters' gendered base, JUST HAPPENED recent public beats, STYLE
 - **Generates / outputs:** one prose FLUX prompt (<80 words, subjects-first recipe), hardened by _harden_image_prompt
 - **Writes / mutates:** no DB; returns the prompt string consumed by the media render job
-- **Owned by (code):** integrate/image_prompts.py: _agentic_prompt (llm.chat at image_prompts.py:198); integrate/jobs.py: generate_view_snapshot (jobs.py:25; _agentic_prompt at jobs.py:56), generate_scene_image (jobs.py:255); prompts.py: build_image_prompt_messages
-- **Key point:** Gated by settings.IMAGE_AGENTIC_PROMPTS. Fires for look/show_image renders and current-scene art; temperature 0.4, max_tokens 140. Triggered downstream of the narrator's show_image tool or a player LOOK.
+- **Owned by (code):** integrate/image_prompts.py: _artdirected_prompt; integrate/jobs.py: generate_view_snapshot, generate_scene_image, generate_directed_image, generate_item_image; prompts.py: build_image_prompt_messages
+- **Key point:** Gated by settings.IMAGE_ART_DIRECTOR (default on). Fires for EVERY render: See/look snapshots, narrator shots, scene art and item cards; temperature 0.4, output uncapped. Triggered downstream of the narrator's show_image tool, a player LOOK, or any background art job.
 - **IN:** `narrator` (show_image / LOOK -> image prompt); `artDirector` (direction overrides templates)
 - **OUT:** _none_
 
@@ -378,7 +378,7 @@ ONE creation-time call that reads the whole world bible and writes the first-sig
 - **Generates / outputs:** strict JSON {characters:[{name, descriptor}], main_image} -> hardened/clipped into a direction dict
 - **Writes / mutates:** no DB directly; the returned direction feeds generate_images_for_game (character descriptors) and generate_scene_image (main-image override)
 - **Owned by (code):** integrate/jobs.py: art_direction (llm.chat at jobs.py:169); prompts.py: build_artdirector_messages; integrate/jobs.py: generate_creation_art orchestrates the order
-- **Key point:** Creation-only; temperature 0.4, max_tokens 700, no tools (parses fenced JSON). Any failure returns None and templates carry the renders.
+- **Key point:** Creation-only; temperature 0.4, output uncapped (the encoder's 512-token window is enforced code-side per prompt), no tools (parses fenced JSON). Any failure returns None and templates carry the renders. The main opening image renders last and is conditioned on the just-made portraits as identity references.
 - **IN:** `finalizeExtractor` (creation -> art direction)
 - **OUT:** `imagePromptWriter` (direction overrides templates)
 

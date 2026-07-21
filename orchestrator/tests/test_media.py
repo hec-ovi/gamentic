@@ -21,7 +21,7 @@ def test_images_persisted_served_and_deleted(client, fake_llm, monkeypatch, tmp_
                         lambda descriptor, style="", seed=None: {
                             "face_url": "/image/file?filename=f", "body_front_url": "/image/file?filename=bf",
                             "body_side_url": "/image/file?filename=bs", "seed": 1})
-    monkeypatch.setattr(media, "generate_scene_image", lambda prompt, seed=None: None)  # skip scene art noise
+    monkeypatch.setattr(media, "generate_scene_image", lambda prompt, seed=None, **kw: None)  # skip scene art noise
     monkeypatch.setattr(media, "fetch_image_bytes", lambda url: b"PNGBYTES")
 
     gid = client.post("/games", json=WORLD).json()["game_id"]
@@ -80,7 +80,7 @@ def test_image_descriptors_state_gender_and_ban_text(client, fake_llm, monkeypat
     calls = []
     monkeypatch.setattr(media, "generate_character_images",
                         lambda descriptor, style="", seed=None: calls.append(descriptor) or None)
-    monkeypatch.setattr(media, "generate_scene_image", lambda prompt, seed=None: None)
+    monkeypatch.setattr(media, "generate_scene_image", lambda prompt, seed=None, **kw: None)
 
     world = dict(WORLD, characters=[
         # appearance says nothing gendered; the description does
@@ -116,7 +116,7 @@ def test_scene_prompt_strips_quoted_signs_and_bans_text(client, fake_llm, monkey
     monkeypatch.setattr(settings, "GAMES_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(media, "generate_character_images", lambda descriptor, style="", seed=None: None)
     prompts = []
-    monkeypatch.setattr(media, "generate_scene_image", lambda prompt, seed=None: prompts.append(prompt) or None)
+    monkeypatch.setattr(media, "generate_scene_image", lambda prompt, seed=None, **kw: prompts.append(prompt) or None)
 
     gid = client.post("/games", json=WORLD).json()["game_id"]
     with db.get_conn() as conn:
@@ -241,7 +241,7 @@ def test_persist_falls_back_when_download_fails(client, fake_llm, monkeypatch, t
                         lambda descriptor, style="", seed=None: {
                             "face_url": "/image/file?filename=f", "body_front_url": "/image/file?filename=bf",
                             "body_side_url": "/image/file?filename=bs", "seed": 1})
-    monkeypatch.setattr(media, "generate_scene_image", lambda prompt, seed=None: None)
+    monkeypatch.setattr(media, "generate_scene_image", lambda prompt, seed=None, **kw: None)
     monkeypatch.setattr(media, "fetch_image_bytes", lambda url: None)   # download fails
 
     gid = client.post("/games", json=WORLD).json()["game_id"]

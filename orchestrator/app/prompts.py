@@ -590,11 +590,11 @@ def build_interpret_messages(conn, gid: str, message: str) -> list[dict]:
     ]
 
 
-# ---------- agentic image prompts ----------
+# ---------- per-image art director ----------
 
 def build_image_prompt_messages(context: str) -> list[dict]:
-    """The image-prompt 'skill': loaded ONLY for this one call (the FLUX recipe + a worked
-    example), never present in any story context. See integrate._agentic_prompt."""
+    """The per-image art-director 'skill': loaded ONLY for this one call (the FLUX recipe
+    + a worked example), never present in any story context. See integrate._artdirected_prompt."""
     return [
         {"role": "system", "content": render("imageprompt.system.md")},
         {"role": "user", "content": render("imageprompt.user.md", context=context)},

@@ -17,9 +17,9 @@ from .voice import (  # noqa: F401
     reresolve_voices,
 )
 from .image_prompts import (  # noqa: F401
-    NO_TEXT_GUARD, _agentic_prompt, _clip, _concept, _focus_character, _gendered_base,
-    _harden_image_prompt, _image_context, _place_text, _slug, _strip_quoted,
-    character_descriptor, item_prompt, scene_prompt, view_prompt,
+    ENCODER_WORD_BOUNDARY, NO_TEXT_GUARD, _artdirected_prompt, _clip, _concept,
+    _focus_character, _gendered_base, _harden_image_prompt, _image_context, _place_text,
+    _slug, _strip_quoted, character_descriptor, item_prompt, scene_prompt, view_prompt,
 )
 from .storage import (  # noqa: F401
     _existing_char_urls, _persist, delete_all_media, delete_game_images,

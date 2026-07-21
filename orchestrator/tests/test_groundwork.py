@@ -40,9 +40,8 @@ def test_artdirector_user_prompt_is_fully_substituted(client, fake_llm, world):
 
 # ---------- no LLM output caps in the creation/art path ----------
 
-def test_creation_and_art_calls_are_uncapped(client, fake_llm, world, monkeypatch):
+def test_creation_and_art_calls_are_uncapped(client, fake_llm, world):
     from app import llm as llmmod
-    monkeypatch.setattr(settings, "IMAGE_AGENTIC_PROMPTS", True)
     fake_llm.artdirector = llmmod.LLMReply(content="{}")
     gid = client.post("/games", json=world).json()["game_id"]
 
@@ -55,7 +54,7 @@ def test_creation_and_art_calls_are_uncapped(client, fake_llm, world, monkeypatc
     # art director + agentic image prompt (direct: media stays disabled in tests)
     from app.integrate import image_prompts, jobs
     jobs.art_direction(gid)
-    image_prompts._agentic_prompt("PLACE: crypt", fallback="crypt")
+    image_prompts._artdirected_prompt("PLACE: crypt", fallback="crypt")
 
     shapes = {
         "finalize": lambda c: "save_world" in c["names"],

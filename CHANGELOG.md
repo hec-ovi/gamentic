@@ -2,7 +2,15 @@
 
 Notable changes to gamentic, newest first. No version numbers yet: this moves fast, so entries are dated and the README always describes the current state.
 
-## 2026-07-21
+## 2026-07-21 (later)
+
+### Every image gets an art director (evolve branch, milestone 1)
+- The word caps on image prompts were folklore: the code claimed FLUX.2 klein "degrades past ~100 words", but klein's Qwen3-4B encoder simply truncates at a hard 512-token window (roughly 350 words) and detail up to that boundary helps (verified against the encoder's tokenizer settings and BFL guidance). The 90-word clips are gone; one `ENCODER_WORD_BOUNDARY = 350` guard clips at the real limit.
+- The old optional agentic prompt path (IMAGE_AGENTIC_PROMPTS, default off, view and current-scene only) is replaced by the art director on EVERY render, on by default (IMAGE_ART_DIRECTOR): See/look snapshots, narrator shots, item cards and background scene art each spin up one LLM call that writes the prompt from the whole live context (world, place, time, mood, everyone present with their full looks, what just happened). Deterministic templates remain the fail-closed fallback, and their own clips loosened (18/20-word fragments up to 40/80).
+- Both prompt files rewrote around the verified FLUX.2 doctrine: subjects first with every trait adjacent to its subject, positional anchoring on two axes (left/center/right plus foreground/midground/background), pose and gesture, materials layer by layer, lighting named with source and direction (the strongest quality lever), camera framing, style once, exclusions phrased positively, and no word-count instructions anywhere.
+- The creation main image is now conditioned on the just-made portraits as identity references (it rendered with none, so the opening's characters came back strangers to their own reference sheets). Imported templates get the full first-sight pass too (art director, portraits first, cards, opening image); imported checkpoints heal what did not travel without the opening pass.
+- Scene art for a place the player already left is art-directed from that scene's own context (place only, never the player's current companions).
+- 8 new tests in `tests/test_artdirected.py`; suite at 660 backend, 15 setup, all green. `.env.example` regenerated (IMAGE_AGENTIC_PROMPTS out, IMAGE_ART_DIRECTOR in the setup schema).
 
 ### Groundwork repairs (evolve branch, milestone 0)
 - The art director was writing blind: `artdirector.user.md` used single-brace placeholders where the renderer substitutes only double braces, so every game creation sent the template verbatim, with literal `{title}` and `{cast}` instead of the world bible. Fixed; the art director now actually reads the world it is directing.

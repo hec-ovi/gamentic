@@ -39,7 +39,10 @@ class FakeLLM:
         self.character_replies = {}        # name -> LLMReply
         self.finalize = llm.LLMReply(content="", tool_calls=[])
         self.creator_text = llm.LLMReply(content="What kind of world do you imagine?")
-        self.image_prompt = llm.LLMReply(content="Wide shot of a place. plain unmarked surfaces, no signage.")
+        # per-image art director: default empty -> _artdirected_prompt falls back to the
+        # template prompt, so render tests keep their deterministic pre-director
+        # behavior unless they script a directed prompt explicitly
+        self.image_prompt = llm.LLMReply(content="")
         # art director: default empty -> art_direction returns None and the templates
         # carry the renders, so creation tests keep their pre-director behavior unless
         # they script a direction explicitly

@@ -221,7 +221,7 @@ def test_creation_schedules_unlock_cards_for_seeded_items(client, fake_llm, monk
     monkeypatch.setattr(cfg, "IMAGE_ITEMS", True)
     monkeypatch.setattr(jobs, "art_direction", lambda gid: None)
     monkeypatch.setattr(jobs, "generate_images_for_game", lambda gid, direction=None: None)
-    monkeypatch.setattr(jobs, "generate_scene_image", lambda gid, sid, prompt_override="": None)
+    monkeypatch.setattr(jobs, "generate_scene_image", lambda gid, sid, prompt_override="", references=None: None)
     monkeypatch.setattr(jobs, "generate_item_image",
                         lambda gid, name: calls.append(name))
     world = _finalize_world(

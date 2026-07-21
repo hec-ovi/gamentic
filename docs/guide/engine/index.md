@@ -226,7 +226,7 @@ Builds the message arrays for every LLM call (narrator, character, resolve, inte
 
 The stateful generate_* background orchestrators: each opens its own DB conns around the slow render call, re-checks the game still exists before persisting, lands results as beats/row updates, and publishes an SSE event.
 
-- **Reads / inputs:** repo.* (game, scene, characters, item index, current scene); image_prompts.* (prompt building, hardening, context); media.generate_scene_image / generate_character_images; settings (IMAGE_* sizes, IMAGE_AGENTIC_PROMPTS, IMAGE_ART_DIRECTOR, IMAGE_ITEMS)
+- **Reads / inputs:** repo.* (game, scene, characters, item index, current scene); image_prompts.* (prompt building, hardening, context); media.generate_scene_image / generate_character_images; settings (IMAGE_* sizes, IMAGE_ART_DIRECTOR, IMAGE_ITEMS)
 - **Generates / outputs:** persisted image files under GAMES_DATA_DIR/{gid}/images; image beats (repo.add_beat kind=image); row updates: set_scene_image, set_character_images, set_item_image
 - **Writes / mutates:** beats + scene/character/item image_url columns; /media files on disk (storage._persist); events.publish(gid, scene|portrait|item|beat)
 - **Owned by (code):** integrate/jobs.py: generate_view_snapshot (SYNC, the See button); integrate/jobs.py: generate_directed_image (narrator show_image); integrate/jobs.py: generate_item_image; integrate/jobs.py: generate_scene_image / generate_images_for_game; integrate/jobs.py: art_direction / generate_creation_art; integrate/events.py: publish

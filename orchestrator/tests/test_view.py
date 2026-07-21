@@ -94,11 +94,10 @@ def test_view_focus_steers_the_shot_and_the_references(client, fake_llm, monkeyp
     assert "On the left" not in captured["prompt"]           # no group composition
 
 
-def test_view_focus_reaches_the_agentic_composer(client, fake_llm, monkeypatch, tmp_path):
+def test_view_focus_reaches_the_artdirected_composer(client, fake_llm, monkeypatch, tmp_path):
     from app.config import settings
     captured = {}
     _enable(monkeypatch, tmp_path, captured)
-    monkeypatch.setattr(settings, "IMAGE_AGENTIC_PROMPTS", True)
     gid = client.post("/games", json=WORLD).json()["game_id"]
     client.post(f"/games/{gid}/view", json={"focus": "the rusted crane above the quay"})
     call = [c for c in fake_llm.calls
@@ -143,15 +142,14 @@ def test_view_sends_character_identity_references(client, fake_llm, monkeypatch,
     assert captured["references"] is None
 
 
-def test_agentic_mode_lets_the_model_write_the_prompt_with_guards(client, fake_llm, monkeypatch, tmp_path):
-    """IMAGE_AGENTIC_PROMPTS=true: the text model writes the image prompt from live context
+def test_artdirected_mode_lets_the_model_write_the_prompt_with_guards(client, fake_llm, monkeypatch, tmp_path):
+    """IMAGE_ART_DIRECTOR (default on): the text model writes the image prompt from live context
     (looks, mood, the just-happened action), and CODE still enforces the invariants
     (quotes stripped, no-text tail appended)."""
     from app import llm as llmmod
     from app.config import settings
     captured = {}
     _enable(monkeypatch, tmp_path, captured)
-    monkeypatch.setattr(settings, "IMAGE_AGENTIC_PROMPTS", True)
     fake_llm.image_prompt = llmmod.LLMReply(
         content='"Wide full-body shot of two people on a stone quay, the woman offering a coin."')
     gid = client.post("/games", json=WORLD).json()["game_id"]
@@ -172,12 +170,11 @@ def test_agentic_mode_lets_the_model_write_the_prompt_with_guards(client, fake_l
     assert all("image-generation prompt" not in c["system"] for c in nar)
 
 
-def test_agentic_mode_falls_back_to_the_template(client, fake_llm, monkeypatch, tmp_path):
+def test_artdirected_mode_falls_back_to_the_template(client, fake_llm, monkeypatch, tmp_path):
     from app import llm as llmmod
     from app.config import settings
     captured = {}
     _enable(monkeypatch, tmp_path, captured)
-    monkeypatch.setattr(settings, "IMAGE_AGENTIC_PROMPTS", True)
     fake_llm.image_prompt = llmmod.LLMReply(content="")          # the model whiffed
     gid = client.post("/games", json=WORLD).json()["game_id"]
     assert client.post(f"/games/{gid}/view").status_code == 200

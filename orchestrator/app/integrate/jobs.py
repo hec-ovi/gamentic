@@ -58,7 +58,7 @@ def generate_view_snapshot(gid: str, focus: str | None = None,
             return None
         prompt = image_prompts.view_prompt(conn, gid, focus=focus or None)
         context = image_prompts._image_context(conn, gid, include_chars=True, focus=focus or None) \
-            if settings.IMAGE_AGENTIC_PROMPTS else ""
+            if settings.IMAGE_ART_DIRECTOR else ""
         loc = repo.get_player(conn, gid)["location"]
         if focus:
             fc = image_prompts._focus_character(conn, gid, focus)
@@ -76,7 +76,7 @@ def generate_view_snapshot(gid: str, focus: str | None = None,
         chars = [c for c in chars if c]
         refs = [u for u in (_reference_url(c["body_front_url"]) for c in chars) if u]
     if context:
-        prompt = image_prompts._agentic_prompt(context, fallback=prompt)   # LLM call outside the DB conn
+        prompt = image_prompts._artdirected_prompt(context, fallback=prompt)   # LLM call outside the DB conn
     result = media.generate_scene_image(prompt, width=settings.IMAGE_VIEW_W,
                                         height=settings.IMAGE_VIEW_H,
                                         references=refs or None)
@@ -106,10 +106,10 @@ def generate_view_snapshot(gid: str, focus: str | None = None,
 
 def generate_directed_image(gid: str, description: str, caption: str = "") -> dict | None:
     """Background: the narrator fired show_image (answering a player look, or its own
-    dramatic choice). The narrator's visual description IS the shot; code enforces the
-    invariants (quoted spans stripped, length clipped, style + no-text guard appended)
-    and conditions on the identity references of present characters named in it. The
-    image lands as its own image beat, picked up by the frontend's beats polling."""
+    dramatic choice). The narrator's visual description is the SHOT the per-image art
+    director realizes with the whole scene context; the hardened description + style is
+    the deterministic net. Conditions on the identity references of present characters
+    named in the description. The image lands as its own image beat."""
     description = (description or "").strip()
     if not description:
         return None
@@ -124,6 +124,12 @@ def generate_directed_image(gid: str, description: str, caption: str = "") -> di
         refs = [u for u in (_reference_url(c["body_front_url"]) for c in named) if u]
         prompt = image_prompts._harden_image_prompt(
             f"{image_prompts._strip_quoted(description)} {style}".strip())
+        context = image_prompts._image_context(
+            conn, gid, include_chars=True,
+            extra=[f"THE SHOT THE NARRATOR WANTS: {image_prompts._strip_quoted(description)}"]) \
+            if settings.IMAGE_ART_DIRECTOR else ""
+    if context:
+        prompt = image_prompts._artdirected_prompt(context, fallback=prompt)   # LLM call outside the DB conn
     result = media.generate_scene_image(prompt, width=settings.IMAGE_VIEW_W,
                                         height=settings.IMAGE_VIEW_H,
                                         references=refs or None)
@@ -146,7 +152,9 @@ def generate_directed_image(gid: str, description: str, caption: str = "") -> di
 def generate_item_image(gid: str, name: str) -> dict | None:
     """Background: render the small unlock image of a newly visible item, attach it to the
     item wherever it now lives, and land it as a SYSTEM image beat (small card in the chat;
-    system image beats don't count against the narrator's show_image pacing)."""
+    system image beats don't count against the narrator's show_image pacing). The per-image
+    art director writes the card prompt too (the template is the net): a card is still a
+    first sight, and the item's story context makes it specific."""
     with db.get_conn() as conn:
         g = repo.get_game(conn, gid)
         if not g:
@@ -160,6 +168,15 @@ def generate_item_image(gid: str, name: str) -> dict | None:
         style = g["art_style"] or g["tone"] or ""
         loc = repo.get_player(conn, gid)["location"]
         prompt = image_prompts.item_prompt(entry["name"], entry["description"], style)
+        context = image_prompts._image_context(
+            conn, gid, include_chars=False,
+            extra=[f"THE PLAYER WANTS TO LOOK AT: the item card of a single {entry['name']}: "
+                   f"{image_prompts._strip_quoted(entry['description'] or '')}".rstrip(': '),
+                   "FRAME: a small unlock card: close-up of the single item, centered, "
+                   "plain dark backdrop, soft dramatic light"]) \
+            if settings.IMAGE_ART_DIRECTOR else ""
+    if context:
+        prompt = image_prompts._artdirected_prompt(context, fallback=prompt)   # LLM call outside the DB conn
     result = media.generate_scene_image(prompt, width=settings.IMAGE_ITEM_SIZE,
                                         height=settings.IMAGE_ITEM_SIZE)
     if not result or not result.get("image_url"):
@@ -212,7 +229,7 @@ def art_direction(gid: str) -> dict | None:
         name = str(entry.get("name") or "").strip()
         desc = str(entry.get("descriptor") or "").strip()
         if name and desc:
-            cast[name.lower()] = image_prompts._clip(desc, 90)
+            cast[name.lower()] = image_prompts._clip(desc, image_prompts.ENCODER_WORD_BOUNDARY)
     if not main and not cast:
         return None
     return {"main_image": main, "characters": cast}
@@ -264,10 +281,15 @@ def generate_images_for_game(gid: str, direction: dict | None = None) -> None:
             continue   # one character's failure never costs the others their portraits
 
 
-def generate_scene_image(gid: str, scene_id: str, prompt_override: str = "") -> None:
+def generate_scene_image(gid: str, scene_id: str, prompt_override: str = "",
+                         references: list[str] | None = None) -> None:
     """Background: generate + persist art for one scene (skips if it already has an
     image). `prompt_override` (the art director's main-image prompt, creation only)
-    wins outright; otherwise template, agentically rewritten when current."""
+    wins outright; otherwise the per-image art director writes the prompt from THIS
+    scene's context (never with characters: the scene image is the persistent
+    establishing shot of the PLACE, and people baked into it would linger after they
+    leave), template as the net. `references` (creation only) conditions the render
+    on identity portraits."""
     with db.get_conn() as conn:
         sc = repo.get_scene_by_id(conn, scene_id)
         g = repo.get_game(conn, gid)
@@ -275,14 +297,11 @@ def generate_scene_image(gid: str, scene_id: str, prompt_override: str = "") -> 
             return
         style = g["art_style"] or g["tone"] or ""
         prompt = prompt_override or image_prompts.scene_prompt(sc, style)
-        # agentic context only if this is still the CURRENT scene (this runs in the
-        # background; the player may have moved on, and the context follows the player)
-        context = image_prompts._image_context(conn, gid, include_chars=False) \
-            if settings.IMAGE_AGENTIC_PROMPTS and not prompt_override \
-            and sc["id"] == repo.current_scene(conn, gid)["id"] else ""
+        context = image_prompts._image_context(conn, gid, include_chars=False, sc=sc) \
+            if settings.IMAGE_ART_DIRECTOR and not prompt_override else ""
     if context:
-        prompt = image_prompts._agentic_prompt(context, fallback=prompt)   # LLM call outside the DB conn
-    result = media.generate_scene_image(prompt)
+        prompt = image_prompts._artdirected_prompt(context, fallback=prompt)   # LLM call outside the DB conn
+    result = media.generate_scene_image(prompt, references=references)
     if not result:
         return
     with db.get_conn() as conn:
@@ -311,4 +330,17 @@ def generate_creation_art(gid: str, scene_id: str) -> None:
                       if not v.get("image_url")]
         for name in seeded[: settings.IMAGE_MAX_ITEMS_PER_TURN]:
             generate_item_image(gid, name)
-    generate_scene_image(gid, scene_id, prompt_override=(direction or {}).get("main_image", ""))
+    # the main image renders LAST so the just-made portraits can condition it: the
+    # art-directed opening moment shows the important characters, and without identity
+    # references they came back strangers to their own reference sheets. No refs on the
+    # template fallback: that one is a shot of the place alone.
+    main = (direction or {}).get("main_image", "")
+    refs: list[str] = []
+    if main:
+        with db.get_conn() as conn:
+            if not repo.get_game(conn, gid):
+                return
+            loc = repo.get_player(conn, gid)["location"]
+            present = list(repo.present_characters(conn, gid, loc))[:3]
+            refs = [u for u in (_reference_url(c["body_front_url"]) for c in present) if u]
+    generate_scene_image(gid, scene_id, prompt_override=main, references=refs or None)
