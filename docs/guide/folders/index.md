@@ -177,9 +177,10 @@ Glue to the media services: image prompt composition (gender net, no-text guard,
 
 ### app/providers/ — `providers`  ·  _brain_
 
-Config resolves at call time (env -> default).
+The inference-providers layer: one interface per modality, dialect classes for pure JSON shaping (httpx only, no SDKs), and the config spine. Config resolves at call time (env -> default).
 
 - **Key files / dirs:** base.py; image.py; audio.py; __init__.py; INDEX.md
+- **Entry / owner:** base.py: resolve; image.py; audio.py
 - **Produces:** resolved ProviderConfig per call (text/image/audio)
 - **Key point:** .env is the single config layer; defaults reproduce the local stack byte-for-byte.
 - **IN:** `app` (providers/)

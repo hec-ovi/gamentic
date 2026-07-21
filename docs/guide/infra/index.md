@@ -1,6 +1,6 @@
 # Infra — agent-ready
 
-The Docker stack: nine services on one bridge network.
+The Docker stack: seven services on one bridge network.
 
 > Paired with the interactive view: [`infra` in the docs site](../index.html#infra) (Graphs / Text). This file mirrors it node-for-node; the page is the same data drawn.
 > **Read this first, then load ONLY the file the task needs.** Each file under `guide/` is deliberately fat and self-contained: opening one fully answers a class of question. Never bulk-read the folder.
@@ -69,7 +69,7 @@ The single user-defined bridge network. Every service joins it and resolves peer
 - **Lifecycle / profile:** Created with the project.
 - **Config / env / ports:** driver: bridge; DNS by container_name (gamentic-llm-text, gamentic-image-api, ...)
 - **Defined in:** docker-compose.yml networks: gamentic
-- **Talks to / mounts:** all 9 services
+- **Talks to / mounts:** all 7 services
 - **Key point:** Internal URLs use container names + INTERNAL ports (e.g. voice-api is :8080 inside, :9002 on the host).
 - **IN:** _none_
 - **OUT:** `orchestrator` (bridge (all join)); `frontend` (bridge)
@@ -141,8 +141,8 @@ FastAPI brain: the REST+SSE API and the turn engine. Talks to inference services
 
 - **Lifecycle / profile:** Always up (no profile). Holds state in ./orchestrator/data.
 - **Defined in:** docker-compose.yml service orchestrator; ./orchestrator (build); app/config.py defaults
-- **Key point:** depends_on uses required:false so each mode only waits for the backend it actually uses.
-`frontend` (API + SSE (CORS)); `vols` (orchestrator/data); `net` (bridge (all join))
+- **Key point:** depends_on uses required:false so harness mode does not wait for llm-text (text comes from an external server).
+- **IN:** `env` (provider config); `frontend` (API + SSE (CORS)); `vols` (orchestrator/data); `net` (bridge (all join))
 - **OUT:** `llmtext` (LLM_BASE_URL :8080/v1); `imageapi` (IMAGE_API_URL :9001); `voiceapi` (VOICE_API_URL :8080)
 
 <details><summary>JSON shape</summary>
