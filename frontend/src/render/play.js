@@ -119,7 +119,7 @@ export function renderPlayDeck(s, locked, g = {}) {
       <div class="deck-board">
         <div class="board-cell">
           <span class="rail-label">${icon("gem")}<span>Scene items</span></span>
-          ${slotGrid(items, 6, "scene-items", (it) => sceneItemSlot(it))}
+          ${slotGrid(items, 6, "scene-items", sceneItemSlot, s.imagesEnabled)}
         </div>
         <i class="board-sep" aria-hidden="true"></i>
         <div class="board-cell">
@@ -208,7 +208,7 @@ export function renderCharColumn(c, s, locked, g = {}) {
       ${contextMeter(c.context, { mini: true, label: `${c.name}'s memory` })}
       <div class="char-inv">
         <span class="inv-mini-label">Carrying</span>
-        ${slotGrid(c.inventory, 3, "char-items")}
+        ${slotGrid(c.inventory, 3, "char-items", undefined, s.imagesEnabled)}
       </div>
       <span class="char-hint">${icon("panel")}<span>expand to interact</span></span>
     </article>`;
@@ -256,7 +256,7 @@ export function renderActionBar(g, s, locked) {
     <footer class="play-actionbar">
       <div class="player-inv">
         <span class="rail-label">${icon("gem")}<span>You</span>${help("inventory")}</span>
-        ${slotGrid(s.player.inventory, 6, "player-items")}
+        ${slotGrid(s.player.inventory, 6, "player-items", undefined, s.imagesEnabled)}
         <span class="action-help">${help("action")}</span>
       </div>
       ${renderStack(cmp.stack, "cmp")}

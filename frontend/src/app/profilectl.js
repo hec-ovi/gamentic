@@ -72,6 +72,15 @@ export function switchProfileTab(tab) {
   });
 }
 
+// Cycle the character's portrait views (front / side / face). Re-render so the
+// new image and the dots update; the morph keeps the panel steady.
+export function cycleProfileImage(step) {
+  const g = state.active;
+  if (!g || !g.profile) return;
+  g.profile.imgIndex = (g.profile.imgIndex || 0) + step;
+  render();
+}
+
 export async function refreshProfile(g) {
   const pf = g.profile;
   if (!pf) return;

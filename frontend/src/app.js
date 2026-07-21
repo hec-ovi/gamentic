@@ -41,6 +41,10 @@ export function init(opts = {}) {
   // their slots). Capture phase so it also works inside modal wrappers; images
   // inside action buttons (item slots) keep their own click meaning.
   root.addEventListener("click", maybeOpenLightbox, true);
+  // Grant audio playback on the first user gesture: speakBeat awaits synthesis
+  // before playing, so without this the play() runs outside the click's task and
+  // the browser can silently block it. Capture + once, cheap and idempotent.
+  root.addEventListener("pointerdown", () => voice.unlock(), { capture: true, once: true });
   resetCreator();
   render();
   refreshLibrary();

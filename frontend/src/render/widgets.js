@@ -40,19 +40,26 @@ export function renderViewPending() {
 }
 
 // --- fixed-slot grids (caps are maximums; empty slots show capacity) ---
-export function slotGrid(items, total, cls, cellFn = filledSlot) {
+// `imaging` (= images are ON for this game) makes a not-yet-rendered item show
+// the same "being generated" shimmer as scene art, instead of bare initials.
+export function slotGrid(items, total, cls, cellFn = filledSlot, imaging = false) {
   let cells = "";
   for (let i = 0; i < total; i++) {
     const it = items[i];
-    cells += it ? cellFn(it) : `<span class="slot empty"></span>`;
+    cells += it ? cellFn(it, imaging) : `<span class="slot empty"></span>`;
   }
   return `<div class="slot-grid ${cls}">${cells}</div>`;
 }
 
-export function slotInner(it) {
-  return it.imageUrl
-    ? `<img src="${escapeHtml(it.imageUrl)}" alt="${escapeHtml(it.name)}" loading="lazy" />`
-    : `<span class="slot-abbr">${escapeHtml(initials(it.name))}</span>`;
+export function slotInner(it, imaging = false) {
+  if (it.imageUrl) {
+    return `<img src="${escapeHtml(it.imageUrl)}" alt="${escapeHtml(it.name)}" loading="lazy" />`;
+  }
+  // images on but no art yet -> it is still rendering: show the generating shimmer
+  if (imaging) {
+    return `<span class="slot-imaging art-loading" role="img" aria-label="Picturing ${escapeHtml(it.name)}"><span class="art-scan" aria-hidden="true"></span></span>`;
+  }
+  return `<span class="slot-abbr">${escapeHtml(initials(it.name))}</span>`;
 }
 
 export function slotTip(it) {
@@ -60,19 +67,19 @@ export function slotTip(it) {
 }
 
 // inventory display slot (player / character): tappable -> the inspect modal
-export function filledSlot(it) {
-  return `<button type="button" class="slot filled" data-act="inspect-item" data-item-id="${escapeHtml(it.id || "")}" data-item-name="${escapeHtml(it.name)}" title="${escapeHtml(slotTip(it))}" aria-label="Inspect ${escapeHtml(it.name)}">${slotInner(it)}</button>`;
+export function filledSlot(it, imaging = false) {
+  return `<button type="button" class="slot filled" data-act="inspect-item" data-item-id="${escapeHtml(it.id || "")}" data-item-name="${escapeHtml(it.name)}" title="${escapeHtml(slotTip(it))}" aria-label="Inspect ${escapeHtml(it.name)}">${slotInner(it, imaging)}</button>`;
 }
 
 // scene-item slot: tappable -> the inspect modal (which offers Take for loose
 // loot, Examine for fixed scenery, and "ask what this is" for both). Inspecting
 // is read-only, so it stays interactive even while a turn resolves.
-export function sceneItemSlot(it) {
+export function sceneItemSlot(it, imaging = false) {
   const kind = it.fixed ? "scenery" : "loot";
   const tag = it.fixed
     ? `<span class="slot-tag fixed" aria-hidden="true">${icon("landmark")}</span>`
     : `<span class="slot-tag loot" aria-hidden="true">${icon("plus")}</span>`;
-  return `<button type="button" class="slot filled item-${kind}" data-act="inspect-item" data-item-id="${escapeHtml(it.id || "")}" data-item-name="${escapeHtml(it.name)}" title="${escapeHtml(slotTip(it))}" aria-label="Inspect ${escapeHtml(it.name)}">${slotInner(it)}${tag}</button>`;
+  return `<button type="button" class="slot filled item-${kind}" data-act="inspect-item" data-item-id="${escapeHtml(it.id || "")}" data-item-name="${escapeHtml(it.name)}" title="${escapeHtml(slotTip(it))}" aria-label="Inspect ${escapeHtml(it.name)}">${slotInner(it, imaging)}${tag}</button>`;
 }
 
 // ---------------------------------------------------------------------------

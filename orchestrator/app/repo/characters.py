@@ -339,7 +339,10 @@ def character_profile(conn, gid: str, cid: str) -> dict | None:
         "relation": character_relation(c),
         "disposition": c["disposition"], "following": bool(c["following"]),
         "alive": bool(c["alive"]), "life": c["life"], "max_life": c["max_life"],
+        # the full generated portrait set, so the profile can cycle the views
+        # (body_url stays = front, for older clients that only read the two).
         "face_url": c["face_url"], "body_url": c["body_front_url"],
+        "body_front_url": c["body_front_url"], "body_side_url": c["body_side_url"],
         "voice_id": c["voice_id"], "color": c["color"],
         "carrying": items.visible_items(c["inventory"]),
         "traits": character_traits(c),

@@ -74,8 +74,18 @@ export function profileBody(s, g, d) {
   const pf = g.profile;
   const tab = pf.tab || "profile";
   const artCaption = [d.name, d.description].filter(Boolean).join(" - ");
-  const art = d.bodyUrl || d.faceUrl
-    ? artImg({ url: d.bodyUrl || d.faceUrl, alt: d.name, caption: artCaption, cls: "profile-art" })
+  // the generated portrait set, in a natural order (full body, profile, face);
+  // prev/next cycle through whatever views exist.
+  const views = [d.bodyFrontUrl || d.bodyUrl, d.bodySideUrl, d.faceUrl].filter(Boolean);
+  const uniqViews = views.filter((u, i) => views.indexOf(u) === i);
+  const idx = uniqViews.length ? (((pf.imgIndex || 0) % uniqViews.length) + uniqViews.length) % uniqViews.length : 0;
+  const cycler = uniqViews.length > 1
+    ? `<button type="button" class="art-cycle prev" data-act="profile-img-prev" aria-label="Previous image">${icon("chevronLeft")}</button>
+       <button type="button" class="art-cycle next" data-act="profile-img-next" aria-label="Next image">${icon("chevronLeft")}</button>
+       <span class="art-dots" aria-hidden="true">${uniqViews.map((_, i) => `<i class="${i === idx ? "on" : ""}"></i>`).join("")}</span>`
+    : "";
+  const art = uniqViews.length
+    ? `<div class="profile-art-wrap">${artImg({ url: uniqViews[idx], alt: d.name, caption: artCaption, cls: "profile-art" })}${cycler}</div>`
     : `<div class="profile-art fallback" role="img" aria-label="${escapeHtml(d.name)}"><span class="col-initial">${escapeHtml(initials(d.name))}</span></div>`;
 
   // the Whisper tab carries the same unread alert as the cast card (one count,

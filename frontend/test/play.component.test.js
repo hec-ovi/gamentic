@@ -1902,13 +1902,17 @@ test("an item media-ready event (SSE) refreshes state so the pack slot gains its
       }),
     );
     await gotoPlay(u);
-    // the pack slot starts as initials (live: it stayed that way after the card landed)
-    expect(document.querySelector(".player-items .slot-abbr")).toBeTruthy();
+    // images on but no art yet -> the slot shows the generating shimmer (not bare
+    // initials): the item is being pictured, same as scene art
+    expect(document.querySelector(".player-items .slot-imaging")).toBeTruthy();
+    expect(document.querySelector(".player-items .slot-abbr")).toBeFalsy();
     expect(document.querySelector('.player-items img[src="/media/g/item-deck.png"]')).toBeFalsy();
     const es = FakeEventSource.instances[FakeEventSource.instances.length - 1];
     es.open();
     es.emit({ kind: "item", name: "Neural Interface Deck" });
+    // the render lands -> the shimmer becomes the real thumbnail
     await waitFor(() => expect(document.querySelector('.player-items img[src="/media/g/item-deck.png"]')).toBeTruthy());
+    expect(document.querySelector(".player-items .slot-imaging")).toBeFalsy();
   } finally {
     vi.unstubAllGlobals();
   }
@@ -1925,6 +1929,36 @@ test("an image-less pack slot abbreviates past the article (a heavy iron key rea
   const abbr = document.querySelector(".player-items .slot-abbr");
   expect(abbr).toBeTruthy();
   expect(abbr.textContent.trim()).toBe("HI");
+});
+
+test("the character view cycles its generated portrait views (front / side / face)", async () => {
+  const u = user();
+  const faced = makeProfile({
+    face_url: "/media/g/char-c1-face.png",
+    body_front_url: "/media/g/char-c1-front.png",
+    body_side_url: "/media/g/char-c1-side.png",
+  });
+  server.use(
+    http.get(`${API}/games/:id/characters/:cid/profile`, () => HttpResponse.json(faced)),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await screen.findByRole("dialog", { name: /jacker's profile/i });
+  const artSrc = () => profileEl().querySelector(".profile-art").getAttribute("src");
+  // opens on the front (body) view; prev/next + dots appear because 3 views exist
+  await waitFor(() => expect(artSrc()).toBe("/media/g/char-c1-front.png"));
+  expect(profileEl().querySelectorAll(".art-dots i").length).toBe(3);
+  const next = () => within(profileEl()).getByRole("button", { name: /next image/i });
+  await u.click(next());
+  await waitFor(() => expect(artSrc()).toBe("/media/g/char-c1-side.png"));
+  await u.click(next());
+  await waitFor(() => expect(artSrc()).toBe("/media/g/char-c1-face.png"));
+  // wraps around back to the front
+  await u.click(next());
+  await waitFor(() => expect(artSrc()).toBe("/media/g/char-c1-front.png"));
+  // and prev goes the other way
+  await u.click(within(profileEl()).getByRole("button", { name: /previous image/i }));
+  await waitFor(() => expect(artSrc()).toBe("/media/g/char-c1-face.png"));
 });
 
 test("whisper lines label the speaker with their square face, not a text name (owner)", async () => {

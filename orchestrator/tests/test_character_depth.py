@@ -125,6 +125,24 @@ def test_profile_memories_only_include_images_that_name_them(client, fake_llm, w
     assert prof["memories"][0]["caption"].count(".") >= 2          # a real concept, not a label
 
 
+def test_profile_exposes_the_full_portrait_view_set(client, fake_llm, world):
+    """The profile carries every generated view (face, front, side) so the UI can
+    cycle them; body_url stays = front for older clients."""
+    from app import db, repo
+    gid = client.post("/games", json=world).json()["game_id"]
+    cid = _cid(client, gid)
+    with db.get_conn() as conn:
+        repo.set_character_images(conn, cid,
+                                  face_url="/media/x/char-face.png",
+                                  body_front_url="/media/x/char-front.png",
+                                  body_side_url="/media/x/char-side.png")
+    prof = client.get(f"/games/{gid}/characters/{cid}/profile").json()
+    assert prof["face_url"] == "/media/x/char-face.png"
+    assert prof["body_front_url"] == "/media/x/char-front.png"
+    assert prof["body_side_url"] == "/media/x/char-side.png"
+    assert prof["body_url"] == prof["body_front_url"]   # back-compat alias
+
+
 def test_profile_404s(client, fake_llm, world):
     gid = client.post("/games", json=world).json()["game_id"]
     assert client.get(f"/games/{gid}/characters/nope/profile").status_code == 404

@@ -46,6 +46,8 @@ export class Voice {
     // Optional callback fired whenever a key's status changes (queued, done),
     // so the UI can repaint the speak icons without a full render.
     this.onStatus = null;
+    // set once the browser has granted media playback (see unlock()).
+    this._unlocked = false;
   }
 
   // The cache/inflight key for a request (null when nothing to synthesize).
@@ -169,6 +171,28 @@ export class Voice {
     return job;
   }
 
+  // Browsers block audio that isn't started from a user gesture. speakBeat AWAITS
+  // synthesis before playing, so the play() runs outside the click's task and can
+  // be silently rejected. Call this from the FIRST real user gesture (app.js wires
+  // it): playing a near-silent clip inside a gesture grants the DOCUMENT media
+  // permission, so every later programmatic play() is allowed.
+  unlock() {
+    if (this._unlocked || !this._Audio) return;
+    try {
+      const a = new this._Audio();
+      a.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+      a.volume = 0;
+      const p = a.play();
+      if (p && typeof p.then === "function") {
+        p.then(() => { this._unlocked = true; try { a.pause(); } catch { /* ok */ } }).catch(() => {});
+      } else {
+        this._unlocked = true;
+      }
+    } catch {
+      /* no audio support; the game plays silent */
+    }
+  }
+
   // Play an already-rendered audio_url. Returns the element (or null headless).
   playUrl(audioUrl, speakerId) {
     if (!this.enabled || !audioUrl || !this._Audio) return null;
@@ -178,10 +202,19 @@ export class Voice {
       el.volume = this.volumeFor(speakerId);
       this._audio = el;
       const p = el.play();
-      if (p && typeof p.catch === "function") p.catch(() => {});
+      // surface a block instead of swallowing it silently: the console line is how
+      // we tell "autoplay blocked" (unlock() needed) from "file 404" (proxy) apart.
+      if (p && typeof p.catch === "function") {
+        p.catch((e) => {
+          if (typeof console !== "undefined" && console.warn) {
+            console.warn("[voice] playback did not start:", (e && e.message) || e);
+          }
+        });
+      }
       return el;
-    } catch {
-      return null; // autoplay blocked or element error; ignore
+    } catch (e) {
+      if (typeof console !== "undefined" && console.warn) console.warn("[voice] play error:", e);
+      return null;
     }
   }
 

@@ -260,6 +260,8 @@ export function mapProfile(p = {}) {
     maxLife: numOrNull(p.max_life) ?? numOrNull(p.life),
     faceUrl: p.face_url || null,
     bodyUrl: p.body_url || null,
+    bodyFrontUrl: p.body_front_url || p.body_url || null,
+    bodySideUrl: p.body_side_url || null,
     voiceId: p.voice_id || null,
     color: p.color || PALETTE[0],
     carrying: (p.carrying || []).map(mapItem),

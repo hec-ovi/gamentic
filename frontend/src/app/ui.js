@@ -12,7 +12,7 @@ import { showHelp } from "./cues.js";
 import { exportGame, importGameFile, markArtReveals, openGame, refreshLibrary, removeGame, wipeEverything } from "./game.js";
 import { stopMediaWatch } from "./mediastream.js";
 import { closeTagger, doExplain, doGive, onCharAction, openInspect, openTagger, takeSceneAction } from "./playctl.js";
-import { openProfile, switchProfileTab } from "./profilectl.js";
+import { cycleProfileImage, openProfile, switchProfileTab } from "./profilectl.js";
 import { applyMemorySetting, patchGameSettings, updateSetting } from "./settingsctl.js";
 import { applySpeakStates, speakBeat } from "./speech.js";
 import { continueStory, stopTurn, takeTurn } from "./turns.js";
@@ -352,6 +352,12 @@ export function onAction(act, el) {
       break;
     case "profile-tab":
       switchProfileTab(el.dataset.tab);
+      break;
+    case "profile-img-prev":
+      cycleProfileImage(-1);
+      break;
+    case "profile-img-next":
+      cycleProfileImage(1);
       break;
     case "close-profile":
       if (state.active) state.active.profile = null;
