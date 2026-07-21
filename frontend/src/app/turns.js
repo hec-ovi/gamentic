@@ -2,6 +2,7 @@
 // wish line, failure restore, and the post-turn late-image-beat watch.
 
 import { mapBeats, mapGameState } from "../adapters.js";
+import { sanitizeTyped } from "../composer.js";
 import { diffState } from "../transitions.js";
 import { api, root, state } from "./ctx.js";
 import { applyTransitions, showToast } from "./cues.js";
@@ -70,7 +71,7 @@ export function echoBeats(g, input, via = null) {
             ? `you discreetly: ${seg.text}`
             : seg.mode === "look"
               ? `you quietly study ${seg.target}${seg.text ? ` - ${seg.text}` : ""}`
-              : `you whisper to ${seg.target}: "${seg.text}"`,
+              : `you tell ${seg.target} privately: "${seg.text}"`,
           cid,
         ),
       );
@@ -128,7 +129,9 @@ export async function stopTurn() {
 // along on the next send (action or continue) and clears after each send.
 export function captureWish(g) {
   const el = root.querySelector("#wishInput");
-  const wish = String((el && el.value) || g.wish || "").trim();
+  // same input restriction as the composer: the wish rides inside a quoted
+  // prompt block, so structural symbols are normalized before it travels
+  const wish = sanitizeTyped(String((el && el.value) || g.wish || "")).trim();
   g.wish = "";
   if (el) el.value = "";
   return wish || null;

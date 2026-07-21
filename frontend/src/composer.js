@@ -57,6 +57,20 @@ export function insertChip(editor, ref) {
   editor.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+// Player-typed text is wrapped in double quotes downstream (the echo beat reads
+// `you say "..."`, and the narrator/character prompts frame it the same way), so
+// a typed double quote nests inside that wrapper and breaks both the echo's
+// quote extraction and the prompt framing (live: a " in the chat broke the
+// turn). Structural symbols are normalized at the input, the owner's call:
+// double quotes become apostrophes, square brackets become parens (they collide
+// with the [say]/[do] tag idiom the model reads in transcripts).
+export function sanitizeTyped(text) {
+  return String(text ?? "")
+    .replace(/["“”„]/g, "'")
+    .replace(/\[/g, "(")
+    .replace(/\]/g, ")");
+}
+
 // Walk the editor: text nodes -> text, chips -> display name inline + refs entry.
 // Returns { text, refs } ready to drop into a segment.
 export function serializeComposer(editor) {
@@ -75,7 +89,7 @@ export function serializeComposer(editor) {
       text += node.textContent;
     }
   });
-  return { text: text.replace(/ /g, " ").replace(/\s+/g, " ").trim(), refs };
+  return { text: sanitizeTyped(text).replace(/ /g, " ").replace(/\s+/g, " ").trim(), refs };
 }
 
 export function clearComposer(editor) {

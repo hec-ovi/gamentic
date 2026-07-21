@@ -100,3 +100,11 @@ test("describeSegment reads as a human line", () => {
   assert.equal(describeSegment({ type: "do", text: "kick" }), "Do: kick");
   assert.equal(describeSegment({ type: "conversation", mode: "do", text: "pass key", target: "Mara" }), "Discreetly -> Mara: pass key");
 });
+
+test("typed structural symbols are normalized at the input (owner: they broke the chat)", async () => {
+  const { sanitizeTyped } = await import("../src/composer.js");
+  assert.equal(sanitizeTyped('she said "run" and left'), "she said 'run' and left");
+  assert.equal(sanitizeTyped("curly “quotes” too"), "curly 'quotes' too");
+  assert.equal(sanitizeTyped("[say] fake tags"), "(say) fake tags");
+  assert.equal(sanitizeTyped("plain text stays"), "plain text stays");
+});
