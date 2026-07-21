@@ -109,9 +109,9 @@ class LiveNarration:
 
 
 class LiveCharacter:
-    """on_delta adapter for one character call: streams the interior of the say/whisper
+    """on_delta adapter for one character call: streams the interior of the say/private
     span being written (one stream id per segment), routed exactly like the final beat
-    will be (a whisper span, or a forced-private reply, goes to the private thread)."""
+    will be (a private span, or a forced-private reply, goes to the private thread)."""
 
     def __init__(self, gid: str, ch: dict, private_with: str | None):
         self.gid = gid
@@ -129,7 +129,7 @@ class LiveCharacter:
         prev = self.shown.get(sid, "")
         if text == prev:
             return
-        private = self.private or (self.ch["id"] if kind == "whisper" else None)
+        private = self.private or (self.ch["id"] if kind == "private" else None)
         op = "append" if text.startswith(prev) else "replace"
         frag = text[len(prev):] if op == "append" else text
         publish_text(self.gid, sid, op, frag, self.ch["id"], self.ch["name"],
@@ -146,7 +146,7 @@ class LiveCharacter:
                 self.donetexts[idx] = text
         if tail:
             kind, text = tail
-            if kind in ("say", "whisper"):
+            if kind in ("say", "private"):
                 self._push(len(done), kind, text)
 
     def done(self) -> None:

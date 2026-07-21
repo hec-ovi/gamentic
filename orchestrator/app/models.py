@@ -124,7 +124,7 @@ class EntityRef(BaseModel):
 
 
 class Segment(BaseModel):
-    """One tagged piece of a player turn. type in: say | do | attack | give | whisper.
+    """One tagged piece of a player turn. type in: say | do | attack | give | conversation.
     A turn can stack several: [do] go to the table, [say] "nice beer", [attack] X, [give] key -> X."""
     type: str = "do"
     text: str = Field("", max_length=MAX_SEGMENT_CHARS)
@@ -133,7 +133,7 @@ class Segment(BaseModel):
     # for attack (damage); schema-bounded so a typed or posted force can never instakill
     amount: Optional[int] = Field(None, ge=0, le=MAX_ATTACK_AMOUNT)
     refs: Optional[list[EntityRef]] = None  # entity chips tagged inside this segment's text
-    mode: Optional[str] = None     # for whisper: "say" (default) or "do" (a discreet private action)
+    mode: Optional[str] = None     # for conversation: "say" (default) or "do" (a discreet private action)
 
 
 class ActionIn(BaseModel):

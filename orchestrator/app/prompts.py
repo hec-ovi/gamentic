@@ -561,13 +561,13 @@ INTERPRET_TOOL = [{
             "properties": {
                 "segments": {"type": "array", "items": {"type": "object", "properties": {
                     "type": {"type": "string",
-                             "enum": ["say", "do", "attack", "give", "whisper", "look"]},
+                             "enum": ["say", "do", "attack", "give", "conversation", "look"]},
                     "text": {"type": "string"},
                     "target": {"type": "string", "description": "Character name, when directed."},
                     "item": {"type": "string", "description": "For give: the item handed over."},
                     "amount": {"type": "integer", "description": "For attack: only if force is named."},
                     "mode": {"type": "string", "enum": ["say", "do"],
-                             "description": "For whisper: words or a discreet act."},
+                             "description": "For conversation: words or a discreet act."},
                 }, "required": ["type"]}},
             },
             "required": ["segments"],

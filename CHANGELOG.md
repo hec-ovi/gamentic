@@ -2,6 +2,15 @@
 
 Notable changes to gamentic, newest first. No version numbers yet: this moves fast, so entries are dated and the README always describes the current state.
 
+## 2026-07-21 (live-test fixes)
+
+### First round of owner testing on the evolve branch
+- The opening image is now a character-FREE establishing shot: the essence of the story and the place, rendered with depth and atmosphere, no people. Live-found: the opening painted its own invented cast because it renders before any portrait can serve as an identity reference; characters now appear only in shots that carry their real reference sheets (look/see snapshots and narrator shots, which already match their models).
+- The private channel stops sounding like a conspiracy. Root cause: the word "whisper" was the token everywhere the model looked, so it whispered. Renamed at every model-facing point: the character's private span is now `[private]...[/private]` (the old `[whisper]` span still parses as a legacy alias; `[whisper]` survives only as the voice tone tag), the interpreter's segment type is `conversation` (legacy `whisper` still accepted from older clients and model replies, normalized at the boundary), and the player's private echo reads "you tell Mara privately: ..." instead of "you whisper to Mara: ...". The interpreter prompt describes it as a one-on-one exchange held apart from the scene. Secrecy, when it happens, is the story's choice now, not the channel's.
+- The help popover flips ABOVE its ? dot when there is no room below (live: the composer's bottom-right help tip pushed past the viewport and grew the page into a scrollbar).
+- `./up.sh app`: the fast path that rebuilds only orchestrator + frontend, leaving ComfyUI, text inference and the voice stack running untouched.
+- Suites: 663 backend (+3 live against the real model), 240 frontend, all green.
+
 ## 2026-07-21 (later)
 
 ### Every image gets an art director (evolve branch, milestone 1)

@@ -79,16 +79,16 @@ test("buildSegment: talk channel directs say at the target; do stays public", ()
   assert.deepEqual(buildSegment({ mode: "do", text: "lean in", refs: [], channel: ch }), { type: "do", text: "lean in" });
 });
 
-test("buildSegment: whisper channel -> whisper segments with mode say|do", () => {
-  const ch = { kind: "whisper", target: "Mara" };
+test("buildSegment: private channel -> conversation segments with mode say|do", () => {
+  const ch = { kind: "conversation", target: "Mara" };
   assert.deepEqual(buildSegment({ mode: "say", text: "psst", refs: [], channel: ch }), {
-    type: "whisper",
+    type: "conversation",
     text: "psst",
     target: "Mara",
     mode: "say",
   });
   assert.deepEqual(buildSegment({ mode: "do", text: "slip her the key", refs: [], channel: ch }), {
-    type: "whisper",
+    type: "conversation",
     text: "slip her the key",
     target: "Mara",
     mode: "do",
@@ -98,5 +98,5 @@ test("buildSegment: whisper channel -> whisper segments with mode say|do", () =>
 test("describeSegment reads as a human line", () => {
   assert.equal(describeSegment({ type: "say", text: "hello", target: "Mara" }), "Say -> Mara: hello");
   assert.equal(describeSegment({ type: "do", text: "kick" }), "Do: kick");
-  assert.equal(describeSegment({ type: "whisper", mode: "do", text: "pass key", target: "Mara" }), "Discreetly -> Mara: pass key");
+  assert.equal(describeSegment({ type: "conversation", mode: "do", text: "pass key", target: "Mara" }), "Discreetly -> Mara: pass key");
 });

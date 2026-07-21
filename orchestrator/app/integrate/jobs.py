@@ -281,15 +281,13 @@ def generate_images_for_game(gid: str, direction: dict | None = None) -> None:
             continue   # one character's failure never costs the others their portraits
 
 
-def generate_scene_image(gid: str, scene_id: str, prompt_override: str = "",
-                         references: list[str] | None = None) -> None:
+def generate_scene_image(gid: str, scene_id: str, prompt_override: str = "") -> None:
     """Background: generate + persist art for one scene (skips if it already has an
     image). `prompt_override` (the art director's main-image prompt, creation only)
     wins outright; otherwise the per-image art director writes the prompt from THIS
-    scene's context (never with characters: the scene image is the persistent
-    establishing shot of the PLACE, and people baked into it would linger after they
-    leave), template as the net. `references` (creation only) conditions the render
-    on identity portraits."""
+    scene's context, template as the net. Scene art NEVER contains people: it is the
+    persistent establishing shot of the PLACE (people baked in would linger after
+    they leave, and at creation they could not match the reference sheets)."""
     with db.get_conn() as conn:
         sc = repo.get_scene_by_id(conn, scene_id)
         g = repo.get_game(conn, gid)
@@ -301,7 +299,7 @@ def generate_scene_image(gid: str, scene_id: str, prompt_override: str = "",
             if settings.IMAGE_ART_DIRECTOR and not prompt_override else ""
     if context:
         prompt = image_prompts._artdirected_prompt(context, fallback=prompt)   # LLM call outside the DB conn
-    result = media.generate_scene_image(prompt, references=references)
+    result = media.generate_scene_image(prompt)
     if not result:
         return
     with db.get_conn() as conn:
@@ -330,17 +328,7 @@ def generate_creation_art(gid: str, scene_id: str) -> None:
                       if not v.get("image_url")]
         for name in seeded[: settings.IMAGE_MAX_ITEMS_PER_TURN]:
             generate_item_image(gid, name)
-    # the main image renders LAST so the just-made portraits can condition it: the
-    # art-directed opening moment shows the important characters, and without identity
-    # references they came back strangers to their own reference sheets. No refs on the
-    # template fallback: that one is a shot of the place alone.
-    main = (direction or {}).get("main_image", "")
-    refs: list[str] = []
-    if main:
-        with db.get_conn() as conn:
-            if not repo.get_game(conn, gid):
-                return
-            loc = repo.get_player(conn, gid)["location"]
-            present = list(repo.present_characters(conn, gid, loc))[:3]
-            refs = [u for u in (_reference_url(c["body_front_url"]) for c in present) if u]
-    generate_scene_image(gid, scene_id, prompt_override=main, references=refs or None)
+    # the main image is a character-FREE establishing shot (owner direction 2026-07-21:
+    # a person painted at creation cannot match the reference sheets, so the opening
+    # invented its own cast; people appear only in shots that carry real identity refs)
+    generate_scene_image(gid, scene_id, prompt_override=(direction or {}).get("main_image", ""))

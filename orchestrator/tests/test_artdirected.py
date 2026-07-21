@@ -139,13 +139,16 @@ def test_left_behind_scene_art_uses_that_scenes_context_without_people(
     assert captured[-1]["prompt"].startswith("Wide shot of a low brick cellar")
 
 
-def test_creation_main_image_rides_the_fresh_portraits(client, fake_llm,
-                                                       monkeypatch, tmp_path):
+def test_creation_main_image_is_a_character_free_establishing_shot(client, fake_llm,
+                                                                   monkeypatch, tmp_path):
+    """Owner direction 2026-07-21: a person painted at creation cannot match the
+    reference sheets (the opening invented its own cast, live-found), so the main
+    image carries NO identity references and the doctrine forbids people in it."""
     monkeypatch.setattr(settings, "IMAGE_ENABLED", True)
     monkeypatch.setattr(settings, "GAMES_DATA_DIR", str(tmp_path))
     fake_llm.artdirector = llm.LLMReply(content=json.dumps({
         "characters": [{"name": "Vex", "descriptor": "A tall scarred woman in leather armor"}],
-        "main_image": "Vex stands on the harbor quay at dawn, gulls wheeling",
+        "main_image": "An empty harbor quay at dawn, gulls wheeling over cold water",
     }))
     captured = []
 
@@ -161,9 +164,11 @@ def test_creation_main_image_rides_the_fresh_portraits(client, fake_llm,
     monkeypatch.setattr(media, "fetch_image_bytes", lambda url: b"PNG")
 
     gid = client.post("/games", json=WORLD).json()["game_id"]
-    main = next(c for c in captured if c["prompt"].startswith("Vex stands on the harbor"))
-    assert main["references"], "the opening image must be conditioned on the fresh portraits"
-    assert any("-front" in r for r in main["references"])
+    main = next(c for c in captured if c["prompt"].startswith("An empty harbor quay"))
+    assert main["references"] is None          # people only in shots with real identity refs
+    # and the doctrine tells the art director so
+    from app import prompts as prompts_mod
+    assert "NO people" in prompts_mod.render("artdirector.system.md")
 
 
 def test_template_import_runs_the_creation_art_pass(client, fake_llm, world,
@@ -177,7 +182,7 @@ def test_template_import_runs_the_creation_art_pass(client, fake_llm, world,
     monkeypatch.setattr(integrate, "generate_images_for_game",
                         lambda gid, direction=None: passes.append(("heal", gid)))
     monkeypatch.setattr(integrate, "generate_scene_image",
-                        lambda gid, sid, prompt_override="", references=None: passes.append(("scene", gid)))
+                        lambda gid, sid, prompt_override="": passes.append(("scene", gid)))
 
     gid = client.post("/games", json=world).json()["game_id"]
     template = client.get(f"/games/{gid}/export?kind=template").json()

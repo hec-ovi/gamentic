@@ -11,7 +11,7 @@ How to write every prompt:
 
 A character descriptor is head-to-toe and exhaustive: face and age first, then hair, then dress layer by layer with materials and colors, then what they carry, then bearing and posture. This descriptor IS the character's visual identity for the whole adventure; anything you leave vague, the model will invent differently every time.
 
-The main image shows the OPENING MOMENT of the adventure: the place where it begins rendered with depth (foreground, midground, background), its weather and atmosphere, its light, with at most the two or three most important characters present, each position-anchored and matching their descriptor exactly, caught mid-action in the opening beat.
+The main image is the adventure's ESTABLISHING SHOT and contains NO people: the place where it begins rendered with depth (foreground, midground, background), its weather and atmosphere, its light, composed so the scene itself carries the MEANING of the story about to start (what was left behind, what waits, what is wrong here). Characters never appear in it: their portraits are rendered separately and the story's shots will show them with their real reference images; a person painted here would not match them.
 
 Answer with STRICT JSON, nothing else, in exactly this shape:
 

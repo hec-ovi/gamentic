@@ -4,11 +4,16 @@ import re
 
 from .. import tools
 
-_CHAR_TAG = re.compile(r"\[(say|do|whisper)\]", re.I)
-# In-span tag debris to scrub: every CLOSER ([/say] [/do] [/whisper]) and the structural
-# OPENERS [say]/[do] - but NOT an opening [whisper], which is also the emotion tone tag
-# ([say]"[whisper] ..." lifts whisper as the say's tone; stripping it here would lose it).
-_CHAR_CLOSE = re.compile(r"\[/(?:say|do|whisper)\]|\[(?:say|do)\]", re.I)
+# [private] is the taught span for a line meant for one person alone; [whisper] is its
+# legacy alias (older transcripts and model habit) AND the Maya1 whisper tone tag, so
+# it stays parseable but is never taught as a span (the overload primed every private
+# line to sound whispered - owner 2026-07-21: privacy is WHO hears, never HOW it sounds).
+_CHAR_TAG = re.compile(r"\[(say|do|private|whisper)\]", re.I)
+# In-span tag debris to scrub: every CLOSER ([/say] [/do] [/private] [/whisper]) and the
+# structural OPENERS [say]/[do]/[private] - but NOT an opening [whisper], which is also
+# the emotion tone tag ([say]"[whisper] ..." lifts whisper as the say's tone; stripping
+# it here would lose it).
+_CHAR_CLOSE = re.compile(r"\[/(?:say|do|private|whisper)\]|\[(?:say|do|private)\]", re.I)
 # Hygiene for small-model artifacts seen live: a pseudo tool call leaked as text
 # ("[attack{amount:10,target: \"player\"}]") and stray tag debris ("*]", trailing "*").
 _PSEUDO_TOOL = re.compile(r"\[\w+\s*\{[^\[\]]*\}\s*\]?")
@@ -291,11 +296,11 @@ def _reclassify_do(content: str) -> tuple[str, str, str]:
 
 def parse_character_output(text: str) -> list[tuple[str, str, str]]:
     """Split a character's tagged reply into (kind, content, emotion) where kind is
-    'say', 'do', or 'whisper'. [say]...[/say] -> speech (dialogue beat); [do]...[/do] ->
-    action; [whisper]...[/whisper] -> words meant for the player alone (the emitter routes
-    it into the private thread). A speech segment may OPEN with a Maya1 emotion tag
-    ([angry] You dare?), extracted into the beat's tone for the voice and stripped from
-    the display text.
+    'say', 'do', or 'private'. [say]...[/say] -> speech (dialogue beat); [do]...[/do] ->
+    action; [private]...[/private] (legacy alias [whisper]...[/whisper]) -> words meant
+    for the player alone (the emitter routes it into the private thread). A speech
+    segment may OPEN with a Maya1 emotion tag ([angry] You dare?), extracted into the
+    beat's tone for the voice and stripped from the display text.
     Tolerant: untagged text is treated as speech; text before the first tag as action.
     Think spans and scaffold are stripped BEFORE any tag parsing (live, e2e 2026-06-11:
     a leading '(think: ...)' fell into the parenthetical splitter below and shipped as
@@ -303,11 +308,11 @@ def parse_character_output(text: str) -> list[tuple[str, str, str]]:
     text = strip_reasoning(text).strip()
     if not text:
         return []
-    # [whisper] is OVERLOADED: a top-level [whisper]...[/whisper] is a private span, but
-    # an INNER [whisper] (the legacy Maya1 tone idiom: [say]"[whisper] Not here."[/say] or
-    # [do][sigh] [whisper] "..."[/do]) is just an emotion tag the extractor lifts as tone.
-    # Only a whisper opener that starts at TOP LEVEL (no say/do/whisper span still open) is
-    # structural; an inner one stays inside its span's content and never splits it.
+    # [whisper] is OVERLOADED: a top-level [whisper]...[/whisper] is a private span
+    # (legacy alias of [private]), but an INNER [whisper] (the Maya1 tone idiom:
+    # [say]"[whisper] Not here."[/say] or [do][sigh] [whisper] "..."[/do]) is just an
+    # emotion tag the extractor lifts as tone. Only an opener at TOP LEVEL (no span
+    # still open) is structural; an inner one stays inside its span's content.
     all_matches = list(_CHAR_TAG.finditer(text))
     matches, inside = [], False
     for m in all_matches:
@@ -316,8 +321,8 @@ def parse_character_output(text: str) -> list[tuple[str, str, str]]:
         # structural opener and here, we are back at top level (the span ended)
         if inside and matches and _CHAR_CLOSE.search(text[matches[-1].end():m.start()]):
             inside = False
-        if kind == "whisper" and inside:
-            continue   # inner whisper: an emotion tone, not a private span - skip it
+        if kind in ("whisper", "private") and inside:
+            continue   # inner: an emotion tone (whisper) or debris (private), never a span
         matches.append(m)
         inside = True   # this opener begins a span; the next opener decides if it closed
     if not matches:
@@ -329,11 +334,13 @@ def parse_character_output(text: str) -> list[tuple[str, str, str]]:
         segs.append(_reclassify_do(lead))
     for i, m in enumerate(matches):
         kind = m.group(1).lower()
+        if kind == "whisper":
+            kind = "private"             # legacy span alias: one internal kind
         start = m.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         content = _clean_segment(_CHAR_CLOSE.sub("", text[start:end]))
         emotion = ""
-        if kind in ("say", "whisper"):
+        if kind in ("say", "private"):
             # the tag may sit inside or outside the quotes: unquote, extract, unquote
             content = _unquote(content)
             emotion, content = _extract_emotion(content)

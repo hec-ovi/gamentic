@@ -58,7 +58,7 @@ def test_private_modal_stacks_say_and_do_with_one_reply(client, fake_llm):
     beats = d["beats"]
     player_beats = [b for b in beats if b["speaker"] == "player"]
     assert len(player_beats) == 2
-    assert 'you whisper to Mara: "They are watching us."' == player_beats[0]["text"]
+    assert 'you tell Mara privately: "They are watching us."' == player_beats[0]["text"]
     assert "only Mara notices" in player_beats[1]["text"]            # the discreet do
     assert all(b["private_with"] for b in beats)                     # everything stays private
     # ONE exchange -> ONE reply, after both player lines

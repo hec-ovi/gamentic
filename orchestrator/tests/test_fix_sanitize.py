@@ -368,17 +368,24 @@ def test_separator_only_lines_are_never_prose():
     assert text == ""
 
 
-# ---- 5. the [whisper] span vs the legacy inner-whisper emotion tone ----
-# [whisper] is OVERLOADED (owner: "characters should be able to also whisper"). A
-# top-level [whisper]...[/whisper] is a private span (kind 'whisper'); an INNER [whisper]
-# (the Maya1 idiom [say]"[whisper] ..." or [do][sigh] [whisper] "...") is just the
-# emotion tone the extractor lifts. The parser must keep the two apart by nesting.
+# ---- 5. the [private] span, its legacy [whisper] alias, and the whisper tone ----
+# [private] is the taught span for a line meant for the player alone. [whisper] is
+# OVERLOADED: a top-level [whisper]...[/whisper] is the LEGACY private span (normalized
+# to kind 'private'); an INNER [whisper] (the Maya1 idiom [say]"[whisper] ..." or
+# [do][sigh] [whisper] "...") is just the emotion tone the extractor lifts.
 
-def test_top_level_whisper_span_parses_as_a_whisper_kind():
+def test_private_span_parses_as_a_private_kind():
+    segs = parsing.parse_character_output(
+        '[say]"All is well."[/say][private]They listen. Say nothing.[/private]')
+    assert segs == [("say", "All is well.", ""),
+                    ("private", "They listen. Say nothing.", "")]
+
+
+def test_legacy_whisper_span_normalizes_to_private():
     segs = parsing.parse_character_output(
         '[say]"All is well."[/say][whisper]They listen. Say nothing.[/whisper]')
     assert segs == [("say", "All is well.", ""),
-                    ("whisper", "They listen. Say nothing.", "")]
+                    ("private", "They listen. Say nothing.", "")]
 
 
 def test_inner_whisper_inside_quotes_stays_a_say_with_whisper_tone():
@@ -394,8 +401,8 @@ def test_inner_whisper_after_another_tone_in_a_do_stays_a_say():
     assert segs == [("say", "Do not waste your breath.", "sigh")]
 
 
-def test_two_whisper_spans_in_a_row_both_parse_as_whispers():
+def test_two_private_spans_in_a_row_both_parse_private():
     segs = parsing.parse_character_output(
-        '[whisper]The bridge is a trap.[/whisper][whisper]Wait for my signal.[/whisper]')
-    assert segs == [("whisper", "The bridge is a trap.", ""),
-                    ("whisper", "Wait for my signal.", "")]
+        '[private]The bridge is a trap.[/private][private]Wait for my signal.[/private]')
+    assert segs == [("private", "The bridge is a trap.", ""),
+                    ("private", "Wait for my signal.", "")]

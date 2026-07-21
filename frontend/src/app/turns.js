@@ -29,7 +29,7 @@ export async function takeTurn(input, via = null) {
   const wish = captureWish(g);
   // a private study (whisper mode:"look") earns its guaranteed image too -
   // it just lands in the thread instead of the public story
-  const look = Array.isArray(input) && input.some((s) => s.type === "look" || (s.type === "whisper" && s.mode === "look"));
+  const look = Array.isArray(input) && input.some((s) => s.type === "look" || (s.type === "conversation" && s.mode === "look"));
   return resolveTurn(g, () => api.takeAction(g.id, input, wish), { look, echo: echoBeats(g, input, via), restore: input, wish, via });
 }
 
@@ -60,7 +60,7 @@ export function echoBeats(g, input, via = null) {
   for (const seg of input) {
     if (seg.type === "say") {
       beats.push(mk(`you say "${seg.text}"${seg.target ? ` to ${seg.target}` : ""}`));
-    } else if (seg.type === "whisper") {
+    } else if (seg.type === "conversation") {
       // route into the open profile's private thread
       const pf = g.profile;
       const cid = pf && (pf.name === seg.target || pf.charId === seg.target) ? pf.charId : seg.target;
@@ -232,7 +232,7 @@ export function restoreInput(g, input) {
   if (!Array.isArray(input)) return restoreLine(g.composer, "cmp", "do", String(input));
   if (input.length === 1) {
     const seg = input[0];
-    if (seg.type === "whisper" && g.profile) {
+    if (seg.type === "conversation" && g.profile) {
       g.profile.tab = "whisper";
       return restoreLine(g.profile, "pm", seg.mode === "do" ? "do" : "say", seg.text);
     }
@@ -241,7 +241,7 @@ export function restoreInput(g, input) {
     }
     return;
   }
-  const pm = input.every((s) => s.type === "whisper");
+  const pm = input.every((s) => s.type === "conversation");
   const holder = pm ? g.profile : g.composer;
   if (!holder) return;
   if (pm) holder.tab = "whisper";

@@ -5,7 +5,7 @@ Segment types:
 - do: a physical action done openly. text = the action, as the player wrote it.
 - attack: a strike at a character. Set target. Set amount only if the player names real force.
 - give: handing an item over. Set item (must be something the player carries) and target.
-- whisper: words or a discreet act meant ONLY for one character. Set target; mode "say" for whispered words, "do" for a discreet act (slipping a note, flashing a badge).
+- conversation: words or an act meant ONLY for one character: a one-on-one exchange held apart from the scene. Set target; mode "say" for the words, "do" for a discreet act (slipping a note, flashing a badge).
 - look: examining, watching, searching, inspecting ("look at the ship", "search the room for an exit", "watch what Mara does"). text = what they look at or search for, in the player's words; empty text = the whole scene.
 
 Rules:

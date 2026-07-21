@@ -217,9 +217,12 @@ def test_a_character_whisper_never_appears_in_any_public_beat(client, fake_llm):
             assert "bridge" not in b["text"]
 
 
-def test_character_prompt_teaches_the_whisper_tag():
-    """The character grammar must teach [whisper] (pinned like the memory instructions)."""
+def test_character_prompt_teaches_the_private_tag():
+    """The character grammar must teach [private] (pinned like the memory instructions),
+    and must NOT teach [whisper] as the span (the overload primed hushed replies);
+    [whisper] survives only in the tone-tag list."""
     from app import prompts
     text = prompts.render("character.system.md", name="X", persona="p", knowledge="",
                           scene="s", tone="t", example_block="")
-    assert "[whisper]" in text and "[/whisper]" in text
+    assert "[private]" in text and "[/private]" in text
+    assert "[/whisper]" not in text

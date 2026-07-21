@@ -71,6 +71,15 @@ export function showNotices(notices) {
 // tracked so repeated clicks on the same dot never stack document listeners
 let helpDismiss = null;
 
+// Where the popover's top edge goes: below the dot when it fits, else flipped
+// above it (live: the composer's bottom-right dot pushed the pop past the
+// viewport and grew the page into a scrollbar). Pure, so it is testable.
+export function helpPopTop(rect, popHeight, viewportH, scrollY) {
+  const below = rect.bottom + 6 + popHeight <= viewportH;
+  const top = below ? rect.bottom + 6 : Math.max(8, rect.top - popHeight - 6);
+  return top + scrollY;
+}
+
 export function showHelp(el) {
   document.querySelectorAll(".help-pop").forEach((p) => p.remove());
   if (helpDismiss) {
@@ -82,7 +91,7 @@ export function showHelp(el) {
   pop.textContent = HELP[el.dataset.help] || "Part of the game.";
   document.body.appendChild(pop);
   const r = el.getBoundingClientRect();
-  pop.style.top = `${r.bottom + window.scrollY + 6}px`;
+  pop.style.top = `${helpPopTop(r, pop.offsetHeight, window.innerHeight, window.scrollY)}px`;
   pop.style.left = `${Math.max(8, Math.min(window.innerWidth - 268, r.left + window.scrollX - 120))}px`;
   const close = (ev) => {
     if (ev.target !== el) {

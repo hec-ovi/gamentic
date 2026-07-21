@@ -373,7 +373,7 @@ test("tab switches are IN-PLACE: the screen and its art are not rebuilt (no flic
   await u.type(pmBox(/what you say/i), "still alive?");
   await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
   await waitFor(() => expect(body).toBeTruthy());
-  expect(body.segments).toEqual([{ type: "whisper", text: "still alive?", target: "Jacker", mode: "say" }]);
+  expect(body.segments).toEqual([{ type: "conversation", text: "still alive?", target: "Jacker", mode: "say" }]);
 }, 10000);
 
 test("the profile tab SURVIVES the post-turn refetch (no bounce back to tab 1)", async () => {
@@ -504,7 +504,7 @@ test("the whisper channel lives in the profile: the secret renders in its thread
   await u.type(pmBox(/what you say/i), "tell me the secret");
   await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
   await waitFor(() => expect(body).toBeTruthy());
-  expect(body.segments).toEqual([{ type: "whisper", text: "tell me the secret", target: "Jacker", mode: "say" }]);
+  expect(body.segments).toEqual([{ type: "conversation", text: "tell me the secret", target: "Jacker", mode: "say" }]);
 
   // the private reply lands in the profile's thread...
   await waitFor(() => expect(within(document.querySelector("#pmThread")).getByText("Under the stool.")).toBeTruthy(), { timeout: 4000 });
@@ -710,7 +710,7 @@ test("a turn resolving mid-reveal never leaves the new echo veiled (the vanished
           state: makeState(),
         });
       }
-      expect(body.segments).toEqual([{ type: "whisper", text: "second", target: "Jacker", mode: "say" }]);
+      expect(body.segments).toEqual([{ type: "conversation", text: "second", target: "Jacker", mode: "say" }]);
       return HttpResponse.json({
         beats: [
           makeBeat({ id: "w2e", kind: "action", speaker: "player", text: 'you whisper to Jacker: "second"', private_with: "c1" }),
@@ -951,7 +951,7 @@ test("Look from the whisper panel is PRIVATE: whisper mode:'look' on the wire, n
   await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
   await waitFor(() => expect(body).toBeTruthy());
   // the spec'd PRIVATE wire shape (fe-work-order item 13 [K]), never a public look
-  expect(body.segments).toEqual([{ type: "whisper", mode: "look", target: "Jacker", text: "his scar" }]);
+  expect(body.segments).toEqual([{ type: "conversation", mode: "look", target: "Jacker", text: "his scar" }]);
 
   // the study renders in the thread...
   await waitFor(() => expect(within(document.querySelector("#pmThread")).getByText(/scar catches the light/)).toBeTruthy(), { timeout: 4000 });
@@ -980,7 +980,7 @@ test("the profile composer's Do mode whispers a discreet private action (mode: d
   await u.type(pmBox(/what you do/i), "slip him the key");
   await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
   await waitFor(() => expect(body).toBeTruthy());
-  expect(body.segments).toEqual([{ type: "whisper", text: "slip him the key", target: "Jacker", mode: "do" }]);
+  expect(body.segments).toEqual([{ type: "conversation", text: "slip him the key", target: "Jacker", mode: "do" }]);
 });
 
 test("Give opens an item picker and sends a give segment with the item id", async () => {

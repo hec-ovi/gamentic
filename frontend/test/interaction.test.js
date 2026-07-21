@@ -75,3 +75,21 @@ test("clicking a beat's play button targets that beat id for voice", () => {
   assert.ok(speak, "narration beat has a play-voice button (voice assigned)");
   assert.equal(speak.dataset.beatId, "b1");
 });
+
+// ---- the help popover never overflows the viewport (live: the composer's
+// bottom-right ? pushed the pop past the bottom edge and grew a scrollbar) ----
+test("help popover opens below its dot when there is room", async () => {
+  const { helpPopTop } = await import("../src/app/cues.js");
+  const rect = { top: 100, bottom: 120 };
+  assert.equal(helpPopTop(rect, 150, 900, 0), 126); // below: bottom + 6
+});
+
+test("help popover flips above the dot at the bottom of the viewport", async () => {
+  const { helpPopTop } = await import("../src/app/cues.js");
+  const rect = { top: 850, bottom: 870 };            // a composer-row dot
+  assert.equal(helpPopTop(rect, 150, 900, 0), 850 - 150 - 6); // above: top - height - 6
+  // and it never goes past the top edge either
+  assert.equal(helpPopTop({ top: 40, bottom: 60 }, 300, 200, 0), 8);
+  // page scroll offsets ride along
+  assert.equal(helpPopTop(rect, 150, 900, 500), 850 - 150 - 6 + 500);
+});

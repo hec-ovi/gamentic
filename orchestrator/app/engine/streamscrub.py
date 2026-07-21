@@ -126,7 +126,7 @@ class CharacterStream:
     """A character reply, streamed. feed() returns the current stable VIEW:
     (done_segments, tail) where done_segments are batch-parsed (kind, text, emotion)
     triples that can no longer change, and tail is (kind, stable_text) of the segment
-    still being written - text only for say/whisper (do lands whole at finalize, and
+    still being written - text only for say/private (do lands whole at finalize, and
     an untagged reply stays unstreamed: its lead could still be reclassified once the
     first tag arrives). finalize() returns parse_character_output_with_marks(raw)."""
 
@@ -142,7 +142,7 @@ class CharacterStream:
         if open_tag is None:              # no unclosed span: nothing is safely growing
             return segs[:-1], None
         done, (kind, text, _emo) = segs[:-1], segs[-1]
-        if kind not in ("say", "whisper"):
+        if kind not in ("say", "private"):
             return done, (kind, "")
         # _unquote strips a WRAPPING quote pair only once the closer arrives; drop a
         # leading quote from the live view now (the near-certain canonical form)
@@ -161,11 +161,13 @@ class CharacterStream:
             kind = m.group(1).lower()
             if inside and last is not None and parsing._CHAR_CLOSE.search(self.raw[pos:m.start()]):
                 inside = False
-            if kind == "whisper" and inside:
+            if kind in ("whisper", "private") and inside:
                 continue
             last, pos, inside = kind, m.end(), True
         if last is None or not inside:
             return None
+        if last == "whisper":
+            last = "private"             # legacy span alias, same normalization as the parser
         return None if parsing._CHAR_CLOSE.search(self.raw[pos:]) else last
 
     def finalize(self):

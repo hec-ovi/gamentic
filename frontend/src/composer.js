@@ -84,7 +84,7 @@ export function clearComposer(editor) {
 
 // Build the wire segment for one composed line.
 //   mode: "say" | "do" | "look"
-//   channel: null (public scene) | { kind: "whisper", target } (the private channel)
+//   channel: null (public scene) | { kind: "conversation", target } (the private channel)
 // Whisper is the private channel: "do" becomes a discreet private action via
 // whisper mode:"do", and "look" a quiet PRIVATE study (whisper mode:"look") -
 // its echo and resulting image land in the thread, never the public story, and
@@ -92,9 +92,9 @@ export function clearComposer(editor) {
 // action: study the scene (empty text) or something specific.
 export function buildSegment({ mode, text, refs, channel }) {
   const base = refs && refs.length ? { refs } : {};
-  if (channel && channel.kind === "whisper") {
+  if (channel && channel.kind === "conversation") {
     const m = mode === "do" ? "do" : mode === "look" ? "look" : "say";
-    return { type: "whisper", text, target: channel.target, mode: m, ...base };
+    return { type: "conversation", text, target: channel.target, mode: m, ...base };
   }
   if (mode === "look") {
     // chip names are already inline in the text
@@ -110,7 +110,7 @@ export function buildSegment({ mode, text, refs, channel }) {
 // Human line for a stacked segment row ("Say -> Mara: hello").
 export function describeSegment(seg) {
   const verb =
-    seg.type === "whisper"
+    seg.type === "conversation"
       ? seg.mode === "do"
         ? "Discreetly"
         : seg.mode === "look"
@@ -122,6 +122,6 @@ export function describeSegment(seg) {
           ? "Say"
           : "Do";
   const target = seg.target ? ` -> ${seg.target}` : "";
-  const fallback = seg.type === "look" ? "the whole scene" : seg.type === "whisper" && seg.mode === "look" ? "them, quietly" : "";
+  const fallback = seg.type === "look" ? "the whole scene" : seg.type === "conversation" && seg.mode === "look" ? "them, quietly" : "";
   return `${verb}${target}: ${seg.text || fallback}`;
 }

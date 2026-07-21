@@ -54,7 +54,7 @@ export function currentSegment(scope) {
   const { text, refs } = serializeComposer(input);
   if (!text) return null;
   const pm = scope === "pm" ? g.profile : null;
-  const channel = pm ? { kind: "whisper", target: pm.name } : null;
+  const channel = pm ? { kind: "conversation", target: pm.name } : null;
   const mode = (pm || g.composer || {}).mode || "say";
   clearComposer(input);
   return buildSegment({ mode, text, refs, channel });
@@ -123,7 +123,7 @@ export function executePrivate() {
   if (seg) segments.push(seg);
   // an empty look from the panel is still a PRIVATE study of them (work order
   // item K): echo and image stay in the whisper thread, never the public story
-  else if (pf.mode === "look" && !segments.length) segments.push({ type: "whisper", mode: "look", target: pf.name, text: "" });
+  else if (pf.mode === "look" && !segments.length) segments.push({ type: "conversation", mode: "look", target: pf.name, text: "" });
   if (!segments.length) return;
   pf.stack = [];
   takeTurn(segments, pf.charId); // results mirror into this character's panel

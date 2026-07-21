@@ -179,9 +179,9 @@ def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None):
     (state.characters[].context). The global meter tracks the narrator's story context,
     so small character calls never make the global number bounce around.
 
-    private_with forces the WHOLE reply into one private thread (the whisper channel, and
+    private_with forces the WHOLE reply into one private thread (the private channel, and
     a gift's forced reply). impulse is a directed prompt line prepended for this call only
-    (mirrors the whisper channel's directed reply): the forced gift reply hands the model
+    (mirrors the private channel's directed reply): the forced gift reply hands the model
     'the player just gave you <item>' so X always has something to answer."""
     segs: list[tuple[str, str]] = []
     creply = llm.LLMReply(content="")
@@ -212,15 +212,15 @@ def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None):
             break
     for kind, txt, emotion in segs:
         # [say] -> dialogue (speech bubble); [do] -> action (a character's physical action);
-        # [whisper] -> a PRIVATE MESSAGE to the player alone (ALWAYS private, even on a public
-        # turn - owner: 'characters should be able to also whisper'). Private is about WHO
-        # hears it, not HOW it sounds: the reply keeps the character's own emotion (or none =
-        # natural voice). A whispered VOICE happens only when the model chooses it with a
-        # leading [whisper] tone tag, which the parser already lifts into `emotion` - it is
-        # never forced here (owner 2026-07-20: private lines sounded whispered because the
-        # tone was forced, so every reply defaulted to a whisper).
-        seg_private = private_with or (ch["id"] if kind == "whisper" else None)
-        emit(ch["id"], ch["name"], "dialogue" if kind in ("say", "whisper") else "action", txt,
+        # [private] -> a PRIVATE MESSAGE to the player alone (ALWAYS private, even on a
+        # public turn - owner: 'characters should be able to also whisper'). Private is
+        # about WHO hears it, not HOW it sounds: the reply keeps the character's own
+        # emotion (or none = natural voice). A whispered VOICE happens only when the model
+        # chooses it with a leading [whisper] tone tag, which the parser lifts into
+        # `emotion` - it is never forced here (owner 2026-07-20/21: private lines sounded
+        # whispered because the channel itself said "whisper" everywhere the model looked).
+        seg_private = private_with or (ch["id"] if kind == "private" else None)
+        emit(ch["id"], ch["name"], "dialogue" if kind in ("say", "private") else "action", txt,
              private_with=seg_private, emotion=emotion)
     if live_c is not None:
         live_c.done()   # after the real beats: the swap is gapless on screen
@@ -245,7 +245,9 @@ def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None):
     return reactions
 
 
-_SEGMENT_TYPES = {"say", "do", "attack", "give", "whisper", "look"}
+# "conversation" is the 1:1 private exchange (the token is deliberately mundane:
+# its old name "whisper" primed every model that read it to hush)
+_SEGMENT_TYPES = {"say", "do", "attack", "give", "conversation", "look"}
 # tools where firing twice with identical args may be intentional; everything else dedupes
 _DEDUP_EXEMPT = {"apply_damage", "attack", "heal", "cue_character", "advance_time",
                  "spawn_character", "reject_attempt"}
@@ -273,9 +275,13 @@ def interpret_action(conn, gid: str, text: str) -> list[dict] | None:
         return None
     segs = []
     for s in raw[:6]:                                  # bounded, like the composer
-        if not isinstance(s, dict) or (s.get("type") or "").lower() not in _SEGMENT_TYPES:
+        if not isinstance(s, dict):
             continue
-        t = s["type"].lower()
+        t = (s.get("type") or "").lower()
+        if t == "whisper":
+            t = "conversation"                         # legacy token, older clients/models
+        if t not in _SEGMENT_TYPES:
+            continue
         seg = {"type": t, "text": (s.get("text") or "").strip(),
                "target": (s.get("target") or "").strip() or None,
                "item": (s.get("item") or "").strip() or None,
@@ -286,7 +292,7 @@ def interpret_action(conn, gid: str, text: str) -> list[dict] | None:
             continue
         if t == "give" and not (seg["item"] and seg["target"]):
             continue
-        if t == "whisper" and not (seg["target"] and seg["text"]):
+        if t == "conversation" and not (seg["target"] and seg["text"]):
             continue
         segs.append(seg)
     return segs or None
@@ -323,7 +329,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
     image_request: str | None = None   # a show_image description the narrator fired
     # The global context meter: the NARRATOR's story context only (its biggest prompt this
     # turn). Character agents have their own per-character meters; folding them in here made
-    # the global number bounce (a whisper turn would drop it to the character's small prompt).
+    # the global number bounce (a private-conversation turn would drop it to the character's small prompt).
     # A turn with no narrator call leaves the global meter at its last narrator value.
     track = {"ctx": 0}
 
@@ -350,8 +356,11 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             queue.append({"id": cid})
 
     segments = segments or []
-    whispers = [s for s in segments if (s.get("type") or "").lower() == "whisper"]
-    public = [s for s in segments if (s.get("type") or "").lower() != "whisper"]
+    for s in segments:                    # legacy token from older clients: same segment
+        if (s.get("type") or "").lower() == "whisper":
+            s["type"] = "conversation"
+    convos = [s for s in segments if (s.get("type") or "").lower() == "conversation"]
+    public = [s for s in segments if (s.get("type") or "").lower() != "conversation"]
     has_public = bool(public) or bool(action_text) or continue_story
     look_seg = next((s for s in public if (s.get("type") or "").lower() == "look"), None)
 
@@ -360,7 +369,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
     items_before = set(repo.visible_item_index(conn, gid))
     location_before = repo.get_player(conn, gid)["location"]
     location_at_pass = None   # the scene the narrator pass SAW (set at the pass; stays
-    # None on whisper-only turns, which run no narrator)
+    # None on private-conversation-only turns, which run no narrator)
 
     # Hybrid story clock: every turn costs a few fictional minutes automatically, so time
     # never freezes; the narrator jumps it with advance_time for rests/journeys/nightfall.
@@ -381,11 +390,11 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         if not continue_story:
             # the player's echo is THEIR words: typed input echoes verbatim (echo_text);
             # the composed rendition is for the narrator, never put in the player's mouth.
-            # EXCEPT when the input split into public + whisper segments: the verbatim
-            # text carries the whispered words and this beat is witnessed by EVERYONE
+            # EXCEPT when the input split into public + private segments: the verbatim
+            # text carries the private words and this beat is witnessed by EVERYONE
             # (static-confirmed leak: the secret entered every bystander's recap), so a
             # mixed turn echoes the public-only lines instead.
-            if echo_text and not whispers:
+            if echo_text and not convos:
                 emit("player", None, "action", echo_text)
             elif echo_parts:
                 # ONE echo beat PER stacked line, in stack order (owner 2026-07-21):
@@ -724,11 +733,11 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
     # then the character replies once (not once per line).
     location = repo.get_player(conn, gid)["location"]
     exchanges: list[tuple[dict, list[dict]]] = []   # (character row, [segments])
-    for w in whispers[: settings.TURN_MAX_ACTOR_STEPS]:
+    for w in convos[: settings.TURN_MAX_ACTOR_STEPS]:
         target = (w.get("target") or "").strip()
         kind_t, row = repo.resolve_target(conn, gid, target)
-        # A bad whisper target BOUNCES like the public path, never swallows (live:
-        # whispers to a nonexistent AND to a dead character both returned 200 with zero
+        # A bad conversation target BOUNCES like the public path, never swallows (live:
+        # sends to a nonexistent AND to a dead character both returned 200 with zero
         # beats - dead air with the clock ticked). An unknown name bounces publicly
         # (there is no private channel to land it in); a known-but-dead/absent character
         # bounces INTO their private thread, where the player tried to speak.
@@ -771,8 +780,10 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                 emit("player", None, "action",
                      f"(only {row['name']} notices) {text}", private_with=row["id"])
             else:
+                # neutral phrasing on purpose: 'you whisper to X' taught every private
+                # reply to sound whispered (the words are the model's transcript too)
                 emit("player", None, "action",
-                     f'you whisper to {row["name"]}: "{text}"', private_with=row["id"])
+                     f'you tell {row["name"]} privately: "{text}"', private_with=row["id"])
         if spoke:
             if stop_ev.is_set():
                 raise llm.LLMCancelled()
