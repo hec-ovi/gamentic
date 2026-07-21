@@ -208,12 +208,14 @@ def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None):
             break
     for kind, txt, emotion in segs:
         # [say] -> dialogue (speech bubble); [do] -> action (a character's physical action);
-        # [whisper] -> dialogue meant for the player alone (ALWAYS private, even on a public
-        # turn - owner: 'characters should be able to also whisper'). A private reply with no
-        # stated emotion is spoken as a whisper by nature.
+        # [whisper] -> a PRIVATE MESSAGE to the player alone (ALWAYS private, even on a public
+        # turn - owner: 'characters should be able to also whisper'). Private is about WHO
+        # hears it, not HOW it sounds: the reply keeps the character's own emotion (or none =
+        # natural voice). A whispered VOICE happens only when the model chooses it with a
+        # leading [whisper] tone tag, which the parser already lifts into `emotion` - it is
+        # never forced here (owner 2026-07-20: private lines sounded whispered because the
+        # tone was forced, so every reply defaulted to a whisper).
         seg_private = private_with or (ch["id"] if kind == "whisper" else None)
-        if kind in ("say", "whisper") and seg_private and not emotion:
-            emotion = "whisper"
         emit(ch["id"], ch["name"], "dialogue" if kind in ("say", "whisper") else "action", txt,
              private_with=seg_private, emotion=emotion)
     if live_c is not None:

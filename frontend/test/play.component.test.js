@@ -850,6 +850,39 @@ test("the speak button walks loading -> playing -> back to idle", async () => {
   expect(btn.getAttribute("aria-label")).toMatch(/play voice/i);
 });
 
+test("the speak icon shows generating (spinning) then ready as the voice is prepared in the background", async () => {
+  const u = user();
+  const app = await mountApp();
+  // the REAL voice with a gated network: this drives the actual cache/in-flight
+  // status the icon reads (autoplay prepares audio this way, not via a click)
+  let resolveFetch;
+  app.voice._fetch = vi.fn(() => new Promise((res) => (resolveFetch = res)));
+  await u.click(await screen.findByRole("button", { name: /enter your saved worlds/i }));
+  await u.click(await screen.findByRole("button", { name: /^enter$/i }));
+  await screen.findAllByText("The Last Breath");
+
+  const btn = document.querySelector('[data-act="speak-beat"]');
+  const beat = app.state.active.beats.find((b) => b.id === btn.dataset.beatId);
+  // idle to start: not synthesized, no spinner, no ready glow
+  expect(btn.classList.contains("speak-generating")).toBe(false);
+  expect(btn.classList.contains("speak-ready")).toBe(false);
+  expect(btn.getAttribute("aria-label") || "Play voice").toMatch(/play voice/i);
+
+  // a background prepare begins (as autoplay's pipelining does) -> GENERATING:
+  // the ring spins, the audio is not ready yet
+  const prep = app.voice.prepare({ text: beat.text, voiceId: beat.voiceId, emotion: beat.emotion, gameId: app.state.active.id });
+  await waitFor(() => expect(btn.classList.contains("speak-generating")).toBe(true));
+  expect(btn.getAttribute("aria-label")).toMatch(/preparing voice/i);
+  expect(btn.classList.contains("speak-ready")).toBe(false);
+
+  // the render lands -> READY: bright, plays instantly, no longer spinning
+  resolveFetch({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ audio_url: "/audio/x.wav", duration_s: 2 }) });
+  await prep;
+  await waitFor(() => expect(btn.classList.contains("speak-ready")).toBe(true));
+  expect(btn.classList.contains("speak-generating")).toBe(false);
+  expect(btn.getAttribute("aria-label")).toMatch(/ready/i);
+});
+
 test("Look from the whisper panel is PRIVATE: whisper mode:'look' on the wire, nothing leaks into the public story", async () => {
   const u = user();
   let body;

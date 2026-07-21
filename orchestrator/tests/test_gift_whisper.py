@@ -97,7 +97,7 @@ def test_accepted_give_forces_a_private_reply_from_the_receiver(client, fake_llm
     assert sera_beats, "the receiver must answer the gift"
     assert all(b["private_with"] == sera for b in sera_beats)   # every beat private to them
     dlg = [b for b in sera_beats if b["kind"] == "dialogue"]
-    assert dlg and dlg[0]["emotion"] == "whisper"               # a whispered reply
+    assert dlg and dlg[0]["emotion"] == ""                     # private, but a natural voice
     # the public receipt stays public (a mechanical fact, not a confidence)
     receipt = next(b for b in d["beats"] if b["kind"] == "system" and "compass" in b["text"])
     assert receipt["private_with"] is None
@@ -184,8 +184,8 @@ def test_two_gifts_to_different_characters_each_reply_privately(client, fake_llm
 
 def test_a_character_whisper_span_lands_privately_on_a_public_turn(client, fake_llm):
     """Owner: 'characters should be able to also whisper.' A [say]+[whisper] reply on a
-    PUBLIC directed-say turn emits the say publicly and the whisper privately, with the
-    whisper carrying the whisper tone (the private-say default)."""
+    PUBLIC directed-say turn emits the say publicly and the whisper privately; the private
+    line keeps a natural voice (private is about who hears it, not a forced hush)."""
     gid = _new(client)
     sera = next(c["id"] for c in _state(client, gid)["characters"] if c["name"] == "Sera")
     fake_llm.narrator = _nar(T("cue_character", name="Sera"), content="Sera turns to you.")
@@ -199,7 +199,7 @@ def test_a_character_whisper_span_lands_privately_on_a_public_turn(client, fake_
     assert any("All is well" in b["text"] for b in public)        # the say is public
     assert private, "the whisper must be private"
     assert "They are listening" in private[0]["text"]
-    assert private[0]["emotion"] == "whisper"                     # whispered by nature
+    assert private[0]["emotion"] == ""                            # private routing, natural voice
 
 
 def test_a_character_whisper_never_appears_in_any_public_beat(client, fake_llm):

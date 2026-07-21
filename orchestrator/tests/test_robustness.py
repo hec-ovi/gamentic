@@ -158,13 +158,23 @@ def test_emotion_tag_becomes_the_beats_tone(client, fake_llm, world):
     assert any(b.get("emotion") == "angry" for b in beats)
 
 
-def test_private_replies_default_to_a_whispered_tone(client, fake_llm, world):
+def test_private_replies_keep_a_natural_voice_unless_the_tone_is_chosen(client, fake_llm, world):
+    """Owner 2026-07-20: a private message is about WHO hears it, not HOW it sounds.
+    A private reply with no stated tone speaks in the character's natural voice; a
+    whispered tone happens only when the model opens the line with [whisper]."""
     gid = client.post("/games", json=world).json()["game_id"]
+    # no tone tag -> natural voice (NOT forced to whisper anymore)
     fake_llm.character_replies = {"Mara": llm.LLMReply(content='[say]Meet me at the altar.[/say]')}
     d = client.post(f"/games/{gid}/action", json={"segments": [
         {"type": "whisper", "text": "Can we talk?", "target": "Mara"}]}).json()
     line = next(b for b in d["beats"] if b["kind"] == "dialogue")
-    assert line["emotion"] == "whisper"                        # private = whispered by nature
+    assert line["emotion"] == "" and line["text"] == "Meet me at the altar."
+    # the character CHOOSES to hush -> the tone is honored
+    fake_llm.character_replies = {"Mara": llm.LLMReply(content='[say][whisper] Meet me at the altar.[/say]')}
+    d = client.post(f"/games/{gid}/action", json={"segments": [
+        {"type": "whisper", "text": "Where?", "target": "Mara"}]}).json()
+    line = next(b for b in d["beats"] if b["kind"] == "dialogue")
+    assert line["emotion"] == "whisper" and line["text"] == "Meet me at the altar."
 
 
 def test_unknown_or_stray_tags_are_scrubbed_not_voiced(client, fake_llm, world):

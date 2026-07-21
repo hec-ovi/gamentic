@@ -65,11 +65,12 @@ class Settings:
     CHAR_SUMMARY_KEEP_TURNS = int(os.getenv("CHAR_SUMMARY_KEEP_TURNS", "8"))  # newest turns never folded
     CHAR_SUMMARY_MAX_TOKENS = int(os.getenv("CHAR_SUMMARY_MAX_TOKENS", "320"))
     LORE_BUDGET = int(os.getenv("LORE_BUDGET", "8"))        # max lore entries injected
-    # Turn economy (owner direction 2026-06-10: a turn is a beat, not a chapter; he saw
-    # three stacked conversations in one turn): at most two voices per narrator reply,
-    # each speaking once, with a tight cascade budget. All live-tunable by env.
+    # Turn economy (owner direction 2026-06-10 + 2026-07-20: a turn is a beat, not a
+    # chapter, and not a lecture - he wants an AGILE exchange, not stacked conversations
+    # and long reaction chains). One or two voices per narrator reply, each once, with a
+    # tight cascade budget. All live-tunable by env.
     MAX_CHARACTER_REACTIONS = int(os.getenv("MAX_CHARACTER_REACTIONS", "2"))
-    TURN_MAX_ACTOR_STEPS = int(os.getenv("TURN_MAX_ACTOR_STEPS", "4"))   # total character beats per turn
+    TURN_MAX_ACTOR_STEPS = int(os.getenv("TURN_MAX_ACTOR_STEPS", "3"))   # total character beats per turn
     TURN_MAX_PER_CHARACTER = int(os.getenv("TURN_MAX_PER_CHARACTER", "1"))  # times one char can act per turn
 
     # FICTIONAL story time (hybrid): every turn auto-ticks a few minutes so the clock never

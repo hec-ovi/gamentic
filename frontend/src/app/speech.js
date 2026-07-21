@@ -51,17 +51,47 @@ export function setSpeaking(next) {
   applySpeakStates();
 }
 
+// The speak icon reflects the beat's VOICE state, so autoplay (which prepares
+// audio in the background) shows progress too, not just a click. Four looks on
+// the speaker glyph:
+//   idle       - not synthesized yet (dim) -> click to voice it
+//   generating - queued or synthesizing now (dim + a ring spinning around it)
+//   ready      - audio cached, plays instantly (bright/gold)
+//   playing    - audio is playing right now (pulsing gold)
+// The click state (speaking) wins while it is set; otherwise the voice cache /
+// in-flight queue decides. voice.onStatus repaints these as prepares land.
+const SPEAK_LABEL = {
+  generating: "Preparing voice...",
+  ready: "Play voice (ready)",
+  playing: "Stop voice",
+  idle: "Play voice",
+};
+
+function speakState(g, id) {
+  const mine = speaking && id === speaking.beatId;
+  if (mine && speaking.phase === "playing") return "playing";
+  if (mine && speaking.phase === "loading") return "generating";
+  const beat = g && g.beats.find((b) => b.id === id);
+  if (!beat) return "idle";
+  const vs = voice.status({ text: beat.text, voiceId: beat.voiceId, emotion: beat.emotion, gameId: g.id });
+  return vs === "generating" ? "generating" : vs === "ready" ? "ready" : "idle";
+}
+
 // Patch the speak buttons in place (no full render: never disturb reading or a
 // running typewriter). render() re-applies it after every rebuild.
 export function applySpeakStates() {
+  const g = state.active;
   root.querySelectorAll('[data-act="speak-beat"]').forEach((btn) => {
-    const mine = speaking && btn.dataset.beatId === speaking.beatId;
-    const loading = Boolean(mine && speaking.phase === "loading");
-    const playing = Boolean(mine && speaking.phase === "playing");
-    btn.classList.toggle("speak-loading", loading);
-    btn.classList.toggle("speak-playing", playing);
-    const label = loading ? "Preparing voice..." : playing ? "Stop voice" : "Play voice";
-    btn.setAttribute("aria-label", label);
-    btn.setAttribute("title", label);
+    const s = speakState(g, btn.dataset.beatId);
+    btn.classList.toggle("speak-generating", s === "generating");
+    btn.classList.toggle("speak-ready", s === "ready");
+    btn.classList.toggle("speak-loading", s === "generating"); // legacy alias
+    btn.classList.toggle("speak-playing", s === "playing");
+    btn.setAttribute("aria-label", SPEAK_LABEL[s]);
+    btn.setAttribute("title", SPEAK_LABEL[s]);
   });
 }
+
+// Background prepares (autoplay pipelining) flip a beat idle -> generating ->
+// ready without a render; repaint the icons when that happens.
+voice.onStatus = applySpeakStates;

@@ -39,6 +39,42 @@ export class Voice {
     // Generation token: flush() bumps it so queued-but-unstarted jobs from an
     // abandoned game resolve null instead of occupying the single GPU.
     this._gen = 0;
+    // Keys whose synthesis is queued or running right now (for the per-beat
+    // voice-icon status: idle -> generating -> ready). One GPU, FIFO, so several
+    // beats can be "generating" (waiting) while only one actually synthesizes.
+    this._inflight = new Set();
+    // Optional callback fired whenever a key's status changes (queued, done),
+    // so the UI can repaint the speak icons without a full render.
+    this.onStatus = null;
+  }
+
+  // The cache/inflight key for a request (null when nothing to synthesize).
+  // MUST match the key prepare() builds, so status() and the cache agree.
+  _statusKey({ text, voiceId, emotion, gameId } = {}) {
+    const clean = cleanText(text);
+    if (!clean || !voiceId || !this.enabled) return null;
+    return `${gameId || ""}|${voiceId}|${emotion || ""} ${clean}`;
+  }
+
+  // Per-beat voice status for the icon: "ready" (audio cached, plays instantly),
+  // "generating" (queued or synthesizing now), or "idle" (not made yet). "none"
+  // when the line can't be voiced at all (no voice id / disabled).
+  status(req) {
+    const key = this._statusKey(req);
+    if (!key) return "none";
+    if (this._cache.has(key)) return "ready";
+    if (this._inflight.has(key)) return "generating";
+    return "idle";
+  }
+
+  _emitStatus() {
+    if (typeof this.onStatus === "function") {
+      try {
+        this.onStatus();
+      } catch {
+        /* a repaint failure must never break synthesis */
+      }
+    }
   }
 
   applySettings(settings = {}) {
@@ -70,11 +106,27 @@ export class Voice {
     const hit = this._cache.get(key);
     if (hit) return Promise.resolve(hit);
 
+    // mark it in-flight NOW (queued counts as generating: the icon spins until the
+    // audio lands, even while it waits its turn behind the single GPU)
+    const wasIdle = !this._inflight.has(key);
+    this._inflight.add(key);
+    if (wasIdle) this._emitStatus();
+
     const gen = this._gen;
+    const settle = () => {
+      this._inflight.delete(key);
+      this._emitStatus();
+    };
     const job = this._queue.then(async () => {
-      if (gen !== this._gen) return null; // flushed while queued (game switch)
+      if (gen !== this._gen) {
+        settle();
+        return null; // flushed while queued (game switch)
+      }
       const again = this._cache.get(key); // a queued duplicate may have landed
-      if (again) return again;
+      if (again) {
+        settle();
+        return again;
+      }
       try {
         const res = await this._fetch("/voice/speak", {
           method: "POST",
@@ -109,6 +161,8 @@ export class Voice {
         return entry;
       } catch {
         return null; // synthesis failed; text stays on screen
+      } finally {
+        settle(); // ready (cache set) or idle (failed) - either way, stop spinning
       }
     });
     this._queue = job.catch(() => {}); // the queue itself never rejects
@@ -146,6 +200,12 @@ export class Voice {
   flush() {
     this._gen += 1;
     this._queue = Promise.resolve();
+    // queued-but-unstarted jobs are abandoned; their beats are no longer
+    // generating (a running job clears its own key in its finally).
+    if (this._inflight.size) {
+      this._inflight.clear();
+      this._emitStatus();
+    }
   }
 
   stop() {
