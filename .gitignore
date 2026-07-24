@@ -44,6 +44,8 @@ docs/*
 **/SPECS.md
 
 # --- runtime data, generated media, databases ---
+# weights live wherever MODELS_DIR / COMFY_MODELS_DIR point; ./models is the default
+/models/
 **/data/
 voice-api/samples/
 *.db

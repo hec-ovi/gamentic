@@ -90,6 +90,55 @@ def _node_by_class(graph, class_type):
     return next(n for n in graph.values() if n["class_type"] == class_type)
 
 
+def test_apply_models_points_every_loader_at_the_configured_files():
+    g = workflow.apply_models(
+        _real_template(),
+        unet_name="some-other-model.safetensors",
+        clip_name="another_encoder.safetensors",
+        clip_type="sdxl",
+        vae_name="another-vae.safetensors",
+    )
+    assert _node_by_class(g, "UNETLoader")["inputs"]["unet_name"] == "some-other-model.safetensors"
+    clip = _node_by_class(g, "CLIPLoader")
+    assert clip["inputs"]["clip_name"] == "another_encoder.safetensors"
+    assert clip["inputs"]["type"] == "sdxl"
+    assert _node_by_class(g, "VAELoader")["inputs"]["vae_name"] == "another-vae.safetensors"
+
+
+def test_apply_models_leaves_the_template_alone_for_empty_settings():
+    template = _real_template()
+    g = workflow.apply_models(template, unet_name="swapped.safetensors")
+    # only what was named changes; the rest keeps the shipped Klein set
+    assert _node_by_class(g, "UNETLoader")["inputs"]["unet_name"] == "swapped.safetensors"
+    assert _node_by_class(g, "CLIPLoader")["inputs"]["clip_name"] == "qwen_3_4b.safetensors"
+    assert _node_by_class(g, "VAELoader")["inputs"]["vae_name"] == "flux2-vae.safetensors"
+    # and the template itself is never mutated
+    assert _node_by_class(template, "UNETLoader")["inputs"]["unet_name"] == "flux-2-klein-4b.safetensors"
+
+
+def test_apply_models_with_nothing_set_is_the_template_verbatim():
+    template = _real_template()
+    assert workflow.apply_models(template) == template
+
+
+def test_apply_models_raises_when_the_template_has_no_such_loader():
+    # a setting with no node to land on would render with the wrong model: fail closed
+    with pytest.raises(workflow.WorkflowError) as exc:
+        workflow.apply_models(
+            {"1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "x.safetensors"}}},
+            unet_name="klein.safetensors",
+        )
+    assert "UNETLoader" in str(exc.value)
+
+
+def test_configured_models_reach_the_graph_the_adapter_builds():
+    g = workflow.build_graph(
+        workflow.apply_models(_real_template(), unet_name="configured.safetensors"),
+        prompt="p", negative_prompt="", width=512, height=512, seed=1, steps=4,
+    )
+    assert _node_by_class(g, "UNETLoader")["inputs"]["unet_name"] == "configured.safetensors"
+
+
 def test_reference_graph_chains_into_guider_positive():
     g = workflow.build_reference_graph(
         _real_template(),

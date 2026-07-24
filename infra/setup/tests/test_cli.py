@@ -4,7 +4,7 @@ import json
 import os
 import re
 
-from conftest import SCHEMA_JS, parse_env, run_cli
+from conftest import SCHEMA_JS, SETUP_DIR, parse_env, run_cli
 
 # the gpu group's promise: these are auto-detected, so their written values may
 # legitimately differ from the schema defaults on any given host
@@ -145,3 +145,30 @@ def test_write_example_contains_every_key_and_help(tmp_path, schema):
         assert f"# {c['comment']}" in text
     # help rides along as comments (spot-check the load-bearing one)
     assert "The one setting you MUST get right" in text
+
+
+def test_committed_example_is_the_one_the_schema_generates(tmp_path):
+    """.env.example is generated, so a schema edit that forgets to regenerate it ships a
+    lying example. Catch the drift here instead of in someone's first run."""
+    r = run_cli("--write-example", "--env-file", str(tmp_path / ".env"))
+    assert r.returncode == 0, r.stderr
+    committed = (SETUP_DIR.parents[1] / ".env.example").read_text()
+    assert (tmp_path / ".env.example").read_text() == committed, (
+        "run ./gamentic-setup --write-example and commit the result"
+    )
+
+
+def test_config_defaults_carry_no_machine_specific_paths(schema):
+    """Defaults must work on a machine that is not the one they were written on: relative
+    to the gamentic folder, or nothing. An absolute home path is someone else's disk."""
+    offenders = [
+        s["key"] for s in schema["settings"]
+        if re.match(r"^(/home/|/Users/|/root/|[A-Za-z]:\\\\)", s["default"])
+    ]
+    assert not offenders, offenders
+
+    compose = (SETUP_DIR.parents[1] / "docker-compose.yml").read_text()
+    # ${VAR:-default} fallbacks are what a user without a .env actually gets
+    fallbacks = re.findall(r"\$\{[A-Z_]+:-([^}]*)\}", compose)
+    assert fallbacks, "no compose fallbacks found; the regex oracle is broken"
+    assert not [f for f in fallbacks if f.startswith(("/home/", "/Users/", "/root/"))]

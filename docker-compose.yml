@@ -31,7 +31,7 @@ services:
       - "${RENDER_GID:-990}"
       - "${VIDEO_GID:-44}"
     volumes:
-      - ${MODELS_DIR:-/home/hec/models/gguf}:/models:ro
+      - ${MODELS_DIR:-./models/gguf}:/models:ro
     ports:
       - "${LLM_TEXT_PORT:-8080}:8080"
     # list form avoids shell-quoting issues: the image entrypoint is the server binary
@@ -89,7 +89,7 @@ services:
       - "${COMFY_PORT:-8188}:8188"
     volumes:
       # Persistent: models, installed custom nodes, outputs, user settings, inputs, caches
-      - ${COMFY_MODELS_DIR:-/home/hec/models/comfyui}:/app/ComfyUI/models
+      - ${COMFY_MODELS_DIR:-./models/comfyui}:/app/ComfyUI/models
       - ./infra/comfyui/data/custom_nodes:/app/ComfyUI/custom_nodes
       - ./infra/comfyui/data/output:/app/ComfyUI/output
       - ./infra/comfyui/data/user:/app/ComfyUI/user
@@ -127,6 +127,15 @@ services:
         condition: service_healthy
     environment:
       - COMFY_URL=http://gamentic-image:8188
+      # The workflow template is baked into the image (infra/image-api/workflows), and the
+      # model files it loads come from here: the adapter patches these into the template's
+      # loader nodes at boot. Swapping the image model = edit .env, re-run
+      # infra/comfyui/fetch-models.sh, restart image-api. No template edit, no rebuild.
+      - WORKFLOW_TEMPLATE=${WORKFLOW_TEMPLATE:-/srv/workflows/flux2_klein_api.json}
+      - COMFY_UNET_NAME=${COMFY_UNET_NAME:-flux-2-klein-4b.safetensors}
+      - COMFY_CLIP_NAME=${COMFY_CLIP_NAME:-qwen_3_4b.safetensors}
+      - COMFY_CLIP_TYPE=${COMFY_CLIP_TYPE:-flux2}
+      - COMFY_VAE_NAME=${COMFY_VAE_NAME:-flux2-vae.safetensors}
       - IMAGE_DEFAULT_WIDTH=${IMAGE_DEFAULT_WIDTH:-768}
       - IMAGE_DEFAULT_HEIGHT=${IMAGE_DEFAULT_HEIGHT:-768}
       - IMAGE_DEFAULT_STEPS=${IMAGE_DEFAULT_STEPS:-4}
@@ -169,7 +178,7 @@ services:
       - "${RENDER_GID:-990}"
       - "${VIDEO_GID:-44}"
     volumes:
-      - ${MODELS_DIR:-/home/hec/models/gguf}:/models:ro
+      - ${MODELS_DIR:-./models/gguf}:/models:ro
     ports:
       - "${LLM_VOICE_PORT:-9091}:8080"
     command:

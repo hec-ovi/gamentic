@@ -33,6 +33,15 @@ TITLE_SAMPLER = "Sampler"  # KSampler-style fallback: carries both seed and step
 CLASS_GUIDER = "CFGGuider"
 CLASS_VAELOADER = "VAELoader"
 
+# Loader class -> the input field naming the file it loads. Model choice lives in config
+# (from .env), not in the template, so a different model set is an .env edit + restart.
+MODEL_FIELDS = {
+    "unet_name": ("UNETLoader", "unet_name"),
+    "clip_name": ("CLIPLoader", "clip_name"),
+    "clip_type": ("CLIPLoader", "type"),
+    "vae_name": ("VAELoader", "vae_name"),
+}
+
 
 class WorkflowError(RuntimeError):
     """The template is missing a node the adapter needs to patch."""
@@ -40,6 +49,42 @@ class WorkflowError(RuntimeError):
 
 def load_template(path: str | Path) -> dict:
     return json.loads(Path(path).read_text())
+
+
+def apply_models(
+    template: dict,
+    *,
+    unet_name: str = "",
+    clip_name: str = "",
+    clip_type: str = "",
+    vae_name: str = "",
+) -> dict:
+    """Return a copy of the template with its loader nodes pointed at the configured files.
+
+    An empty value leaves the template's own name alone, so the shipped Klein set stays the
+    default and .env only has to name what it actually changes. A value that has no loader
+    to land on is a misconfiguration, not something to swallow: it would render with the
+    wrong model, so it raises instead.
+    """
+    graph = copy.deepcopy(template)
+    for arg, value in (
+        ("unet_name", unet_name),
+        ("clip_name", clip_name),
+        ("clip_type", clip_type),
+        ("vae_name", vae_name),
+    ):
+        if not value:
+            continue
+        class_type, field = MODEL_FIELDS[arg]
+        targets = [n for n in graph.values() if n.get("class_type") == class_type]
+        if not targets:
+            raise WorkflowError(
+                f"template has no {class_type} node to take {arg}={value!r}; "
+                f"clear that setting or ship a template that loads its model with {class_type}"
+            )
+        for node in targets:
+            node.setdefault("inputs", {})[field] = value
+    return graph
 
 
 def _index_by_title(graph: dict) -> dict[str, dict]:

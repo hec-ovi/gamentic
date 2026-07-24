@@ -2,6 +2,14 @@
 
 Notable changes to gamentic, newest first. No version numbers yet: this moves fast, so entries are dated and the README always describes the current state.
 
+## 2026-07-24
+
+### The image model is configuration, and the defaults fit any machine
+- `MODELS_DIR` and `COMFY_MODELS_DIR` default to `./models/gguf` and `./models/comfyui`, resolved against the gamentic folder the way compose resolves a relative bind mount. A clone now starts with paths that exist on the machine running it; an absolute path anywhere on the host still works, and the wizard and `doctor` resolve relative dirs the same way instead of against whatever directory you happened to be standing in.
+- The ComfyUI workflow template stays baked into the image-api image (nothing to import by hand, a rebuild reproduces it), but the model files it loads no longer live in the template. `COMFY_UNET_NAME`, `COMFY_CLIP_NAME`, `COMFY_CLIP_TYPE` and `COMFY_VAE_NAME` come from `.env` and are patched into the loader nodes at boot, so running a different diffusion model is an `.env` edit plus a restart. A name with no loader to land on is refused at boot: `/health` says why and renders 503, instead of quietly painting with the wrong model.
+- `infra/comfyui/fetch-models.sh` downloads the set named in `.env` (both filenames and URLs, defaults still the Comfy-Org Klein repacks), reads the file as data rather than sourcing it, and resolves a relative models dir under the project folder. Swapping models is one edit in one place, then fetch and restart.
+- Tests: 6 end-to-end for the fetch script (real script, stub `curl` on PATH), 3 end-to-end for the image-api boot config (env names reach the graph ComfyUI is actually sent), 5 for the loader patcher, plus two guards, that `.env.example` is exactly what the schema generates and that no default carries a machine-specific absolute path. Suites: 49 image-api, 17 setup, 6 comfyui, 241 frontend, all green.
+
 ## 2026-07-21 (live-test fixes)
 
 ### First round of owner testing on the evolve branch

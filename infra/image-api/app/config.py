@@ -24,6 +24,15 @@ WORKFLOW_TEMPLATE: Path = Path(
     )
 )
 
+# Model files the template's loader nodes are pointed at, straight from .env. The template
+# ships with the Klein set baked in; these override it at boot so swapping the image model
+# is a config change (edit .env, re-run infra/comfyui/fetch-models.sh, restart), never a
+# template edit and never an image rebuild. Empty = keep whatever the template names.
+UNET_NAME: str = os.environ.get("COMFY_UNET_NAME", "").strip()
+CLIP_NAME: str = os.environ.get("COMFY_CLIP_NAME", "").strip()
+CLIP_TYPE: str = os.environ.get("COMFY_CLIP_TYPE", "").strip()
+VAE_NAME: str = os.environ.get("COMFY_VAE_NAME", "").strip()
+
 # Generation defaults. Small + few-step keeps a single image under ~60s on Strix Halo.
 # Callers can override width/height/seed per request; steps is tuned for the distilled model.
 # These are the /image/generate (scene) fallbacks; the orchestrator owns scene size and

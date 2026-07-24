@@ -21,7 +21,7 @@ The only config layer. The setup faces (gamentic-setup / setup.html) write it; c
 
 ```json
 {
-  "MODELS_DIR": "/home/.../gguf",
+  "MODELS_DIR": "./models/gguf",
   "ORCHESTRATOR_PORT": 8000,
   "FRONTEND_PORT": 5173
 }
@@ -194,7 +194,7 @@ ComfyUI (ROCm / TheRock) running FLUX.2 [klein] 4B distilled. Full GPU access on
 
 - **Config / env / ports:** build ./infra/comfyui; privileged ; /dev/kfd + /dev/dri; port ${COMFY_PORT:-8188}:8188; HSA_OVERRIDE_GFX_VERSION=11.5.1, SDMA=0, SVM=0
 - **Defined in:** docker-compose.yml service image; infra/comfyui/Dockerfile + entrypoint.sh
-- **Talks to / mounts:** COMFY_MODELS_DIR + infra/comfyui/data/*
+- **Talks to / mounts:** COMFY_MODELS_DIR (infra/comfyui/fetch-models.sh downloads the model set named in .env there) + infra/comfyui/data/*
 - **Key point:** Stability env on unified memory avoids VAE-decode checkerboard / ring timeouts.
 - **IN:** `profiles` (local profile); `imageapi` (COMFY_URL :8188); `vols` (comfy models+data)
 - **OUT:** _none_
@@ -216,7 +216,7 @@ ComfyUI (ROCm / TheRock) running FLUX.2 [klein] 4B distilled. Full GPU access on
 
 Thin REST adapter: turns POST /image/generate -> {image_url} into a ComfyUI prompt graph.
 
-- **Config / env / ports:** build ./infra/image-api; port ${IMAGE_API_PORT:-9001}:9001; COMFY_URL=http://gamentic-image:8188; IMAGE_DEFAULT_* + per-view char sizes
+- **Config / env / ports:** build ./infra/image-api; port ${IMAGE_API_PORT:-9001}:9001; COMFY_URL=http://gamentic-image:8188; IMAGE_DEFAULT_* + per-view char sizes; COMFY_UNET_NAME / COMFY_CLIP_NAME / COMFY_CLIP_TYPE / COMFY_VAE_NAME patched into the baked workflow template at boot
 - **Defined in:** docker-compose.yml service image-api; infra/image-api/app/*
 - **Talks to / mounts:** image (ComfyUI) :8188; infra/comfyui/data/output (reclaim copies)
 - **Key point:** Mounts the Comfy output dir so DELETE endpoints reclaim files the instant the orchestrator owns its copy.

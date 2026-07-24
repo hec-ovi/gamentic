@@ -100,13 +100,21 @@ def validate(setting, raw):
     return raw
 
 
+def host_path(value):
+    """A configured path as this host sees it. Relative values hang off the gamentic
+    folder, exactly the way compose resolves a relative bind mount, so the wizard and
+    doctor report on the same directory the containers will get."""
+    p = Path(value).expanduser()
+    return p if p.is_absolute() else ROOT / p
+
+
 def path_warning(setting, value, values):
     if not value:
         return None
     if setting["type"] == "path":
-        p = Path(value)
+        p = host_path(value)
     elif setting["type"] == "path-relative":
-        p = Path(values.get("MODELS_DIR", "")) / value
+        p = host_path(values.get("MODELS_DIR", "")) / value
     else:
         return None
     if not p.exists():
@@ -497,7 +505,7 @@ def run_doctor(argv):
 
     models_check = env.get("TEXT_BASE_URL", "") == ""   # external text server: model files optional
     if models_check:
-        models = Path(val("MODELS_DIR"))
+        models = host_path(val("MODELS_DIR"))
         if models.is_dir():
             ok(f"MODELS_DIR {models} exists")
         else:
@@ -508,7 +516,7 @@ def run_doctor(argv):
         else:
             fa(f"text model file missing: {text_model} (LLM_TEXT_MODEL is the one setting "
                "you MUST get right for local play)")
-        comfy = Path(val("COMFY_MODELS_DIR"))
+        comfy = host_path(val("COMFY_MODELS_DIR"))
         if comfy.is_dir():
             ok(f"COMFY_MODELS_DIR {comfy} exists")
         else:

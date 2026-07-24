@@ -7,7 +7,6 @@
 # BASE: Ubuntu 26.04 LTS stable
 FROM ubuntu:26.04
 
-LABEL maintainer="hector"
 LABEL description="ComfyUI on Strix Halo (gfx1151), ROCm 7.13 via TheRock, Python 3.12 / uv"
 
 ENV DEBIAN_FRONTEND=noninteractive

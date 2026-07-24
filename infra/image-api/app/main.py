@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import logging
 import random
 import uuid
@@ -35,11 +36,26 @@ app = FastAPI(title="gamentic image-api", version="1.0.0")
 
 _comfy = ComfyClient(config.COMFY_URL, timeout=config.GENERATE_TIMEOUT)
 
-# Loaded once at import; if the template is missing the container fails fast and loud.
+# Loaded once at import and immediately pointed at the model files named in .env, so every
+# render in this process uses one settled graph. A missing template or a model setting with
+# no loader to land on leaves _template None: the service still answers /health (saying
+# why) and every render 503s, rather than quietly painting with the wrong model.
+_template_error: str | None = None
 try:
-    _template = workflow.load_template(config.WORKFLOW_TEMPLATE)
+    _template = workflow.apply_models(
+        workflow.load_template(config.WORKFLOW_TEMPLATE),
+        unet_name=config.UNET_NAME,
+        clip_name=config.CLIP_NAME,
+        clip_type=config.CLIP_TYPE,
+        vae_name=config.VAE_NAME,
+    )
 except FileNotFoundError:
     _template = None
+    _template_error = f"workflow template not found at {config.WORKFLOW_TEMPLATE}"
+except (json.JSONDecodeError, workflow.WorkflowError) as exc:
+    _template = None
+    _template_error = f"workflow template at {config.WORKFLOW_TEMPLATE} is unusable: {exc}"
+    log.error(_template_error)
 
 # Per-view config for the character reference set. Same descriptor + same seed across the
 # three keeps them reading as one person (shared-seed consistency); the views differ by
@@ -181,7 +197,7 @@ async def _render(
     if _template is None:
         raise HTTPException(
             status_code=503,
-            detail=f"workflow template not found at {config.WORKFLOW_TEMPLATE}",
+            detail=_template_error or f"workflow template not found at {config.WORKFLOW_TEMPLATE}",
         )
     try:
         if reference_filenames:
@@ -218,7 +234,12 @@ async def _render(
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "comfy_url": config.COMFY_URL, "template_loaded": _template is not None}
+    return {
+        "status": "ok",
+        "comfy_url": config.COMFY_URL,
+        "template_loaded": _template is not None,
+        "template_error": _template_error,
+    }
 
 
 @app.post("/image/generate", response_model=GenerateResponse)
