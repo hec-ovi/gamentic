@@ -32,6 +32,8 @@ TITLE_SAMPLER = "Sampler"  # KSampler-style fallback: carries both seed and step
 # than title because they come from the base template unchanged.
 CLASS_GUIDER = "CFGGuider"
 CLASS_VAELOADER = "VAELoader"
+CLASS_UNETLOADER = "UNETLoader"
+CLASS_LORA = "LoraLoaderModelOnly"
 
 # Loader class -> the input field naming the file it loads. Model choice lives in config
 # (from .env), not in the template, so a different model set is an .env edit + restart.
@@ -84,6 +86,43 @@ def apply_models(
             )
         for node in targets:
             node.setdefault("inputs", {})[field] = value
+    return graph
+
+
+def apply_lora(template: dict, *, lora_name: str = "", strength: float = 1.0) -> dict:
+    """Return a copy of the template with a LoRA spliced in front of the diffusion model.
+
+    No name = the template comes back untouched, which is why the LoRA is inserted here
+    rather than shipped in the template: an empty lora_name is not a valid ComfyUI widget
+    value, so a permanently wired LoRA node would break every render that does not want one.
+
+    The node is added, then every consumer of the raw model output (the guider, a KSampler,
+    a model-sampling node) is rewired to take the LoRA's output instead, so it applies
+    wherever the template happens to route its model.
+    """
+    graph = copy.deepcopy(template)
+    if not lora_name:
+        return graph
+
+    model_id = _find_id(graph, class_type=CLASS_UNETLOADER)
+    if model_id is None:
+        raise WorkflowError(
+            f"template has no {CLASS_UNETLOADER} node to hang the LoRA {lora_name!r} off; "
+            "clear COMFY_LORA_NAME or use a template whose model comes from a UNETLoader"
+        )
+
+    lora_id = "lora_0"
+    graph[lora_id] = {
+        "class_type": CLASS_LORA,
+        "_meta": {"title": "LoRA"},
+        "inputs": {"model": [model_id, 0], "lora_name": lora_name, "strength_model": strength},
+    }
+    for node_id, node in graph.items():
+        if node_id == lora_id:
+            continue
+        for field, value in node.get("inputs", {}).items():
+            if field == "model" and value == [model_id, 0]:
+                node["inputs"][field] = [lora_id, 0]
     return graph
 
 

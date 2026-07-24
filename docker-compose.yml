@@ -136,6 +136,9 @@ services:
       - COMFY_CLIP_NAME=${COMFY_CLIP_NAME:-qwen_3_4b.safetensors}
       - COMFY_CLIP_TYPE=${COMFY_CLIP_TYPE:-flux2}
       - COMFY_VAE_NAME=${COMFY_VAE_NAME:-flux2-vae.safetensors}
+      # optional LoRA in front of the diffusion model; empty name = no LoRA node at all
+      - COMFY_LORA_NAME=${COMFY_LORA_NAME:-}
+      - COMFY_LORA_STRENGTH=${COMFY_LORA_STRENGTH:-1.0}
       - IMAGE_DEFAULT_WIDTH=${IMAGE_DEFAULT_WIDTH:-768}
       - IMAGE_DEFAULT_HEIGHT=${IMAGE_DEFAULT_HEIGHT:-768}
       - IMAGE_DEFAULT_STEPS=${IMAGE_DEFAULT_STEPS:-4}

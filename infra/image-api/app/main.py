@@ -42,12 +42,16 @@ _comfy = ComfyClient(config.COMFY_URL, timeout=config.GENERATE_TIMEOUT)
 # why) and every render 503s, rather than quietly painting with the wrong model.
 _template_error: str | None = None
 try:
-    _template = workflow.apply_models(
-        workflow.load_template(config.WORKFLOW_TEMPLATE),
-        unet_name=config.UNET_NAME,
-        clip_name=config.CLIP_NAME,
-        clip_type=config.CLIP_TYPE,
-        vae_name=config.VAE_NAME,
+    _template = workflow.apply_lora(
+        workflow.apply_models(
+            workflow.load_template(config.WORKFLOW_TEMPLATE),
+            unet_name=config.UNET_NAME,
+            clip_name=config.CLIP_NAME,
+            clip_type=config.CLIP_TYPE,
+            vae_name=config.VAE_NAME,
+        ),
+        lora_name=config.LORA_NAME,
+        strength=config.LORA_STRENGTH,
     )
 except FileNotFoundError:
     _template = None

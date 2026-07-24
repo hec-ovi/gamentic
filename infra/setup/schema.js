@@ -138,6 +138,12 @@ window.GAMENTIC_SETUP_SCHEMA = {
       "prompt": "VAE file", "help": "Filename under COMFY_MODELS_DIR/vae, patched into the VAELoader." },
     { "key": "COMFY_VAE_URL", "group": "image-model", "type": "string", "default": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors", "advanced": true,
       "prompt": "VAE download URL", "help": "Download source for the VAE above." },
+    { "key": "COMFY_LORA_NAME", "group": "image-model", "type": "string", "default": "", "advanced": true,
+      "prompt": "LoRA file (optional)",
+      "help": "Filename under COMFY_MODELS_DIR/loras. Set it and the adapter splices a LoRA in front of the diffusion model at boot; leave it empty and no LoRA node exists at all. Every render uses it, so this is a style choice for the whole game." },
+    { "key": "COMFY_LORA_STRENGTH", "group": "image-model", "type": "string", "default": "1.0", "advanced": true,
+      "prompt": "LoRA strength",
+      "help": "How hard the LoRA pulls. 1.0 is full strength, 0.5 is half; ignored when no LoRA is named." },
 
     { "key": "IMAGE_SCENE_W", "group": "image-knobs", "type": "int", "default": "640", "advanced": true,
       "prompt": "Scene art width", "help": "Orchestrator-side scene render size." },
