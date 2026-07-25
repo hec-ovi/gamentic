@@ -18,7 +18,10 @@ SNAC_MODEL = os.environ.get("SNAC_MODEL", "hubertsiuzdak/snac_24khz")
 MAYA1_TEMPERATURE = float(os.environ.get("MAYA1_TEMPERATURE", "0.4"))
 MAYA1_TOP_P = float(os.environ.get("MAYA1_TOP_P", "0.9"))
 MAYA1_REPEAT_PENALTY = float(os.environ.get("MAYA1_REPEAT_PENALTY", "1.1"))
-MAYA1_MAX_TOKENS = int(os.environ.get("MAYA1_MAX_TOKENS", "2048"))
+# -1 = generate until the model ends the utterance (or the context runs out). A ceiling
+# here cuts SPEECH mid-word: 2048 tokens is about 25 seconds of audio at 7 tokens per
+# 85ms frame, so a long line came back truncated with no sign anything was missing.
+MAYA1_MAX_TOKENS = int(os.environ.get("MAYA1_MAX_TOKENS", "-1"))
 
 # Writable data dir: generated audio and the character registry.
 DATA_DIR = Path(os.environ.get("VOICE_DATA_DIR", str(Path(__file__).parent / "data")))

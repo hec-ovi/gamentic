@@ -281,6 +281,11 @@ services:
       - CHARACTER_MAX_TOKENS=${CHARACTER_MAX_TOKENS:-0}
       # A/B knob for the 26B: request-level enable_thinking on the narrator call only
       - NARRATOR_THINKING=${NARRATOR_THINKING:-true}
+      - LLM_SAMPLING=${LLM_SAMPLING:-false}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-}
+      - LLM_TOP_P=${LLM_TOP_P:-}
+      - LLM_TOP_K=${LLM_TOP_K:-}
+      - LLM_MIN_P=${LLM_MIN_P:-}
       # whole-story memory: generous verbatim window + rolling facts-only recap
       - HISTORY_BEATS=${HISTORY_BEATS:-80}
       - SUMMARY_ENABLED=${SUMMARY_ENABLED:-true}
@@ -295,7 +300,7 @@ services:
       - CHAR_SUMMARY_ENABLED=${CHAR_SUMMARY_ENABLED:-true}
       - CHAR_SUMMARY_EVERY=${CHAR_SUMMARY_EVERY:-12}
       - CHAR_SUMMARY_KEEP_TURNS=${CHAR_SUMMARY_KEEP_TURNS:-8}
-      - CHAR_SUMMARY_MAX_TOKENS=${CHAR_SUMMARY_MAX_TOKENS:-320}
+      - CHAR_SUMMARY_MAX_TOKENS=${CHAR_SUMMARY_MAX_TOKENS:-0}
       # inference providers (per-modality). Defaults = this local stack. Empty
       # base_url/model = the local URLs above (LLM_BASE_URL/LLM_MODEL stay
       # working aliases for TEXT_*).
