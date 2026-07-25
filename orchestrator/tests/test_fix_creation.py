@@ -130,6 +130,53 @@ def test_creator_prompt_teaches_the_ready_marker():
     assert "[ready]" in prompts.render("creator.system.md")
 
 
+# ---------- readiness as a tool call (the signal a model actually hits) ----------
+
+def test_ready_tool_call_unlocks_without_any_marker(client, fake_llm):
+    """Live 2026-07-24 (laguna-s-2.1): the builder had the world designed, the player asked
+    twice to start, and the reply came back as more questions - the marker never arrived and
+    the begin button stayed locked. The call is the signal now; prose is just prose."""
+    fake_llm.creator_text = llm.LLMReply(
+        content="Neo-Seattle is ready, Layla is waiting in the booth.",
+        tool_calls=[llm.ToolCall(name="world_ready", arguments={"summary": "A dark cyberpunk run."})])
+    r = client.post("/create/message", json={"session_id": "t1", "message": "let's begin"}).json()
+    assert r["ready"] is True
+    assert r["reply"] == "Neo-Seattle is ready, Layla is waiting in the booth."
+    assert client.get("/create/t1").json()["ready"] is True   # durable across a refresh
+
+
+def test_the_creator_chat_is_offered_the_tool(client, fake_llm):
+    client.post("/create/message", json={"session_id": "t2", "message": "a heist story"})
+    creator_call = next(c for c in fake_llm.calls if c["system"].startswith("You are a warm"))
+    assert "world_ready" in creator_call["names"]
+
+
+def test_a_bare_tool_call_still_returns_a_reply(client, fake_llm):
+    """The call alone would hand the player an empty bubble; the summary becomes the turn."""
+    fake_llm.creator_text = llm.LLMReply(
+        content="",
+        tool_calls=[llm.ToolCall(name="world_ready", arguments={"summary": "The lighthouse world."})])
+    r = client.post("/create/message", json={"session_id": "t3", "message": "go"}).json()
+    assert r["ready"] is True
+    assert r["reply"].startswith("The lighthouse world.")
+    assert "we begin" in r["reply"]
+
+
+def test_an_unrelated_tool_call_does_not_unlock(client, fake_llm):
+    fake_llm.creator_text = llm.LLMReply(
+        content="What tone do you want?",
+        tool_calls=[llm.ToolCall(name="something_else", arguments={})])
+    r = client.post("/create/message", json={"session_id": "t4", "message": "pirates"}).json()
+    assert r["ready"] is False
+
+
+def test_creator_prompt_teaches_the_tool_and_forbids_stalling():
+    from app import prompts
+    text = prompts.render("creator.system.md")
+    assert "world_ready" in text
+    assert "never answer a request to start with another question" in text.lower()
+
+
 # ---------- creator-reply sanitation ----------
 
 def test_creator_reply_is_sanitized_before_store_and_return(client, fake_llm):

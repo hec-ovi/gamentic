@@ -620,6 +620,31 @@ def build_finalize_messages(history: list[dict]) -> list[dict]:
 
 # ---------- tool schema (structured, stays in code) ----------
 
+# Readiness used to be a text marker the creator had to remember to type at the end of a
+# long reply, and a chatty model simply never typed it: the begin button stayed locked
+# while the player asked twice to start (live 2026-07-24, laguna-s-2.1). A tool call is
+# the signal a model actually hits reliably, so the marker became the fallback, not the
+# protocol. The prose still has to come back in the same reply; see creator.message.
+READY_TOOL = [{
+    "type": "function",
+    "function": {
+        "name": "world_ready",
+        "description": "Signal that the world is complete enough to play. This call is what "
+                       "unlocks the player's begin button. Call it alongside your reply text, "
+                       "never instead of it.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "summary": {
+                    "type": "string",
+                    "description": "One line naming the world you are ready to begin.",
+                },
+            },
+            "required": ["summary"],
+        },
+    },
+}]
+
 FINALIZE_TOOL = [{
     "type": "function",
     "function": {

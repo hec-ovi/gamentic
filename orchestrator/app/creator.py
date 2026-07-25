@@ -76,6 +76,8 @@ def message(session_id: str, user_message: str) -> dict:
         history = _history(conn, session_id)
     reply = llm.chat(
         prompts.build_creator_messages(history, user_message),
+        tools=prompts.READY_TOOL,
+        tool_choice="auto",
         temperature=0.8,
     )
     # Sanitize BEFORE storing or returning (static-confirmed: this path shipped raw model
@@ -84,8 +86,14 @@ def message(session_id: str, user_message: str) -> dict:
     # Readiness reads the RAW reply first: clean_prose would eat a lone "[ready]" line
     # (it looks like a JSON line), and the marker must never reach the display anyway.
     raw = parsing._strip_think(reply.content or "")
-    ready = is_ready(raw)
+    called = next((tc for tc in reply.tool_calls if tc.name == "world_ready"), None)
+    ready = called is not None or is_ready(raw)
     text = engine.clean_prose(_READY_MARK.sub("", raw)).strip()
+    # A model that answers with the call ALONE would hand the player an empty bubble; the
+    # tool's own one-line summary becomes the reply so the turn still reads like a turn.
+    if not text and called:
+        summary = str(called.arguments.get("summary") or "").strip()
+        text = f"{summary}\n\nSay the word and we begin." if summary else "Say the word and we begin."
     history.append({"role": "user", "content": user_message})
     # The marker is RE-APPENDED to the stored copy (live: the model said "when YOU are
     # ready" - no prose signal - so a refresh lost the unlocked button; the stored
