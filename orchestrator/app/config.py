@@ -2,6 +2,18 @@
 import os
 
 
+def _optional_float(name: str) -> float | None:
+    """A sampling knob: unset or empty means the field is never sent, so the server's
+    own default (and the model's own recommended value) stands."""
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
 def _seconds_or_none(name: str, default: str) -> float | None:
     """A wall-clock ceiling in seconds, where 0 (or anything unparseable) means
     NO ceiling. httpx reads None as 'never time out', so the value goes straight
@@ -30,14 +42,45 @@ class Settings:
     # The model's context window, for the context-usage meter (used/max shown in the UI).
     LLM_CONTEXT_SIZE = int(os.getenv("LLM_CONTEXT_SIZE", "131072"))
 
-    # Sampling
-    NARRATOR_TEMPERATURE = float(os.getenv("NARRATOR_TEMPERATURE", "0.8"))
-    # A/B knob for the 26B hybrid model: request-level enable_thinking on the NARRATOR
+    # Sampling belongs to the SERVER (owner 2026-07-25: "leave all default", "i dont like
+    # toy with those values at all"). The nine per-call temperatures that used to live
+    # here and at each call site are gone: they were guesses, they differed per call for
+    # no measured reason, and they overrode both the model's own recommended values and
+    # llama.cpp's defaults. Empty = the field is never sent, which is the default and the
+    # intended state; set one in .env and it applies to every call, for an experiment.
+    # One switch, then the values. Off = the app sends no sampling field at all. On =
+    # every field you filled in below rides on every call; the ones left empty still are
+    # not sent, so turning the switch on does not silently invent numbers.
+    LLM_SAMPLING = os.getenv("LLM_SAMPLING", "false").lower() == "true"
+    LLM_TEMPERATURE = _optional_float("LLM_TEMPERATURE")
+    LLM_TOP_P = _optional_float("LLM_TOP_P")
+    LLM_TOP_K = _optional_float("LLM_TOP_K")
+    LLM_MIN_P = _optional_float("LLM_MIN_P")
+
+    def sampling(self) -> dict:
+        """What to merge into a request payload: empty unless the switch is on. Read off
+        the instance, like every other setting, so a runtime override lands."""
+        if not self.LLM_SAMPLING:
+            return {}
+        fields = {"temperature": self.LLM_TEMPERATURE, "top_p": self.LLM_TOP_P,
+                  "top_k": self.LLM_TOP_K, "min_p": self.LLM_MIN_P}
+        return {k: v for k, v in fields.items() if v is not None}
+    # A/B knob for a hybrid thinking model: request-level enable_thinking on the NARRATOR
     # call only (llama.cpp merges it over the server's global chat-template kwargs).
-    # Utility and character calls never think. Default on.
+    # Utility and character calls never think.
     NARRATOR_THINKING = os.getenv("NARRATOR_THINKING", "true").lower() == "true"
-    CHARACTER_TEMPERATURE = float(os.getenv("CHARACTER_TEMPERATURE", "0.9"))
-    NARRATOR_MAX_TOKENS = int(os.getenv("NARRATOR_MAX_TOKENS", "0"))    # 0 = uncapped (prompt governs length)
+    NARRATOR_MAX_TOKENS = int(os.getenv("NARRATOR_MAX_TOKENS", "0"))    # 0 = the global guard below
+    # A RUNAWAY guard, not a length dial (owner 2026-07-25, after a degenerate loop ran
+    # 61,805 tokens over 42 minutes from a 938-token prompt, with the transport ceiling
+    # gone and nothing to stop it before the context wall). 4096 tokens is around 3000
+    # words: past any narration, character line, recap or interpreter payload, so nothing
+    # real is ever cut. It ends generations that have stopped being output. Length is
+    # still shaped by the prompt asking for content, never by this number.
+    LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "4096"))
+    # The one call that legitimately writes more: save_world carries an entire world
+    # bible as tool-call JSON, and JSON cut mid-object is unparseable, not merely short
+    # (creator.py). Same guard, room to finish.
+    WORLD_MAX_TOKENS = int(os.getenv("WORLD_MAX_TOKENS", "16384"))
     # Follow-up "resolve" narration pass: when the narrator changed state via tools but wrote
     # no prose, a short second pass voices the outcome so no turn is dead air.
     # Uncapped like every other call (see INTERPRET_MAX_TOKENS): the prompt asks for a

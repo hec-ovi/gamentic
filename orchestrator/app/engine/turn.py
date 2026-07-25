@@ -202,7 +202,7 @@ def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None):
             prompts.build_character_messages(conn, gid, ch, settings.CHAR_HISTORY_BEATS,
                                              impulse=impulse),
             tools=tools.CHARACTER_TOOLS, tool_choice="auto",
-            temperature=settings.CHARACTER_TEMPERATURE, max_tokens=settings.CHARACTER_MAX_TOKENS,
+            max_tokens=settings.CHARACTER_MAX_TOKENS,
             on_delta=live_c.on_delta, cancel=live.stop_event(gid),
         )
         tok = (creply.usage or {}).get("prompt_tokens", 0) or 0
@@ -268,7 +268,7 @@ def interpret_action(conn, gid: str, text: str) -> list[dict] | None:
     try:
         reply = llm.chat(prompts.build_interpret_messages(conn, gid, text),
                          tools=prompts.INTERPRET_TOOL, tool_choice="auto",
-                         temperature=0.2, max_tokens=settings.INTERPRET_MAX_TOKENS,
+                         max_tokens=settings.INTERPRET_MAX_TOKENS,
                          cancel=live.stop_event(gid))
     except llm.LLMCancelled:
         raise   # a stop must stop the TURN, not fall back to the raw text
@@ -567,7 +567,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             tools=tools.narrator_tools(adjudicating=bool(pending),
                                        images=settings.IMAGE_ENABLED),
             tool_choice="auto",
-            temperature=settings.NARRATOR_TEMPERATURE, max_tokens=settings.NARRATOR_MAX_TOKENS,
+            max_tokens=settings.NARRATOR_MAX_TOKENS,
             stop=stops or None, thinking=settings.NARRATOR_THINKING,
             on_delta=live_n.on_delta, cancel=stop_ev,
         )
@@ -701,7 +701,6 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                 live_r = live.LiveNarration(gid)
                 resolve = llm.chat(
                     prompts.build_narrator_resolve_messages(conn, gid, narrator_action, state_notes),
-                    temperature=settings.NARRATOR_TEMPERATURE,
                     max_tokens=settings.NARRATOR_RESOLVE_MAX_TOKENS,
                     # same narrator voice, same defenses: the scaffold + impersonation
                     # stops above (static review: a screenplay line passed this pass

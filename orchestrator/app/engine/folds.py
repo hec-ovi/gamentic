@@ -29,7 +29,7 @@ def maybe_update_summary(gid: str) -> None:
         transcript = "\n".join(prompts._render_beat(b) for b in rows)
     try:
         reply = llm.chat(prompts.build_summary_messages(prev, transcript),
-                         temperature=0.3, max_tokens=settings.SUMMARY_MAX_TOKENS)
+                         max_tokens=settings.SUMMARY_MAX_TOKENS)
     except Exception:
         return
     # Drift safety: junk, think spans and scaffold never become memory. A recap is
@@ -79,7 +79,7 @@ def maybe_update_character_summaries(gid: str) -> None:
         try:
             reply = llm.chat(
                 prompts.build_character_summary_messages(f["name"], f["prev"], f["transcript"]),
-                temperature=0.3, max_tokens=settings.CHAR_SUMMARY_MAX_TOKENS)
+                max_tokens=settings.CHAR_SUMMARY_MAX_TOKENS)
         except Exception:
             continue   # keep the previous recap; a later turn retries
         # same full scrub as the game recap: junk/think/scaffold never becomes memory

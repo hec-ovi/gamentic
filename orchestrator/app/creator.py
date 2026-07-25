@@ -9,6 +9,7 @@ import json
 import re
 
 from . import engine, prompts, llm, repo, db
+from .config import settings
 from .engine import parsing
 from .models import WorldSheet
 
@@ -46,7 +47,7 @@ def enrich_origins(gid: str) -> None:
                 if c["alive"] and len((c["origin"] or "").strip()) < ORIGIN_MIN_CHARS]
     for cid, messages in work:
         try:
-            reply = llm.chat(messages, temperature=0.7)
+            reply = llm.chat(messages)
         except Exception:
             continue
         text = engine.clean_prose(reply.content or "")
@@ -78,7 +79,6 @@ def message(session_id: str, user_message: str) -> dict:
         prompts.build_creator_messages(history, user_message),
         tools=prompts.READY_TOOL,
         tool_choice="auto",
-        temperature=0.8,
     )
     # Sanitize BEFORE storing or returning (static-confirmed: this path shipped raw model
     # content): a leaked think-span or tool-call line would otherwise reach the player AND
@@ -140,7 +140,7 @@ def finalize(conn, session_id: str) -> str:
         prompts.build_finalize_messages(history),
         tools=prompts.FINALIZE_TOOL,
         tool_choice="auto",
-        temperature=0.4,
+        max_tokens=settings.WORLD_MAX_TOKENS,
     )
     call = next((tc for tc in reply.tool_calls if tc.name == "save_world"), None)
     if not call:

@@ -67,10 +67,15 @@ def test_creation_and_art_calls_are_uncapped(client, fake_llm, world):
     for label, match in shapes.items():
         calls = [c for c in fake_llm.calls if match(c)]
         assert calls, f"no {label} call was made"
-        assert all(c["max_tokens"] == 0 for c in calls), f"{label} call is capped"
+        if label == "finalize":
+            # the one call that writes a whole world bible as tool-call JSON: it carries
+            # the larger runaway guard, because JSON cut mid-object is unparseable
+            assert all(c["max_tokens"] == settings.WORLD_MAX_TOKENS for c in calls)
+        else:
+            assert all(c["max_tokens"] == 0 for c in calls), f"{label} call is capped"
 
 
-def test_llm_chat_omits_max_tokens_when_uncapped(monkeypatch):
+def test_an_uncapped_call_still_carries_the_runaway_guard(monkeypatch):
     sent = {}
 
     class _Resp:
@@ -87,7 +92,10 @@ def test_llm_chat_omits_max_tokens_when_uncapped(monkeypatch):
     import httpx
     monkeypatch.setattr(httpx, "post", fake_post)
     llm.chat([{"role": "user", "content": "hi"}])
-    assert "max_tokens" not in sent                 # the default is uncapped
+    # No call site sets a length any more, but the payload is not unbounded: a runaway
+    # loop has to end (2026-07-25: one ran 61,805 tokens over 42 minutes). The guard sits
+    # far above any real answer, so nothing the model meant to write is ever cut.
+    assert sent["max_tokens"] == settings.LLM_MAX_TOKENS
 
 
 # ---------- background persists survive a long turn's write lock ----------

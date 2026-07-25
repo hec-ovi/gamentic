@@ -39,7 +39,7 @@ def chat(
     messages: list[dict],
     tools: list[dict] | None = None,
     tool_choice: str = "auto",
-    temperature: float = 0.8,
+    temperature: float | None = None,
     max_tokens: int = 0,
     stop: list[str] | None = None,
     thinking: bool | None = None,
@@ -52,10 +52,22 @@ def chat(
     payload: dict = {
         "model": cfg.model,
         "messages": messages,
-        "temperature": temperature,
     }
-    if max_tokens and max_tokens > 0:   # 0/None = uncapped: the prompt governs length
-        payload["max_tokens"] = max_tokens
+    # Sampling is the SERVER's business (owner 2026-07-25: "leave all default"). A model
+    # ships recommended values in its own metadata and llama.cpp has its defaults; a
+    # per-call temperature guessed in app code overrides both, differently at every call
+    # site, and the app has no idea which model is behind the endpoint. Off by default,
+    # turned on as a whole through LLM_SAMPLING with the values in .env; an explicit
+    # caller argument still wins, for a test that needs one specific number.
+    payload.update(settings.sampling())
+    if temperature is not None:
+        payload["temperature"] = temperature
+    # A caller's own number wins; 0/None takes the global runaway guard (LLM_MAX_TOKENS).
+    # The guard is deliberately far above any real answer: it exists so a model stuck in
+    # a repetition loop ends, not to shorten anything the model actually meant to write.
+    cap = max_tokens if (max_tokens and max_tokens > 0) else settings.LLM_MAX_TOKENS
+    if cap and cap > 0:
+        payload["max_tokens"] = cap
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = tool_choice
