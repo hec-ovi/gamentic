@@ -2,12 +2,17 @@
 deterministic adjudication pre-check, the narrator call, the bounded character cascade,
 the private channel, and the freeform-input interpreter."""
 import json
+import logging
 import re
 from collections import deque
 
 from .. import repo, prompts, tools, llm
 from ..config import settings
 from . import live, parsing
+
+# Same channel as the tool log (main.py's lifespan makes INFO visible): the turn's
+# silent fallbacks say so here instead of vanishing.
+_log = logging.getLogger("gamentic.turn")
 
 
 def _display(s: dict, key: str, conn=None, gid: str | None = None, item: bool = False) -> str:
@@ -272,6 +277,12 @@ def interpret_action(conn, gid: str, text: str) -> list[dict] | None:
     call = next((tc for tc in reply.tool_calls if tc.name == "submit_segments"), None)
     raw = (call.arguments or {}).get("segments") if call else None
     if not isinstance(raw, list):
+        # The silent fallback (raw text, no attempts) is indistinguishable on screen from
+        # a player who simply typed prose, so the failure has to say so somewhere: live
+        # 2026-07-25 an empty submit_segments({}) swallowed 'give it to Chinesa' whole and
+        # the give was never adjudicated, with nothing anywhere to show why.
+        _log.warning("interpreter produced no segments (call=%s finish=%s): falling back "
+                     "to raw text for %r", bool(call), reply.finish_reason, text[:120])
         return None
     segs = []
     for s in raw[:6]:                                  # bounded, like the composer
@@ -301,6 +312,24 @@ def interpret_action(conn, gid: str, text: str) -> list[dict] | None:
 CONTINUE_IMPULSE = ("(no player input; the player watches and waits. Continue the story: "
                     "advance the scene yourself - let the world shift, a character act, or "
                     "something new surface - then leave the player room to respond.)")
+
+
+def _emit_narration(conn, gid: str, emit, prose: str, emotion: str) -> None:
+    """Narration, but never a beat that is narration AND dialogue at once (owner
+    2026-07-25: 'or is a dialog or is a narration... he should emit first narration,
+    then bubble, then narration again'). Speech the narrator wrote for a PRESENT
+    character is lifted into that character's own dialogue beat, in prose order, so
+    it reaches the player with their bubble, their avatar and their voice."""
+    location = repo.get_player(conn, gid)["location"]
+    present = repo.present_characters(conn, gid, location)
+    parts = parsing.split_narration_speech(prose, [c["name"] for c in present])
+    by_name = {c["name"]: c for c in present}
+    for kind, who, text in parts:
+        if kind == "dialogue" and who in by_name:
+            ch = by_name[who]
+            emit(ch["id"], ch["name"], "dialogue", text)
+        else:
+            emit("narrator", "Narrator", "narration", text, emotion=emotion)
 
 
 def _image_pacing_ok(conn, gid: str, turn: int) -> bool:
@@ -661,7 +690,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             prose = parsing.trim_to_sentence(prose)
         prose_emotion, prose = parsing._scrub_narration(prose)
         if prose:
-            emit("narrator", "Narrator", "narration", prose, emotion=prose_emotion)
+            _emit_narration(conn, gid, emit, prose, prose_emotion)
             live_n.done()
         else:
             live_n.done()
@@ -686,7 +715,7 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                     rprose = parsing.trim_to_sentence(rprose)   # never show a mid-word cut
                 remotion, rtext = parsing._scrub_narration(rprose)
                 if rtext:
-                    emit("narrator", "Narrator", "narration", rtext, emotion=remotion)
+                    _emit_narration(conn, gid, emit, rtext, remotion)
                 live_r.done()
         for note in state_notes:
             emit("system", None, "system", note)
