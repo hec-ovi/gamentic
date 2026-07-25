@@ -8,7 +8,7 @@ Pannable, clickable maps of the agents, the engine, the state, the infra and the
 
 > Built and tuned for an AMD Strix Halo APU (Ryzen AI Max), on standard containers.
 
-![status](https://img.shields.io/badge/status-stable-success) ![local](https://img.shields.io/badge/runs-100%25%20local-success) ![model](https://img.shields.io/badge/LLM-Gemma%2026B%20MoE%20(llama.cpp%2FVulkan)-blue) ![api](https://img.shields.io/badge/backend-FastAPI%20%2B%20SQLite-009688) ![tests](https://img.shields.io/badge/tests-1000%2B%20green-success) ![license](https://img.shields.io/badge/license-MIT-green)
+![status](https://img.shields.io/badge/status-stable-success) ![local](https://img.shields.io/badge/runs-100%25%20local-success) ![model](https://img.shields.io/badge/LLM-any%20GGUF%20(llama.cpp%2FVulkan)-blue) ![api](https://img.shields.io/badge/backend-FastAPI%20%2B%20SQLite-009688) ![tests](https://img.shields.io/badge/tests-1000%2B%20green-success) ![license](https://img.shields.io/badge/license-MIT-green)
 
 ## In motion
 
@@ -56,7 +56,9 @@ The world is an explicit state machine, and the narrator is the engine that adva
 
 ## The models
 
-**Text** is an uncensored ("heretic") finetune of Gemma 4 26B-A4B, a mixture-of-experts model (`mradermacher/gemma-4-26B-A4B-it-heretic-GGUF`, Q4_K_M) on llama.cpp with Vulkan: 26B of knowledge with about 4B active per token, so it writes like a big model and generates at small-model speed (measured on the reference box: ~900-1000 tok/s prefill, ~55 tok/s decode). The heretic finetune is deliberate: a dungeon needs characters that can genuinely act (attack, betray, scheme, make morally grey choices) and a narrator that stays inside the fiction instead of refusing or moralizing.
+**Text** is whatever GGUF you point it at, served by llama.cpp with Vulkan. The shape matters more than the name: a mixture-of-experts model carries a big model's knowledge while activating a fraction of it per token, and on one consumer box that is the difference between a turn you wait through and a turn you play. A dense model of comparable quality will be several times slower on the same hardware.
+
+Recommended for that reason: an uncensored ("heretic") 26B-A4B MoE finetune (`mradermacher/gemma-4-26B-A4B-it-heretic-GGUF`, Q4_K_M), 26B of knowledge with about 4B active per token, measured on the reference box at ~900-1000 tok/s prefill and ~55 tok/s decode. Uncensored is deliberate: a dungeon needs characters that can genuinely act (attack, betray, scheme, make morally grey choices) and a narrator that stays inside the fiction instead of refusing or moralizing.
 
 **Image** is FLUX.2 [klein] 4B distilled in ComfyUI behind a small REST adapter: scene art, a 3-view reference set per character, identity-conditioned story shots, item cards. Every image is art-directed: at creation one pass reads the whole world bible and writes the first-sight prompts (every character's reference look first, then the main opening image, conditioned on the fresh portraits), and after that each render gets its own art-director call that writes a detailed prompt (poses, depth, lighting) from the live scene context, bounded only by the encoder's 512-token window, with deterministic template prompts as the fallback. The model set is the Comfy-Org repack (`flux-2-klein-4b` + `qwen_3_4b` encoder + `flux2-vae`, about 16 GB); the ComfyUI workflow ships inside the image-api image and takes its three filenames from `.env`, so running a different diffusion model is `infra/comfyui/fetch-models.sh` plus a restart. The game is fully playable text-only; art fills in as it renders.
 
@@ -88,7 +90,7 @@ text model for an external server. `./up.sh down` stops everything.
 |---|---|---|
 | Frontend | http://localhost:5173 | Vanilla HTML / CSS / JS, served by nginx |
 | Orchestrator (game API) | http://localhost:8000 | FastAPI, SQLite, httpx, Python 3.12 |
-| Text model | http://localhost:8080 | llama.cpp (Vulkan), `gemma-4-26B-A4B-it-heretic` GGUF Q4 (MoE) |
+| Text model | http://localhost:8080 | llama.cpp (Vulkan), your GGUF (a Q4 MoE is the recommended shape) |
 | Image | http://localhost:9001 | FastAPI REST adapter over ComfyUI + FLUX.2 [klein] 4B (ComfyUI itself at :8188) |
 | Voice model | http://localhost:9091 | llama.cpp (Vulkan), Maya1-3B GGUF |
 | Voice API | http://localhost:9002 | FastAPI: Maya1 synthesis, SNAC decode (CPU), streaming |
@@ -153,13 +155,13 @@ Stable. Over a thousand automated tests cover the brain, the services and the fr
 - Voice is near-realtime, not instant: a 10 second line takes 11-12 seconds to fully render. English only.
 - Images render in the background and arrive seconds late by design (the turn never waits for art); the 4B image model occasionally sneaks lettering into a corner.
 - Deep story memory costs speed: turn time grows with the story window you choose (prefill measures about 1s per 900 tokens on the reference hardware). The story-memory settings exist precisely to pick your own point on that curve.
-- A local Q4 model, even at 26B, will sometimes narrate a tool call instead of actually making it. The orchestrator handles this with structure rather than hoping the model behaves: a deterministic movement router, validated tools with bounded state, adjudication that accepts by default, output sanitizers on every path, and parsers that read the model's intent even when it writes the call as prose.
+- A local Q4 model will sometimes narrate a tool call instead of actually making it. The orchestrator handles this with structure rather than hoping the model behaves: a deterministic movement router, validated tools with bounded state, adjudication that accepts by default, output sanitizers on every path, and parsers that read the model's intent even when it writes the call as prose.
 
 ## Models and licenses
 
 Gamentic is just the harness. It does not distribute, host, or bundle any model weights. You bring your own from their official sources, and each model stays the property of its authors under its own license and terms, which you are responsible for following:
 
-- **Text, Gemma (Google).** The game runs a community uncensored finetune of Google's Gemma. Gemma and its derivatives are governed by Google's own terms, not by this repository: [Gemma Terms of Use](https://ai.google.dev/gemma/terms), [Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy), [the finetune used](https://huggingface.co/mradermacher/gemma-4-26B-A4B-it-heretic-GGUF).
+- **Text.** You bring your own GGUF, under whatever license its authors set. The model recommended above is a community finetune of Google's Gemma, which carries Google's own terms rather than this repository's: [Gemma Terms of Use](https://ai.google.dev/gemma/terms), [Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy), [the finetune](https://huggingface.co/mradermacher/gemma-4-26B-A4B-it-heretic-GGUF).
 - **Image, FLUX.2 [klein] 4B (Black Forest Labs),** Apache-2.0: [model](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B), [BFL licensing](https://bfl.ai/licensing).
 - **Voice, Maya1 (Maya Research),** Apache-2.0: [model](https://huggingface.co/maya-research/maya1).
 - **Runtimes** under their own licenses: llama.cpp (MIT), ComfyUI (GPL-3.0).
