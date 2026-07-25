@@ -21,6 +21,11 @@ import { render } from "./ui.js";
 
 export const FALLBACK_INTERVAL = 60000;
 
+// An image the player's own action asked for (a look, a study), as opposed to a system
+// item-unlock card the narrator minted for the scene. Only the former belongs in the
+// panel that launched it.
+const isPanelImage = (b) => b.kind === "image" && b.speaker !== "system";
+
 let stream = null; // the live EventSource
 let fallbackTimer = null; // the slow sweep
 let dropped = false; // a reconnect owes a catch-up
@@ -134,9 +139,13 @@ export async function pullBeats(g) {
     if (!fresh.length) return;
     g.beats = [...g.beats, ...fresh];
     g.lastTurnIndex = lastTurnIndexOf(g.beats, g.lastTurnIndex);
-    if (fresh.some((b) => b.kind === "image" && b.speaker !== "system")) g.pendingView = false;
-    // a panel-launched look's image lands here, seconds later: mirror it
-    const tagged = g.lastVia ? fresh.map((b) => (b.kind === "image" ? { ...b, viaProfile: g.lastVia } : b)) : fresh;
+    if (fresh.some((b) => isPanelImage(b))) g.pendingView = false;
+    // a panel-launched look's image lands here, seconds later: mirror it. ONLY that
+    // image: item unlock cards are system beats belonging to the public scene, and
+    // tagging every late image dropped the player's own inventory cards into whoever's
+    // whisper thread was last used (live 2026-07-24: a "neural interface rig" card
+    // surfaced inside Layla's private channel, unrelated to anything said there).
+    const tagged = g.lastVia ? fresh.map((b) => (isPanelImage(b) ? { ...b, viaProfile: g.lastVia } : b)) : fresh;
     if (g.lastVia) g.beats = [...g.beats.filter((b) => !tagged.some((t) => t.id === b.id)), ...tagged];
     if (state.view === "play") {
       g.revealQueue = [...(g.revealQueue || []), ...fresh.map((b) => b.id)];

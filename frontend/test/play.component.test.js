@@ -2195,3 +2195,54 @@ test("the seen marker is namespaced per game: clearing one game's whispers does 
   const seenGame = { id: "g-test", beats: [{ id: "ping", turnIndex: 1, seq: 5, kind: "dialogue", speaker: "c1", text: "x", privateWith: "c1", pending: false }] };
   expect(unreadPmCount(seenGame, "c1")).toBe(0);
 }, 10000);
+
+test("a late item card does NOT land in the whisper thread, only the look it launched", async () => {
+  // Live 2026-07-24: after whispering to Layla, an unrelated "neural interface rig"
+  // item card appeared inside her private channel. Every late image beat was being
+  // stamped with the panel that launched the last turn; only the player's own look
+  // belongs there, system item cards belong to the public scene.
+  const u = user();
+  vi.stubGlobal("EventSource", FakeEventSource);
+  Element.prototype.scrollIntoView = vi.fn();   // jsdom has none; arrivals scroll
+  let imagesReady = false;
+  server.use(
+    http.get(`${API}/games/:id/state`, () => HttpResponse.json(IMAGED())),
+    http.post(`${API}/games/:id/action`, () =>
+      HttpResponse.json({
+        beats: [makeBeat({ id: "pm1", kind: "dialogue", speaker: "c1", speaker_name: "Jacker", text: "Keep it down.", private_with: "c1" })],
+        state: IMAGED(),
+      }),
+    ),
+    http.get(`${API}/games/:id/beats`, ({ request }) => {
+      const since = new URL(request.url).searchParams.get("since");
+      if (since !== null && Number(since) >= 1 && imagesReady)
+        return HttpResponse.json({
+          beats: [
+            makeBeat({ id: "look1", turn_index: 3, seq: 0, speaker: "narrator", kind: "image", text: "what you see", image_url: "/media/g-test/look1.png" }),
+            makeBeat({ id: "card1", turn_index: 3, seq: 1, speaker: "system", kind: "image", text: "neural rig", image_url: "/media/g-test/item-rig.png" }),
+          ],
+        });
+      return HttpResponse.json({ beats: [] });
+    }),
+  );
+
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /open jacker's profile/i }));
+  await u.click(await within(profileEl()).findByRole("tab", { name: /whisper/i }));
+  await u.type(pmBox(/what you say/i), "what was that message?");
+  await u.click(within(profileEl()).getByRole("button", { name: /^whisper$/i }));
+  await waitFor(() => expect(within(document.querySelector("#pmThread")).getByText("Keep it down.")).toBeTruthy(), { timeout: 4000 });
+
+  imagesReady = true;
+  FakeEventSource.instances[FakeEventSource.instances.length - 1].emit({ kind: "beat", private_with: null });
+
+  // the look the panel launched mirrors into the thread...
+  await waitFor(
+    () => expect(document.querySelector('#pmThread img[src="/media/g-test/look1.png"]')).toBeTruthy(),
+    { timeout: 8000 },
+  );
+  // ...the item card never does, and still exists in the public log
+  expect(document.querySelector('#pmThread img[src="/media/g-test/item-rig.png"]')).toBeNull();
+  await waitFor(() => expect(document.querySelector('img[src="/media/g-test/item-rig.png"]')).toBeTruthy());
+  vi.unstubAllGlobals();
+}, 15000);
