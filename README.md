@@ -148,7 +148,7 @@ Gamentic won 1st place at the Anna hackathon. That version lives at
 
 ## Status and limits
 
-Stable. Over a thousand automated tests cover the brain, the services and the frontend (663 backend, 240 frontend component tests, plus per-service suites), every route exercised against real SQLite with the model faked at the one LLM boundary, and the whole loop soak-tested with full played adventures against the real stack. Known physics of running everything locally:
+Stable. Over a thousand automated tests cover the brain, the services and the frontend (711 backend, 245 frontend component tests, plus 127 across the per-service suites), every route exercised against real SQLite with the model faked at the one LLM boundary, and the whole loop soak-tested with full played adventures against the real stack. Known physics of running everything locally:
 
 - Voice is near-realtime, not instant: a 10 second line takes 11-12 seconds to fully render. English only.
 - Images render in the background and arrive seconds late by design (the turn never waits for art); the 4B image model occasionally sneaks lettering into a corner.
