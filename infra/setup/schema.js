@@ -197,8 +197,8 @@ window.GAMENTIC_SETUP_SCHEMA = {
       "prompt": "Character recap every N", "help": "Witnessed beats that pile up before a fold." },
     { "key": "CHAR_SUMMARY_KEEP_TURNS", "group": "text-knobs", "type": "int", "default": "8", "advanced": true,
       "prompt": "Character recap keeps N", "help": "Newest witnessed turns stay verbatim." },
-    { "key": "CHAR_SUMMARY_MAX_TOKENS", "group": "text-knobs", "type": "int", "default": "320", "advanced": true,
-      "prompt": "Character recap cap", "help": "Token budget for one character recap." },
+    { "key": "CHAR_SUMMARY_MAX_TOKENS", "group": "text-knobs", "type": "int", "default": "0", "advanced": true,
+      "prompt": "Character recap cap", "help": "0 = uncapped (the prompt governs length). A ceiling cuts a recap mid-fact, and a recap is re-fed to every prompt." },
 
     { "key": "VOICE_API_PORT", "group": "voice", "type": "port", "default": "9002", "advanced": true,
       "prompt": "Voice API port", "help": "Host port for the Maya1 voice service (inside the network it listens on 8080)." },

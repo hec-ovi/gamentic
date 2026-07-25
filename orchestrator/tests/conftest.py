@@ -6,6 +6,7 @@ import os
 import re
 import tempfile
 
+import httpx
 import pytest
 
 # Point the DB at a temp file BEFORE importing the app (config reads env at import).
@@ -148,6 +149,28 @@ def fake_llm(monkeypatch):
     fake = FakeLLM()
     monkeypatch.setattr(llm, "chat", fake)
     return fake
+
+
+@pytest.fixture(autouse=True)
+def _no_live_model(monkeypatch, request):
+    """Hermetic, the same way IMAGE_API_URL/VOICE_API_URL point at a dead port above.
+
+    The suite was always written against an unreachable model (a stray call died on
+    connection-refused), and on 2026-07-25 that stopped being free: LLM_TIMEOUT lost its
+    ceiling, so the same stray call BLOCKS FOREVER whenever the local stack happens to be
+    up. One suite run hung on a background enrich_origins queued behind a live game turn.
+
+    The guard sits at the transport, not at llm.chat: tests that drive the real chat()
+    with httpx stubbed keep working (their own monkeypatch lands after this one), and
+    anything unstubbed fails instantly, exactly as a dead port did. test_live.py means
+    it, and opts out."""
+    if request.module.__name__.endswith("test_live"):
+        return
+
+    def _dead(*a, **kw):
+        raise httpx.ConnectError("no model in the test suite (see conftest._no_live_model)")
+    monkeypatch.setattr(llm.httpx, "post", _dead)
+    monkeypatch.setattr(llm.httpx, "stream", _dead)
 
 
 @pytest.fixture

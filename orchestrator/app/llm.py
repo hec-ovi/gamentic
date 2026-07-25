@@ -4,6 +4,7 @@ One function: chat(). No framework. Returns the assistant message with parsed
 tool calls. The same server + model backs every agent; only the messages differ.
 """
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 
@@ -11,6 +12,8 @@ import httpx
 
 from .config import settings
 from .providers import base as providers
+
+_log = logging.getLogger("gamentic.llm")
 
 
 @dataclass
@@ -111,6 +114,11 @@ def chat(
         try:
             args = json.loads(raw) if isinstance(raw, str) else (raw or {})
         except json.JSONDecodeError:
+            # Unparseable arguments are almost always a TRUNCATED object (a token ceiling
+            # cutting the JSON), and an empty dict downstream looks like a model that
+            # simply called with no arguments. Say which it was.
+            _log.warning("tool %s: unparseable arguments (%d chars, finish=%s)",
+                         fn.get("name", "?"), len(raw or ""), choice.get("finish_reason"))
             args = {}
         calls.append(ToolCall(name=fn.get("name", ""), arguments=args))
 

@@ -40,13 +40,22 @@ class Settings:
     NARRATOR_MAX_TOKENS = int(os.getenv("NARRATOR_MAX_TOKENS", "0"))    # 0 = uncapped (prompt governs length)
     # Follow-up "resolve" narration pass: when the narrator changed state via tools but wrote
     # no prose, a short second pass voices the outcome so no turn is dead air.
-    NARRATOR_RESOLVE_MAX_TOKENS = int(os.getenv("NARRATOR_RESOLVE_MAX_TOKENS", "180"))
+    # Uncapped like every other call (see INTERPRET_MAX_TOKENS): the prompt asks for a
+    # short outcome, a ceiling only cut it mid-sentence.
+    NARRATOR_RESOLVE_MAX_TOKENS = int(os.getenv("NARRATOR_RESOLVE_MAX_TOKENS", "0"))
     # Agentic input interpreter: freeform typed actions are parsed into structured
     # say/do/attack/give/whisper segments by one small LLM call before the turn runs,
     # so typing freely gets directed routing + adjudication like the buttons do.
     # Falls back to the raw text on any failure. One extra call (~1-2s) per typed turn.
     INTERPRET_FREE_TEXT = os.getenv("INTERPRET_FREE_TEXT", "true").lower() == "true"
-    INTERPRET_MAX_TOKENS = int(os.getenv("INTERPRET_MAX_TOKENS", "300"))
+    # 0 = uncapped, and it MUST stay that way: this call answers with a tool call whose
+    # arguments are JSON, and a ceiling truncates that JSON mid-object. The parse then
+    # fails, the arguments read as {}, and the turn silently falls back to the raw text -
+    # live 2026-07-25: 'fill the form ... and give it to Chinesa' produced
+    # submit_segments({}), so no give attempt was ever built and the form never moved.
+    # creator.py documents the identical failure for save_world. Shape output with the
+    # prompt, never with a token ceiling.
+    INTERPRET_MAX_TOKENS = int(os.getenv("INTERPRET_MAX_TOKENS", "0"))
     CHARACTER_MAX_TOKENS = int(os.getenv("CHARACTER_MAX_TOKENS", "0"))  # 0 = uncapped (prompt governs length)
 
     # Context budgeting. The verbatim window is GENEROUS by owner decision (slower turns
@@ -61,7 +70,10 @@ class Settings:
     SUMMARY_ENABLED = os.getenv("SUMMARY_ENABLED", "true").lower() == "true"
     SUMMARY_EVERY_TURNS = int(os.getenv("SUMMARY_EVERY_TURNS", "10"))  # fold cadence
     SUMMARY_KEEP_TURNS = int(os.getenv("SUMMARY_KEEP_TURNS", "8"))     # newest turns never folded
-    SUMMARY_MAX_TOKENS = int(os.getenv("SUMMARY_MAX_TOKENS", "640"))
+    # Uncapped: a recap is re-fed to every prompt, so a ceiling that cuts it mid-fact
+    # poisons memory permanently. The prompt asks for facts-only lines; that is the
+    # length control.
+    SUMMARY_MAX_TOKENS = int(os.getenv("SUMMARY_MAX_TOKENS", "0"))
     # Character memory (each character agent has its OWN whole context, bounded):
     # verbatim window = the newest beats THEY witnessed (stamped per beat, follows them
     # across scenes); everything older folds into their private recap below.
@@ -74,7 +86,7 @@ class Settings:
     CHAR_SUMMARY_ENABLED = os.getenv("CHAR_SUMMARY_ENABLED", "true").lower() == "true"
     CHAR_SUMMARY_EVERY = int(os.getenv("CHAR_SUMMARY_EVERY", "12"))      # cadence, in witnessed beats
     CHAR_SUMMARY_KEEP_TURNS = int(os.getenv("CHAR_SUMMARY_KEEP_TURNS", "8"))  # newest turns never folded
-    CHAR_SUMMARY_MAX_TOKENS = int(os.getenv("CHAR_SUMMARY_MAX_TOKENS", "320"))
+    CHAR_SUMMARY_MAX_TOKENS = int(os.getenv("CHAR_SUMMARY_MAX_TOKENS", "0"))  # see SUMMARY_MAX_TOKENS
     LORE_BUDGET = int(os.getenv("LORE_BUDGET", "8"))        # max lore entries injected
     # Turn economy (owner direction 2026-06-10 + 2026-07-20: a turn is a beat, not a
     # chapter, and not a lecture - he wants an AGILE exchange, not stacked conversations

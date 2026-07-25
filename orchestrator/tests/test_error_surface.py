@@ -114,7 +114,7 @@ def test_a_configured_ceiling_still_cuts_a_runaway_stream(monkeypatch):
 ORIGIN = {"Origin": "http://localhost:5173"}
 
 
-def test_a_crashing_turn_answers_500_with_the_cors_header(client, world, monkeypatch):
+def test_a_crashing_turn_answers_500_with_the_cors_header(client, fake_llm, world, monkeypatch):
     gid = client.post("/games", json=world).json()["game_id"]
 
     def _boom(*a, **kw):
@@ -130,7 +130,7 @@ def test_a_crashing_turn_answers_500_with_the_cors_header(client, world, monkeyp
     assert "ReadTimeout" in detail          # named, so the log is findable
 
 
-def test_the_error_body_is_json_the_frontend_can_show(client, world, monkeypatch):
+def test_the_error_body_is_json_the_frontend_can_show(client, fake_llm, world, monkeypatch):
     gid = client.post("/games", json=world).json()["game_id"]
 
     def _boom(*a, **kw):
