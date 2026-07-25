@@ -46,8 +46,21 @@ SHOW_IMAGE_TOOL = SCHEMAS["show_image"]
 # Tools a CHARACTER agent may call to act on others. Their speech is the message content;
 # these are for doing things to another character or to the player.
 CHARACTER_TOOLS = [combat.CHARACTER_ATTACK, items.CHARACTER_GIVE,
-                   characters.SHARE_PAST, characters.MARK_MOMENT, characters.ADMIT_TRAIT]
+                   characters.SHARE_PAST, characters.MARK_MOMENT, characters.ADMIT_TRAIT,
+                   characters.PROPOSE_CHANGE]
 SHOW_SELF_TOOL = SCHEMAS["show_self"]
+
+
+# What a character's proposal may turn into. The narrator adjudicates with the WORLD's
+# own tools, never the body ones: a character talking must not become a way to damage,
+# heal, kill or move the player. Scenery, exits, objects, arrivals, notes and quests are
+# things a person can plausibly make true by knowing or doing something.
+_PROPOSAL_ORDER = [
+    "add_exit", "place_item", "reveal_item", "describe_scene", "note_scene",
+    "set_scene_status", "spawn_character", "offer_scene_action", "offer_action",
+    "set_flag", "remember", "start_quest", "update_objective", "set_goal",
+]
+PROPOSAL_TOOLS = [SCHEMAS[n] for n in _PROPOSAL_ORDER]
 
 
 def narrator_tools(adjudicating: bool, images: bool = False) -> list:

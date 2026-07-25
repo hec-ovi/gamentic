@@ -377,3 +377,38 @@ def show_self(conn, gid, args, actor):
     # background, exactly like the narrator's show_image
     return {"kind": "image", "text": desc, "cue": {"character_id": actor["id"]},
             "reactions": []}
+
+
+# A character cannot change the world, and should not be able to: world authority is the
+# narrator's, which is what keeps state consistent. But a character who KNOWS something
+# about the world ("there is a drain behind the altar, I have used it") was writing that
+# into prose and nothing happened - the player asked for a way out, got told there was
+# one, and the scene still had no exit (owner 2026-07-25). This is the missing channel:
+# the character states the change it means, and the narrator adjudicates it in the same
+# turn. A proposal is a request, never an effect.
+PROPOSE_CHANGE = {"type": "function", "function": {
+    "name": "propose_change",
+    "description": "What you just said or did implies a change to the WORLD itself: a way "
+                   "out you know of, something hidden you point to, a thing you produce "
+                   "from the room, someone you send for, a place that opens. You cannot "
+                   "change the world yourself, so say plainly what should now be true and "
+                   "the storyteller decides. Use it whenever your words would otherwise be "
+                   "empty; never for what you merely feel or intend.",
+    "parameters": {"type": "object", "properties": {
+        "change": {"type": "string",
+                   "description": "What should now be true, one concrete sentence "
+                                  "(e.g. 'a drain behind the altar leads to the cistern')."},
+    }, "required": ["change"]}}}
+
+
+@tool(PROPOSE_CHANGE)
+def propose_change(conn, gid, args, actor):
+    if not actor:
+        return _invalid("propose_change: a character's own tool")
+    change = (args.get("change") or "").strip()
+    if not change:
+        return _invalid("propose_change: empty change")
+    # collected by the turn engine and adjudicated by the narrator before the turn ends
+    return {"kind": "propose", "text": change, "cue": {"character_id": actor["id"],
+                                                       "name": actor["name"]},
+            "reactions": []}

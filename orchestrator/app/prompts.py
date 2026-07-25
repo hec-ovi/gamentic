@@ -290,6 +290,24 @@ def build_narrator_resolve_messages(conn, gid: str, action: str, changes: list[s
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
+def build_narrator_proposal_messages(conn, gid: str, action: str,
+                                    proposals: list[str]) -> list[dict]:
+    """The character-to-world channel: a short referee pass over what the cast just
+    claimed is true. Tools only, no prose, and a bounded prompt (state + the claims),
+    so a turn where somebody says 'there is a way out back there' costs one small call
+    rather than a second full narrator pass."""
+    g = repo.get_game(conn, gid)
+    system = render(
+        "narrator.propose.md",
+        narrator_persona=g["narrator_persona"] or "",
+        setting=g["setting"] or "unspecified",
+        state=_state_block(conn, gid),
+    )
+    claims = "\n".join(f"- {p}" for p in proposals) or "- (nothing)"
+    user = render("narrator.propose.user.md", action=action or "(none)", proposals=claims)
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
 def _felt_hp(c) -> str:
     """A character's wounds in WORDS only (a number would leak game mechanics into their
     voice): full life renders nothing, then three coarse steps down."""

@@ -138,6 +138,9 @@ class Settings:
     MAX_CHARACTER_REACTIONS = int(os.getenv("MAX_CHARACTER_REACTIONS", "2"))
     TURN_MAX_ACTOR_STEPS = int(os.getenv("TURN_MAX_ACTOR_STEPS", "3"))   # total character beats per turn
     TURN_MAX_PER_CHARACTER = int(os.getenv("TURN_MAX_PER_CHARACTER", "1"))  # times one char can act per turn
+    # How many of a turn's character proposals the narrator rules on (one referee
+    # call either way; this only bounds how long its list can get).
+    MAX_PROPOSALS_PER_TURN = int(os.getenv("MAX_PROPOSALS_PER_TURN", "3"))
 
     # FICTIONAL story time (hybrid): every turn auto-ticks a few minutes so the clock never
     # freezes, and the narrator jumps it with advance_time (hours/days). Never wall clock.

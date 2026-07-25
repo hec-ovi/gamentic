@@ -24,6 +24,8 @@ Pannable, clickable maps of the agents, the engine, the state, the infra and the
 - Explore scenes, search for hidden things, find ways out. Talk to characters: each one is its own agent with its own voice, agenda and secrets, and they can act on you and on each other, not just talk.
 - Pull a character aside for a private conversation. What they tell you there persists: each character keeps its own memory of what it shared with you, and its profile (past, traits, pivotal moments, image memories) grows out of how you treat it. Give someone a gift and they reply privately. Characters can open a whisper with you first, and unread whispers show as a badge on their card.
 - Look at anything ("where is Mara looking?", "that ship on the horizon"). Looking is a full game action: it can trigger reactions and discoveries, and each look generates an image. The narrator also generates images at key moments, spaced out so they stay special.
+- Characters show you things too. Now and then one renders what it is doing, in its own picture, with its own face: the frequency is a setting (off, sometimes, often) and the pacing is shared with the narrator's images so pictures never crowd each other.
+- What a character tells you can change the world. Ask about a way out and the one who knows this place can put a real exit there: characters cannot rewrite state themselves, so they hand the claim to the storyteller, who rules on it in the same turn. It either becomes true or their words stay words, and nothing a character says can hurt, heal, move or rob you.
 - Characters grow. Personality traits unlock as the story reveals them and feed back into how that character behaves. Their pasts surface piece by piece: they hint early, open up with trust, and answer "who are you?" properly when asked. Relationships get named and renamed by the story (stranger, ally, sworn rival). Even their action buttons follow the story: the narrator offers one-off contextual actions out of your shared history, and stale ones rotate away.
 - The narrator keeps the whole story in context: it re-reads recent scenes word for word and folds older ones into a rolling recap. Window depth, fold cadence, and a hard context budget are per-game settings you can change while playing.
 - New items arrive with their own small generated card. Quests and a current goal keep up to date as you play.
@@ -42,6 +44,8 @@ flowchart TD
     NAR == "changes state ONLY<br>through validated tools" ==> DB[("🗄️ SQLite<br>the single source of truth")]
     NAR -- "cues" --> CH["🎭 Characters<br>each one its own agent and context;<br>they can act back (bounded cascade)"]
     CH ==> DB
+    CH -. "claims the world<br>is different" .-> REF["⚖️ Referee pass<br>the narrator rules on it with<br>world tools only, same turn"]
+    REF ==> DB
     DB --> OUT["📜 One resolved turn<br>narration · dialogue · receipts · fresh state"]
     NAR -. "a look, or a big moment" .-> ART["🖼️ Images, in the background<br>FLUX.2 klein, identity-conditioned<br>on each character's reference set"]
     DB -. "new item unlocked" .-> ART

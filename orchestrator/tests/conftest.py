@@ -52,6 +52,9 @@ class FakeLLM:
         # so existing free-text tests behave exactly as before
         self.interpret = llm.LLMReply(content="", tool_calls=[])
         self.explain = llm.LLMReply(content="A thing of note, by the look of it.")
+        # the character-to-world referee pass: default is a silent refusal, so a
+        # test that does not care about proposals sees exactly the old behavior
+        self.proposal = llm.LLMReply(content="", tool_calls=[])
         self.summary = llm.LLMReply(content="- The player arrived and met the locals.")
         self.charsummary = llm.LLMReply(content="- You remember the player arriving.")
         # default EMPTY: enrichment skips the write, so fixture origins stay untouched
@@ -63,8 +66,10 @@ class FakeLLM:
                  max_tokens=0, stop=None, thinking=None, on_delta=None, cancel=None):
         sys = messages[0]["content"] if messages else ""
         names = [t["function"]["name"] for t in (tools or [])]
+        user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
         self.calls.append({"messages": messages, "tools": tools, "system": sys, "names": names,
-                           "max_tokens": max_tokens, "stop": stop, "thinking": thinking})
+                           "user": user, "max_tokens": max_tokens, "stop": stop,
+                           "thinking": thinking})
         reply = self._dispatch(sys, names)
         # Mirror the real streaming transport: content arrives as a few fragments, and a
         # set cancel flag aborts the call mid-delivery exactly like a closed stream.
@@ -84,6 +89,8 @@ class FakeLLM:
             return self.finalize
         if "submit_segments" in names:               # input interpreter
             return self.interpret
+        if "add_exit" in names and "cue_character" not in names:  # proposal referee
+            return self.proposal
         if "cue_character" in names:                 # narrator toolset
             if self.narrator_script:
                 return self.narrator_script.pop(0)

@@ -179,7 +179,7 @@ def _match_exit(texts, exits) -> dict | None:
 
 
 def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None,
-                     shots=None, may_show=False):
+                     shots=None, may_show=False, proposals=None):
     """Run one character turn (POV + tools). Returns the reaction targets to enqueue.
     Each character agent has its OWN context; its prompt size feeds ONLY its own meter
     (state.characters[].context). The global meter tracks the narrator's story context,
@@ -251,6 +251,8 @@ def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None,
         out = tools.apply_tool(conn, gid, tc.name, tc.arguments, actor=ch)
         if out["kind"] == "state" and out["text"]:
             emit("system", None, "system", out["text"], private_with=private_with)
+        if out["kind"] == "propose" and out["text"] and proposals is not None:
+            proposals.append({"text": out["text"], "name": ch["name"]})
         if out["kind"] == "image" and out["text"] and shots is not None \
                 and may_show and not shots:
             # The cap is enforced HERE, not just by withholding the tool: a model can
@@ -391,6 +393,10 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
     # can run without it) never reads an unbound name.
     shots: list[dict] = []
     shot_ok = False
+    # what characters claimed is now TRUE about the world (propose_change). A character
+    # cannot change the world; the narrator adjudicates these before the turn ends, so
+    # "there is a drain behind the altar" either becomes an exit or stays talk.
+    proposals: list[dict] = []
     # The global context meter: the NARRATOR's story context only (its biggest prompt this
     # turn). Character agents have their own per-character meters; folding them in here made
     # the global number bounce (a private-conversation turn would drop it to the character's small prompt).
@@ -777,7 +783,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             acted[cid] = acted.get(cid, 0) + 1
             steps += 1
             enqueue(_character_reply(conn, gid, ch, emit, shots=shots,
-                                     may_show=shot_ok and not shots))
+                                     may_show=shot_ok and not shots,
+                                     proposals=proposals))
 
         # The forced private reply: every gift receiver answers in the private thread,
         # GUARANTEED, even when the narrator cued nobody. The directed impulse names the
@@ -792,7 +799,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             _character_reply(conn, gid, ch, emit, private_with=cid,
                              impulse=f"The player just gave you {item_name}. "
                                      f"React to the gift, just to them.",
-                             shots=shots, may_show=shot_ok and not shots)
+                             shots=shots, may_show=shot_ok and not shots,
+                             proposals=proposals)
 
     # ---- private channel (1:1; other characters never see it) ----
     # The private modal stacks say AND do segments at one character. Consecutive private
@@ -855,7 +863,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
             if stop_ev.is_set():
                 raise llm.LLMCancelled()
             _character_reply(conn, gid, row, emit, private_with=row["id"],
-                             shots=shots, may_show=shot_ok and not shots)
+                             shots=shots, may_show=shot_ok and not shots,
+                             proposals=proposals)
 
     if arrival_at_start:
         repo.clear_arrival_note(conn, gid)
@@ -901,6 +910,31 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
     # protocol and skipped describe_scene), seed it from this turn's public prose
     # (first two sentences); a later describe_scene simply overwrites it. A narrator
     # that moved the player mid-pass keeps its furnish chance next turn.
+    # ---- the character-to-world channel: the narrator rules on what the cast claimed ----
+    # A character cannot change the world, so a promise it makes ("there is a drain behind
+    # the altar") used to be prose and nothing else: the player asked for a way out, was
+    # told there was one, and the scene still had no exit (owner 2026-07-25). One small
+    # referee call closes that, in the SAME turn, with the WORLD's tools only: a character
+    # talking is never a way to hurt, heal, move or rob the player. Refusal is silent and
+    # costs nothing; the story already carried their words.
+    if proposals:
+        claims = [p["text"] for p in proposals[:settings.MAX_PROPOSALS_PER_TURN]]
+        try:
+            verdict = llm.chat(
+                prompts.build_narrator_proposal_messages(conn, gid, action_text, claims),
+                tools=tools.PROPOSAL_TOOLS, tool_choice="auto", cancel=stop_ev)
+        except llm.LLMCancelled:
+            raise
+        except Exception:
+            verdict = None
+            _log.warning("proposal pass failed; the cast's claims stay talk: %s", claims)
+        for tc in (verdict.tool_calls if verdict else []):
+            out = tools.apply_tool(conn, gid, tc.name, tc.arguments, actor=None)
+            if out["kind"] in ("state", "spawn") and out["text"]:
+                emit("system", None, "system", out["text"])
+            if out["kind"] == "spawn" and out["cue"]:
+                spawned.append(out["cue"]["id"])
+
     sc_now = repo.current_scene(conn, gid)
     if location_at_pass == sc_now["name"] and not (sc_now["description"] or "").strip():
         told = [b["text"] for b in new_beats

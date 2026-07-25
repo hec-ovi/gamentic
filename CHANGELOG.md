@@ -2,6 +2,25 @@
 
 Notable changes to gamentic, newest first. No version numbers yet: this moves fast, so entries are dated and the README always describes the current state.
 
+## 2026-07-25
+
+### Characters reach the world, and the picture
+- A character can call `propose_change` when what it says implies the world is different: a way out it knows of, something hidden it points to, a thing it produces from the room. The narrator rules on the claim in the same turn, with the world's tools only, so a promise either becomes an exit or stays talk. Live-found: asked privately for another way out, the character said there was one and the scene still had no exit. Damage, healing, movement and the player's possessions are not reachable from a proposal, whatever a character says.
+- Characters can show what they are doing, as their own image beat with their own name and reference set. Three levels in the adventure settings, off, sometimes and often, sharing the narrator's pacing cursor so pictures stay spaced however they were asked for. The cap is enforced where the model cannot talk around it: the tool is offered only when a shot is allowed, and the engine ignores the call otherwise.
+- Every art-directed image now sees the artifacts in view, not just the place and the people. A shot of someone doing something is usually a shot of them doing it with something.
+
+### A turn that fails says so, and one that thinks is left alone
+- No transport ceiling on a generation. A narrator at deep context outran the old 300s timeout, the `ReadTimeout` escaped the route, and Starlette answered with a bare 500 carrying no CORS header, so the browser reported a CORS failure and the turn vanished. `LLM_TIMEOUT=0` is the default; the browser's own 330s race and sqlite's 330s busy timeout went with it.
+- Any unhandled error now comes back as JSON that keeps its CORS header, so a failed turn reaches the player naming its exception instead of reading as "failed to fetch".
+- Length is guarded, not shaped. Every per-call token ceiling is gone, including the word ceilings in the recap prompts and the 2048-token cap that cut spoken lines mid-word. One runaway guard remains at 4096 tokens, roughly 3000 words, after a degenerate loop ran 61,805 tokens over 42 minutes and stopped only at the context wall. `save_world` keeps a larger one: a world bible is tool-call JSON, and JSON cut mid-object is unparseable rather than short.
+- Sampling belongs to the server. Nine call sites each guessed their own temperature, overriding both llama.cpp's defaults and the values a model ships in its own metadata. Nothing sends sampling now; `LLM_SAMPLING` turns it back on as a whole with the values in `.env`.
+- Two silent failures speak: the interpreter logs when it falls back to raw text, and unparseable tool arguments are logged with their length and finish reason. A typed "give it to Chinesa" had been swallowed whole by an empty `submit_segments({})`.
+
+### The screen stops showing the model's mistakes
+- A tag the model opens and never closes is dropped, and a quote it opens is closed. A dialogue beat had shipped as `"This smile?"[giggle`: every tag-shaped scrub matches on the closing bracket, so a bare opener walked through all of them.
+- A beat is narration or dialogue, never both. Speech the narrator wrote for a present character is lifted into that character's own bubble, in prose order, so it arrives with their avatar and their voice instead of being read by the narrator.
+- The test suite can no longer touch a real model. With the timeout gone, a stray call that used to die on connection-refused blocks forever when the local stack is up; one suite run hung behind a live game turn.
+
 ## 2026-07-24
 
 ### The image model is configuration, and the defaults fit any machine
