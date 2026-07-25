@@ -45,15 +45,18 @@ def test_one_connection_drop_is_retried_and_the_turn_completes(client, world, mo
     assert calls["n"] >= 2                       # the dropped call plus its retry
 
 
-def test_persistent_connection_failure_still_raises(client, world, monkeypatch):
+def test_persistent_connection_failure_fails_the_turn_readably(client, world, monkeypatch):
+    # The exception no longer escapes the app: it comes back as a JSON 500 the
+    # browser can read (see test_error_surface.py). The turn is still lost.
     gid = client.post("/games", json=world).json()["game_id"]
     monkeypatch.setattr(llm.time, "sleep", lambda s: None)
 
     def _post(url, json=None, timeout=None):
         raise httpx.ConnectError("llm down")
     monkeypatch.setattr(llm.httpx, "post", _post)
-    with pytest.raises(httpx.ConnectError):
-        client.post(f"/games/{gid}/action", json={"action": "I look around."})
+    r = client.post(f"/games/{gid}/action", json={"action": "I look around."})
+    assert r.status_code == 500
+    assert "ConnectError" in r.json()["detail"]
 
 
 def test_timeouts_are_never_retried(client, world, monkeypatch):
@@ -65,7 +68,7 @@ def test_timeouts_are_never_retried(client, world, monkeypatch):
         calls["n"] += 1
         raise httpx.ReadTimeout("box is busy")
     monkeypatch.setattr(llm.httpx, "post", _post)
-    with pytest.raises(httpx.ReadTimeout):
-        client.post(f"/games/{gid}/action", json={"action": "I look around."})
+    r = client.post(f"/games/{gid}/action", json={"action": "I look around."})
+    assert r.status_code == 500 and "ReadTimeout" in r.json()["detail"]
     # one call from the interpreter (swallowed), one from the narrator: no retries
     assert calls["n"] == 2

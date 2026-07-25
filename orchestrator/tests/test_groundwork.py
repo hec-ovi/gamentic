@@ -93,8 +93,11 @@ def test_llm_chat_omits_max_tokens_when_uncapped(monkeypatch):
 # ---------- background persists survive a long turn's write lock ----------
 
 def test_connections_queue_behind_a_turn_length_lock():
+    # The lock has to outlast a worst-case turn, and a turn now has no transport
+    # ceiling at all (config.LLM_TIMEOUT), so the wait is DB_TIMEOUT and it is long.
     with db.get_conn() as conn:
-        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 330000
+        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == int(settings.DB_TIMEOUT * 1000)
+        assert settings.DB_TIMEOUT >= 3600
 
 
 def test_dead_symbols_are_gone():

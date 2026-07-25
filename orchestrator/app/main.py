@@ -36,6 +36,28 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Gamentic Orchestrator", version="0.1", lifespan=lifespan)
 
+
+# An unhandled exception escapes PAST the CORS middleware to Starlette's own
+# ServerErrorMiddleware, whose bare 500 carries no Access-Control-Allow-Origin. The
+# browser then reports the turn as a CORS failure and swallows the status, so the UI
+# says "failed to fetch" and the real error never reaches the player (live 2026-07-25:
+# a narrator generation outran the transport timeout and the turn died invisibly).
+# Registered BEFORE the CORS middleware, which makes it the INNER of the two: whatever
+# it returns still travels back out through CORS and gets the header.
+@app.middleware("http")
+async def errors_as_readable_json(request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as exc:                        # noqa: BLE001 - deliberate catch-all
+        logging.getLogger("gamentic").exception(
+            "unhandled error on %s %s", request.method, request.url.path)
+        return JSONResponse(
+            {"detail": f"the server failed this request ({type(exc).__name__}); "
+                       f"check the orchestrator log"},
+            status_code=500,
+        )
+
+
 # Dev-friendly: the vanilla frontend is served from another origin.
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],

@@ -2,14 +2,26 @@
 import os
 
 
+def _seconds_or_none(name: str, default: str) -> float | None:
+    """A wall-clock ceiling in seconds, where 0 (or anything unparseable) means
+    NO ceiling. httpx reads None as 'never time out', so the value goes straight
+    through to the transport."""
+    try:
+        v = float(os.getenv(name, default) or 0)
+    except ValueError:
+        v = 0.0
+    return v if v > 0 else None
+
+
 class Settings:
     # llama.cpp OpenAI-compatible endpoint. In compose this is the container name.
     LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:8080/v1")
     LLM_MODEL = os.getenv("LLM_MODEL", "gemma-4-12b-heretic")
-    # Generous by owner decision: turns of 3-4 minutes are an accepted trade for story
-    # depth, and an uncapped narrator generation at deep context can pass 180s (live:
-    # a hard-mode continue at 10k ctx timed out at exactly 180s and lost the turn).
-    LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "300"))
+    # NO ceiling by owner decision (2026-07-25): a thinking model at deep context
+    # blew the old 300s transport timeout, the ReadTimeout escaped as a bare 500,
+    # and the whole turn was lost. Waiting is always better than losing the turn.
+    # Set LLM_TIMEOUT to a positive number of seconds to put a ceiling back.
+    LLM_TIMEOUT = _seconds_or_none("LLM_TIMEOUT", "0")
     # Kill-switch for the streaming transport. When false, calls that ask for live
     # deltas (on_delta/cancel) fall back to the blocking request: deltas arrive once,
     # whole, at the end; cancel is honored between calls only. Turn results are
@@ -97,6 +109,11 @@ class Settings:
     SCENE_ACTION_CAP = int(os.getenv("SCENE_ACTION_CAP", "3"))
 
     DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "..", "gamentic.db"))
+    # A turn holds its write transaction across every LLM call it makes, so this busy
+    # timeout has to outlast a worst-case turn or a background writer (image/portrait
+    # persist) raises "database is locked" and loses its work. With LLM_TIMEOUT off,
+    # a worst case is however long the model thinks: an hour of patience, not 330s.
+    DB_TIMEOUT = float(os.getenv("DB_TIMEOUT", "3600"))
     # Per-game image store (downloaded from image-api, served by us, deleted on wipe).
     GAMES_DATA_DIR = os.getenv("GAMES_DATA_DIR",
                                os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), "games"))

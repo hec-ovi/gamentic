@@ -14,11 +14,13 @@ export class ApiError extends Error {
   }
 }
 
-// A hung socket must become an error, never an eternal busy-lock. LLM-bound
-// calls legitimately run minutes (the brain's own transport ceiling is 300s);
-// plain reads should fail fast.
+// A hung socket must become an error, never an eternal busy-lock, so plain reads
+// fail fast. LLM-bound calls get NO ceiling (0 = the race is skipped): a thinking
+// model at deep context can run far past any number we would pick, and the old
+// 330s cutoff killed turns that were still being written. The brain has no
+// transport ceiling either (LLM_TIMEOUT), so the wait ends when the turn does.
 export const READ_TIMEOUT_MS = 20000;
-export const LLM_TIMEOUT_MS = 330000;
+export const LLM_TIMEOUT_MS = 0;
 export const IMPORT_TIMEOUT_MS = 60000;
 
 export function createApi(backendUrl) {
@@ -39,14 +41,18 @@ export function createApi(backendUrl) {
         },
         body: body ? JSON.stringify(body) : undefined,
       });
-      attempt.catch(() => {}); // losing the race must never surface as unhandled
-      const hang = new Promise((_, reject) => {
-        timer = setTimeout(
-          () => reject(new ApiError("The backend is taking too long to answer. Try again.", { status: 0 })),
-          timeout,
-        );
-      });
-      response = await Promise.race([attempt, hang]);
+      if (!(timeout > 0)) {
+        response = await attempt;       // no ceiling: wait for the turn, however long
+      } else {
+        attempt.catch(() => {}); // losing the race must never surface as unhandled
+        const hang = new Promise((_, reject) => {
+          timer = setTimeout(
+            () => reject(new ApiError("The backend is taking too long to answer. Try again.", { status: 0 })),
+            timeout,
+          );
+        });
+        response = await Promise.race([attempt, hang]);
+      }
     } catch (networkError) {
       if (networkError instanceof ApiError) throw networkError;
       // fetch rejects only on network failure / CORS / offline.

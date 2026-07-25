@@ -88,8 +88,9 @@ def chat(
         raise LLMCancelled()
     # One retry on connection-level failures only: a redeploy of the llama.cpp container
     # kills in-flight requests (seen live), and a fresh connection a beat later succeeds.
-    # Timeouts are NOT retried (a 180s timeout means the box is busy; retrying doubles
-    # the pain), and HTTP status errors are real answers, not transport flakes.
+    # Timeouts are NOT retried (one means the box is busy; retrying doubles the pain,
+    # and with LLM_TIMEOUT off they only come from the server hanging up), and HTTP
+    # status errors are real answers, not transport flakes.
     for attempt in (0, 1):
         try:
             resp = httpx.post(url, **kwargs)
@@ -132,12 +133,13 @@ def _stream_chat(url: str, kwargs: dict, payload: dict, on_delta, cancel) -> LLM
     Contract kept from the blocking path: one retry on connection-level failures,
     but ONLY if no chunk was consumed yet (retrying a half-eaten stream would
     double-generate); timeouts never retried; LLM_TIMEOUT stays the wall-clock
-    ceiling for the whole generation, matching the old total-request timeout."""
+    ceiling for the whole generation, matching the old total-request timeout.
+    LLM_TIMEOUT=None (the default) means the generation runs as long as it takes."""
     if cancel is not None and cancel.is_set():
         raise LLMCancelled()
     payload = {**payload, "stream": True, "stream_options": {"include_usage": True}}
     kwargs = {**kwargs, "json": payload}
-    deadline = time.monotonic() + settings.LLM_TIMEOUT
+    deadline = None if settings.LLM_TIMEOUT is None else time.monotonic() + settings.LLM_TIMEOUT
 
     for attempt in (0, 1):
         content_parts: list[str] = []
@@ -151,7 +153,7 @@ def _stream_chat(url: str, kwargs: dict, payload: dict, on_delta, cancel) -> LLM
                 for line in resp.iter_lines():
                     if cancel is not None and cancel.is_set():
                         raise LLMCancelled()
-                    if time.monotonic() > deadline:
+                    if deadline is not None and time.monotonic() > deadline:
                         raise httpx.ReadTimeout("generation exceeded LLM_TIMEOUT")
                     if not line.startswith("data: "):
                         continue

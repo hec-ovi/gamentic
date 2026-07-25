@@ -66,6 +66,60 @@ test("a hung request rejects with a friendly timeout ApiError instead of busy-lo
   }
 });
 
+test("a turn is never cut off by a client ceiling, however long the model thinks", async () => {
+  const { vi } = await import("vitest");
+  vi.useFakeTimers();
+  try {
+    let settle;
+    globalThis.fetch = () =>
+      new Promise((resolve) => {
+        settle = () => resolve({ ok: true, status: 200, text: async () => JSON.stringify({ beats: [] }) });
+      });
+    const promise = createApi("http://x:8000").takeAction("g1", "I look around.");
+    let done = false;
+    promise.then(() => { done = true; });
+    await vi.advanceTimersByTimeAsync(600000); // ten minutes: past every old cutoff
+    assert.equal(done, false, "the turn must still be waiting, not rejected");
+    settle();
+    assert.deepEqual(await promise, { beats: [] });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("the creator and continue calls wait without a ceiling too", async () => {
+  const { vi } = await import("vitest");
+  vi.useFakeTimers();
+  try {
+    globalThis.fetch = () => new Promise(() => {}); // never settles
+    const api = createApi("http://x:8000");
+    let rejected = false;
+    api.continueStory("g1").catch(() => { rejected = true; });
+    api.creatorMessage("s1", "a rainy port town").catch(() => { rejected = true; });
+    await vi.advanceTimersByTimeAsync(600000);
+    assert.equal(rejected, false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("plain reads still fail fast: the no-ceiling change is LLM-bound calls only", async () => {
+  const { vi } = await import("vitest");
+  vi.useFakeTimers();
+  try {
+    globalThis.fetch = () => new Promise(() => {});
+    const rejected = assert.rejects(createApi("http://x:8000").getState("g1"), (err) => {
+      assert.ok(err instanceof ApiError);
+      assert.match(err.message, /taking too long/i);
+      return true;
+    });
+    await vi.advanceTimersByTimeAsync(21000);
+    await rejected;
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("a FastAPI 422 detail array flattens to its human messages (never [object Object])", async () => {
   globalThis.fetch = async () => ({
     ok: false,

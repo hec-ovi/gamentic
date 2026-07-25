@@ -169,17 +169,17 @@ CREATE INDEX IF NOT EXISTS idx_lore_game ON lore(game_id);
 
 
 def connect() -> sqlite3.Connection:
-    # A turn holds its transaction across its LLM calls, which can legitimately run to
-    # the LLM transport ceiling (LLM_TIMEOUT=300s), while background tasks (image and
+    # A turn holds its transaction across its LLM calls, which now run with no
+    # transport ceiling at all (config.LLM_TIMEOUT), while background tasks (image and
     # portrait persists) write concurrently. WAL lets readers proceed, and the busy
     # timeout must OUTLAST a worst-case turn so background writers QUEUE instead of
     # raising "database is locked" (seen live: a long turn cost a rendered scene image
     # its persist under the old 60s timeout).
-    conn = sqlite3.connect(settings.DB_PATH, timeout=330)
+    conn = sqlite3.connect(settings.DB_PATH, timeout=settings.DB_TIMEOUT)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA busy_timeout = 330000")
+    conn.execute(f"PRAGMA busy_timeout = {int(settings.DB_TIMEOUT * 1000)}")
     return conn
 
 
