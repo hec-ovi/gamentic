@@ -31,7 +31,8 @@ def test_settings_persist_into_state(client, fake_llm, world):
     from app.config import settings as cfg
     base = {"history_beats": cfg.HISTORY_BEATS, "summary_every": cfg.SUMMARY_EVERY_TURNS,
             "context_tokens": 0, "turn_voices": cfg.MAX_CHARACTER_REACTIONS,
-            "turn_acts": cfg.TURN_MAX_PER_CHARACTER}
+            "turn_acts": cfg.TURN_MAX_PER_CHARACTER,
+            "character_images": cfg.IMAGE_CHARACTER_FREQUENCY}
     st = client.get(f"/games/{gid}/state").json()
     assert st["settings"] == {"narrator_gender": "", "difficulty": "normal", **base}
     _patch(client, gid, difficulty="hard", narrator_gender="female")

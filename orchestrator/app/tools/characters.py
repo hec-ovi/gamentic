@@ -346,3 +346,34 @@ def admit_trait(conn, gid, args, actor):
     if not trait:
         return _result("state")  # duplicate or full: silent
     return _result("state", f"Trait unlocked: {actor['name']} - {trait}.")
+
+
+# Offered only when images are on, the game's frequency is not "off", and the pacing
+# cursor allows one (tools.character_tools). The narrator has always been able to render
+# a moment; this is the same power for the person actually living it, and the beat lands
+# attributed to THEM, with their reference set conditioning the render.
+SHOW_SELF = {"type": "function", "function": {
+    "name": "show_self",
+    "description": "Show the player what you are doing RIGHT NOW, as a picture. Only for a "
+                   "moment worth seeing: something you do with your hands, somewhere you "
+                   "move to, something you reveal or hold up. Never for standing and "
+                   "talking. Describe the VIEW in concrete visual terms: where you are in "
+                   "frame, your posture and gesture, what you hold, what is around you, the "
+                   "light. Looks only, never words or signs to draw.",
+    "parameters": {"type": "object", "properties": {
+        "description": {"type": "string",
+                        "description": "Detailed visual description of what you are doing."},
+    }, "required": ["description"]}}}
+
+
+@tool(SHOW_SELF)
+def show_self(conn, gid, args, actor):
+    if not actor:
+        return _invalid("show_self: a character's own tool")
+    desc = (args.get("description") or "").strip()
+    if not desc:
+        return _invalid("show_self: empty description")
+    # generation is slow: the engine collects this and the route renders it in the
+    # background, exactly like the narrator's show_image
+    return {"kind": "image", "text": desc, "cue": {"character_id": actor["id"]},
+            "reactions": []}

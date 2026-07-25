@@ -201,6 +201,14 @@ def _image_context(conn, gid: str, include_chars: bool, focus: str | None = None
         if chars:
             lines.append("CHARACTERS PRESENT (depict them):")
             lines += [f"- {c['name']}: {_gendered_base(c)}" for c in chars]
+        # The artifacts in play: what is carried, lying about, or held. A shot of someone
+        # doing something is usually a shot of them doing it WITH something, and the
+        # director had no idea these objects existed (owner 2026-07-25: "and context,
+        # artifacts"). Bounded, and only what the player can already see.
+        seen = [v["name"] for v in repo.visible_item_index(conn, gid).values() if v.get("name")]
+        if seen:
+            lines.append("THINGS IN VIEW (only if they belong in the shot): "
+                         + ", ".join(seen[:6]))
         recent = [b for b in repo.recent_beats_at(conn, gid, pd["location"], 8)
                   if not b["private_with"]]
         if recent:

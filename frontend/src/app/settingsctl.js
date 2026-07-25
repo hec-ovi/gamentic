@@ -44,6 +44,7 @@ export async function patchGameSettings(key, value) {
         contextTokens: Number(res.settings.context_tokens) || 0,
         turnVoices: Number(res.settings.turn_voices) || 0,
         turnActs: Number(res.settings.turn_acts) || 0,
+        characterImages: res.settings.character_images || "sometimes",
       };
     }
     // a narrator_gender change redesigns the narrator voice from the next line

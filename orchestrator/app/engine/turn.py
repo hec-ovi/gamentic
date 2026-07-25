@@ -178,7 +178,8 @@ def _match_exit(texts, exits) -> dict | None:
     return None
 
 
-def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None):
+def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None,
+                     shots=None, may_show=False):
     """Run one character turn (POV + tools). Returns the reaction targets to enqueue.
     Each character agent has its OWN context; its prompt size feeds ONLY its own meter
     (state.characters[].context). The global meter tracks the narrator's story context,
@@ -187,7 +188,11 @@ def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None):
     private_with forces the WHOLE reply into one private thread (the private channel, and
     a gift's forced reply). impulse is a directed prompt line prepended for this call only
     (mirrors the private channel's directed reply): the forced gift reply hands the model
-    'the player just gave you <item>' so X always has something to answer."""
+    'the player just gave you <item>' so X always has something to answer.
+
+    may_show offers show_self for THIS call (the turn's pacing already said yes and no
+    other character has taken the shot); anything the character asks to be seen doing is
+    appended to `shots` for the route to render in the background."""
     segs: list[tuple[str, str]] = []
     creply = llm.LLMReply(content="")
     live.phase(gid, "character", actor=ch["name"])
@@ -201,7 +206,7 @@ def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None):
         creply = llm.chat(
             prompts.build_character_messages(conn, gid, ch, settings.CHAR_HISTORY_BEATS,
                                              impulse=impulse),
-            tools=tools.CHARACTER_TOOLS, tool_choice="auto",
+            tools=tools.character_tools(images=may_show), tool_choice="auto",
             max_tokens=settings.CHARACTER_MAX_TOKENS,
             on_delta=live_c.on_delta, cancel=live.stop_event(gid),
         )
@@ -246,6 +251,14 @@ def _character_reply(conn, gid, ch, emit, private_with=None, impulse=None):
         out = tools.apply_tool(conn, gid, tc.name, tc.arguments, actor=ch)
         if out["kind"] == "state" and out["text"]:
             emit("system", None, "system", out["text"], private_with=private_with)
+        if out["kind"] == "image" and out["text"] and shots is not None \
+                and may_show and not shots:
+            # The cap is enforced HERE, not just by withholding the tool: a model can
+            # call a tool it was never offered (the name is in the registry either way),
+            # and pacing that depends on the model's restraint is not pacing. One shot
+            # per turn, only when this call was actually allowed to ask for one.
+            shots.append({"description": out["text"], "character_id": ch["id"],
+                          "private_with": private_with})
         reactions += out["reactions"]
     return reactions
 
@@ -339,6 +352,22 @@ def _image_pacing_ok(conn, gid: str, turn: int) -> bool:
     return last is None or (turn - last) >= settings.IMAGE_NARRATOR_COOLDOWN_TURNS
 
 
+def _character_image_pacing_ok(conn, gid: str, turn: int, game_row=None) -> bool:
+    """Whether a character may show what it is doing this turn. Same cursor as the
+    narrator's pacing, so images stay spaced however they were asked for; the gap comes
+    from the game's own frequency level (off | sometimes | often)."""
+    if not settings.IMAGE_ENABLED:
+        return False
+    g = game_row if game_row is not None else repo.get_game(conn, gid)
+    if g is None:
+        return False
+    gap = settings.IMAGE_CHARACTER_LEVELS.get(repo.effective_character_images(g), 0)
+    if gap <= 0:                       # 'off'
+        return False
+    last = repo.last_image_turn(conn, gid)
+    return last is None or (turn - last) >= gap
+
+
 def run_turn(conn, gid: str, action_text: str = "", segments=None,
              continue_story: bool = False, wish: str | None = None,
              echo_text: str | None = None) -> dict:
@@ -356,6 +385,12 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
     new_beats: list[dict] = []
     spawned: list[str] = []
     image_request: str | None = None   # a show_image description the narrator fired
+    # what characters asked to be SEEN doing this turn (show_self); at most one, paced by
+    # the game's own frequency level, rendered by the route in the background. shot_ok is
+    # decided once inside the narrator block; bound here so the private-channel path (which
+    # can run without it) never reads an unbound name.
+    shots: list[dict] = []
+    shot_ok = False
     # The global context meter: the NARRATOR's story context only (its biggest prompt this
     # turn). Character agents have their own per-character meters; folding them in here made
     # the global number bounce (a private-conversation turn would drop it to the character's small prompt).
@@ -526,6 +561,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         # it is the runaway safety ceiling, not a feel dial.
         game_row = repo.get_game(conn, gid)
         history_limit = repo.effective_history_beats(game_row)
+        # decided ONCE per turn, before any character speaks
+        shot_ok = _character_image_pacing_ok(conn, gid, turn, game_row)
         turn_voices = repo.effective_turn_voices(game_row)
         turn_acts = repo.effective_turn_acts(game_row)
         # Scaffold stop-sequences FIRST: at deep context the model can regress into
@@ -739,7 +776,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                 continue
             acted[cid] = acted.get(cid, 0) + 1
             steps += 1
-            enqueue(_character_reply(conn, gid, ch, emit))
+            enqueue(_character_reply(conn, gid, ch, emit, shots=shots,
+                                     may_show=shot_ok and not shots))
 
         # The forced private reply: every gift receiver answers in the private thread,
         # GUARANTEED, even when the narrator cued nobody. The directed impulse names the
@@ -753,7 +791,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
                 continue
             _character_reply(conn, gid, ch, emit, private_with=cid,
                              impulse=f"The player just gave you {item_name}. "
-                                     f"React to the gift, just to them.")
+                                     f"React to the gift, just to them.",
+                             shots=shots, may_show=shot_ok and not shots)
 
     # ---- private channel (1:1; other characters never see it) ----
     # The private modal stacks say AND do segments at one character. Consecutive private
@@ -815,7 +854,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         if spoke:
             if stop_ev.is_set():
                 raise llm.LLMCancelled()
-            _character_reply(conn, gid, row, emit, private_with=row["id"])
+            _character_reply(conn, gid, row, emit, private_with=row["id"],
+                             shots=shots, may_show=shot_ok and not shots)
 
     if arrival_at_start:
         repo.clear_arrival_note(conn, gid)
@@ -881,6 +921,8 @@ def run_turn(conn, gid: str, action_text: str = "", segments=None,
         # description wins when it fired; otherwise fall back to the deterministic
         # state-grounded snapshot with the look's focus.
         result["view_fallback"] = ((look_seg or {}).get("text") or "").strip()
+    if shots:
+        result["character_shots"] = shots         # a character showed what it was doing
     if private_looks:
         result["private_looks"] = private_looks   # snapshots bound to the private thread
     new_items = [v for k, v in repo.visible_item_index(conn, gid).items()

@@ -54,7 +54,8 @@ def game_state(conn, gid: str) -> dict:
                      "summary_every": games.effective_summary_every(g),
                      "context_tokens": games.effective_context_tokens(g),
                      "turn_voices": games.effective_turn_voices(g),
-                     "turn_acts": games.effective_turn_acts(g)},
+                     "turn_acts": games.effective_turn_acts(g),
+                     "character_images": games.effective_character_images(g)},
         "context": {"used": g["context_used"] or 0, "max": settings.LLM_CONTEXT_SIZE},
         "images_enabled": settings.IMAGE_ENABLED,  # FE: if true and an image_url is null, show a loader
         "time": clock.game_time(conn, gid),        # fictional story clock {minutes, day, hour, part, label}

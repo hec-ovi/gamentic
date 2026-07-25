@@ -372,7 +372,7 @@ export const DIFFICULTY_COPY = {
 };
 
 export function renderGameSettings(g) {
-  const gs = g.state.settings || { difficulty: "normal", narratorGender: "" };
+  const gs = g.state.settings || { difficulty: "normal", narratorGender: "", characterImages: "sometimes" };
   const saving = g.settingsSaving ? "disabled" : "";
   const radio = (group, value, current, label, sub) => `
     <label class="set-radio${current === value ? " active" : ""}">
@@ -398,6 +398,14 @@ export function renderGameSettings(g) {
         ${radio("narrator_gender", "", gs.narratorGender, "Default", "The voice the world was born with")}
         ${radio("narrator_gender", "female", gs.narratorGender, "Female", "Takes effect on the next spoken line")}
         ${radio("narrator_gender", "male", gs.narratorGender, "Male", "Takes effect on the next spoken line")}
+      </fieldset>
+
+      <fieldset class="set-group" data-group="character_images">
+        <legend class="set-legend">Character pictures</legend>
+        <p class="set-note">Characters can show you what they are doing, now and then, as a picture of their own. Pictures still arrive in the background; this is how often one is allowed.</p>
+        ${radio("character_images", "off", gs.characterImages, "Off", "Only the narrator's images and your looks")}
+        ${radio("character_images", "sometimes", gs.characterImages, "Sometimes", "A rare moment, so it stays worth seeing")}
+        ${radio("character_images", "often", gs.characterImages, "Often", "Whenever a moment is worth it")}
       </fieldset>
 
       <fieldset class="set-group" data-group="turn_pacing">

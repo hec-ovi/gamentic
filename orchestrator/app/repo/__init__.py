@@ -28,8 +28,10 @@ from .clock import (  # noqa: F401
 )
 from .games import (  # noqa: F401
     append_memory, clear_arrival_note, create_game, delete_game,
-    effective_context_tokens, effective_history_beats, effective_summary_every,
+    effective_character_images, effective_context_tokens, effective_history_beats,
+    effective_summary_every,
     effective_turn_acts, effective_turn_voices, get_game, list_games,
+    set_character_image_frequency,
     set_context_tokens, set_context_used, set_difficulty, set_game_status, set_goal,
     set_history_beats, set_last_tool_errors, set_narrator_gender, set_narrator_voice,
     set_story_summary, set_summary_every, set_turn_acts, set_turn_voices,

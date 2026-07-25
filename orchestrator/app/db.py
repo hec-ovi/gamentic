@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS games (
                                      -- transcript is trimmed to fit and the recap carries the rest)
     turn_voices INTEGER DEFAULT 0,   -- per-game cap on characters cued per turn (0 = settings.MAX_CHARACTER_REACTIONS)
     turn_acts INTEGER DEFAULT 0,     -- per-game cap on acts per character per turn (0 = settings.TURN_MAX_PER_CHARACTER)
+    character_images TEXT DEFAULT '',  -- how often characters may show what they are doing:
+                                     -- off | sometimes | often ('' = settings.IMAGE_CHARACTER_FREQUENCY)
     last_tool_errors TEXT DEFAULT '[]',  -- narrator tool calls that did not apply last turn (JSON list of
                                      -- reason strings; fed back to the narrator once, then overwritten)
     opening_items TEXT DEFAULT '[]', -- the DESIGNED opening possessions (JSON [{name, description}]);
@@ -221,6 +223,7 @@ _MIGRATIONS = {
         "context_tokens": "INTEGER DEFAULT 0",
         "turn_voices": "INTEGER DEFAULT 0",   # per-game turn-economy dial (0 = env default)
         "turn_acts": "INTEGER DEFAULT 0",     # per-game turn-economy dial (0 = env default)
+        "character_images": "TEXT DEFAULT ''",   # off | sometimes | often ("" = env default)
         "last_tool_errors": "TEXT DEFAULT '[]'",  # narrator's failed-call note (JSON list of reasons)
         "opening_items": "TEXT DEFAULT '[]'",     # designed opening possessions (template export)
         "opening_time_of_day": "TEXT DEFAULT ''",  # designed opening clock part (template export)

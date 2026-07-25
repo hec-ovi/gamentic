@@ -47,6 +47,7 @@ SHOW_IMAGE_TOOL = SCHEMAS["show_image"]
 # these are for doing things to another character or to the player.
 CHARACTER_TOOLS = [combat.CHARACTER_ATTACK, items.CHARACTER_GIVE,
                    characters.SHARE_PAST, characters.MARK_MOMENT, characters.ADMIT_TRAIT]
+SHOW_SELF_TOOL = SCHEMAS["show_self"]
 
 
 def narrator_tools(adjudicating: bool, images: bool = False) -> list:
@@ -54,6 +55,14 @@ def narrator_tools(adjudicating: bool, images: bool = False) -> list:
     show_image only when image generation is on."""
     return (NARRATOR_TOOLS + ([REJECT_ATTEMPT_TOOL] if adjudicating else [])
             + ([SHOW_IMAGE_TOOL] if images else []))
+
+
+def character_tools(images: bool = False) -> list:
+    """A character's toolset for one call. show_self is offered ONLY when a shot is
+    actually allowed right now (images on, the game's frequency not off, the pacing
+    cooldown elapsed): a tool the engine would refuse is an invitation to waste a turn
+    calling it, the same reason show_image is conditional for the narrator."""
+    return CHARACTER_TOOLS + ([SHOW_SELF_TOOL] if images else [])
 
 
 def apply_tool(conn, gid: str, name: str, args: dict, actor=None) -> dict:

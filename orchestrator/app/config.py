@@ -206,6 +206,12 @@ class Settings:
     # are allowed only every N turns, so they stay a dramatic beat, not wallpaper.
     # A player look always renders if the narrator calls the tool.
     IMAGE_NARRATOR_COOLDOWN_TURNS = int(os.getenv("IMAGE_NARRATOR_COOLDOWN_TURNS", "4"))
+    # A character showing what THEY are doing, asked for by the character itself rather
+    # than by the narrator. Three levels the player picks per game; the number is the
+    # minimum turns between two character shots, counted against the same cursor the
+    # narrator's pacing uses, so images stay spaced however they were asked for.
+    IMAGE_CHARACTER_LEVELS = {"off": 0, "sometimes": 6, "often": 2}
+    IMAGE_CHARACTER_FREQUENCY = os.getenv("IMAGE_CHARACTER_FREQUENCY", "sometimes")
 
     # --- Voice integration (orchestrator -> voice-api, server to server) ---
     VOICE_API_URL = os.getenv("VOICE_API_URL", "http://localhost:9002")

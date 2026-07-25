@@ -160,6 +160,11 @@ def set_last_tool_errors(conn, gid: str, reasons: list) -> None:
                  (json.dumps(list(reasons or [])), gid))
 
 
+def set_character_image_frequency(conn, gid: str, level: str) -> None:
+    """Per-game frequency for a character showing what it is doing ('' = env default)."""
+    conn.execute("UPDATE games SET character_images=? WHERE id=?", (str(level or ""), gid))
+
+
 def set_turn_acts(conn, gid: str, acts: int) -> None:
     """Per-game cap on times one character acts per turn (0 = the settings default)."""
     conn.execute("UPDATE games SET turn_acts=? WHERE id=?", (int(acts), gid))
@@ -191,3 +196,13 @@ def effective_turn_voices(g) -> int:
 def effective_turn_acts(g) -> int:
     from ..config import settings
     return _col(g, "turn_acts") or settings.TURN_MAX_PER_CHARACTER
+
+
+def effective_character_images(g) -> str:
+    """off | sometimes | often. Empty column = the env default, an unknown value = the
+    env default too, so a hand-edited row can never disable pacing by accident."""
+    from ..config import settings
+    level = (_col(g, "character_images", "") or "").strip().lower()
+    if level not in settings.IMAGE_CHARACTER_LEVELS:
+        level = settings.IMAGE_CHARACTER_FREQUENCY.strip().lower()
+    return level if level in settings.IMAGE_CHARACTER_LEVELS else "sometimes"

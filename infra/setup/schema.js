@@ -162,6 +162,8 @@ window.GAMENTIC_SETUP_SCHEMA = {
       "prompt": "Item card size", "help": "Square item card edge in pixels." },
     { "key": "IMAGE_MAX_ITEMS_PER_TURN", "group": "image-knobs", "type": "int", "default": "2", "advanced": true,
       "prompt": "Item cards per turn", "help": "Cap so a generous narrator cannot flood the render queue." },
+    { "key": "IMAGE_CHARACTER_FREQUENCY", "group": "image-knobs", "type": "string", "default": "sometimes", "advanced": true,
+      "prompt": "Character pictures", "help": "How often a character may show what it is doing: off | sometimes | often. Per-game, changeable in the adventure settings." },
     { "key": "IMAGE_NARRATOR_COOLDOWN_TURNS", "group": "image-knobs", "type": "int", "default": "4", "advanced": true,
       "prompt": "Narrator image cooldown",
       "help": "Narrator-initiated images (show_image without a player look) at most every N turns." },

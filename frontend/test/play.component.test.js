@@ -1264,6 +1264,36 @@ test("game settings PATCH round-trip: picking a difficulty updates the live game
   await waitFor(() => expect(screen.getByRole("radio", { name: /hard/i }).checked).toBe(true));
 });
 
+test("character pictures: the three levels PATCH, and the chosen one stays checked", async () => {
+  // Owner ask: characters show what they are doing now and then, with the frequency in
+  // settings as three easy levels. Off must be reachable, not just quieter.
+  const u = user();
+  const patches = [];
+  server.use(
+    http.patch(`${API}/games/:id/settings`, async ({ request }) => {
+      const body = await request.json();
+      patches.push(body);
+      return HttpResponse.json({
+        settings: { narrator_gender: "", difficulty: "normal", character_images: body.character_images },
+        narrator_voice_id: "af_alloy",
+      });
+    }),
+  );
+  await gotoPlay(u);
+  await u.click(screen.getByRole("button", { name: /^menu$/i }));
+
+  const often = await screen.findByRole("radio", { name: /often/i });
+  await u.click(often);
+  await waitFor(() => expect(patches).toEqual([{ character_images: "often" }]));
+  await waitFor(() => expect(screen.getByRole("radio", { name: /often/i }).checked).toBe(true));
+
+  await u.click(screen.getByRole("radio", { name: /^off/i }));
+  await waitFor(() => expect(patches).toEqual([
+    { character_images: "often" }, { character_images: "off" },
+  ]));
+  await waitFor(() => expect(screen.getByRole("radio", { name: /^off/i }).checked).toBe(true));
+});
+
 test("story memory: an in-range value PATCHes; out-of-range never leaves the client", async () => {
   const u = user();
   const patches = [];

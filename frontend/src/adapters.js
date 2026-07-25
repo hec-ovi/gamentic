@@ -88,6 +88,7 @@ export function mapGameState(state = {}) {
       // turn pacing: voices the narrator may pull into ONE turn, acts each may
       // take before it ends (effective values; 0 was "server default" on send)
       turnVoices: num(state.settings && state.settings.turn_voices),
+      characterImages: (state.settings && state.settings.character_images) || "sometimes",
       turnActs: num(state.settings && state.settings.turn_acts),
     },
     // prompt-token usage -> the header context meter (green -> amber -> red)

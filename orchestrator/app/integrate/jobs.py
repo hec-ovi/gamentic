@@ -11,7 +11,7 @@ from . import events, image_prompts, storage
 
 
 def _land_beat(gid: str, speaker: str, text: str, location, image_url,
-               private_with=None, prepare=None) -> dict | None:
+               private_with=None, prepare=None, speaker_name=None) -> dict | None:
     """Land a late media beat AFTER any in-flight turn. BEGIN IMMEDIATE takes the
     story's write lock first (queueing behind a running turn's transaction, same
     lock run_turn claims), so turn_index/seq are computed over the FINISHED story.
@@ -29,7 +29,7 @@ def _land_beat(gid: str, speaker: str, text: str, location, image_url,
             return None    # game wiped while rendering/waiting: never resurrect it
         if prepare is not None and not prepare(conn):
             return None
-        return repo.add_beat(conn, gid, speaker, None, "image", text, location,
+        return repo.add_beat(conn, gid, speaker, speaker_name, "image", text, location,
                              image_url=image_url, private_with=private_with)
 
 
@@ -143,6 +143,58 @@ def generate_directed_image(gid: str, description: str, caption: str = "") -> di
     # the narrator's own visual description IS the moment's concept
     beat = _land_beat(gid, "narrator", image_prompts._concept(caption, description),
                       loc, url)
+    if not beat:
+        return None
+    events.publish(gid, "beat")
+    return beat
+
+
+def generate_character_shot(gid: str, cid: str, description: str,
+                            private_with: str | None = None) -> dict | None:
+    """Background: a character called show_self, so it lands as THEIR image beat rather
+    than the narrator's. Same render path as the narrator's directed shot (art director
+    over the live scene context, hardened template as the net), with one difference that
+    matters: the reference set conditioned on is the ACTOR's own, so the person in the
+    picture is the person who asked to be seen."""
+    description = (description or "").strip()
+    if not description:
+        return None
+    with db.get_conn() as conn:
+        g = repo.get_game(conn, gid)
+        ch = repo.get_character(conn, cid) if g else None
+        if not g or not ch or not ch["alive"]:
+            return None
+        loc = repo.get_player(conn, gid)["location"]
+        style = g["art_style"] or g["tone"] or ""
+        refs = [u for u in [_reference_url(ch["body_front_url"]),
+                            _reference_url(ch["face_url"])] if u]
+        shot = image_prompts._strip_quoted(description)
+        prompt = image_prompts._harden_image_prompt(f"{ch['name']}, {shot} {style}".strip())
+        # what THEY carry, on top of the scene's own artifacts: a character showing what
+        # it is doing is usually doing it with something in its hands
+        carried = ", ".join(i["name"] for i in db.loads(ch["inventory"], []) if i.get("name"))
+        extra = [f"WHAT {ch['name'].upper()} IS DOING, THE SHOT THEY ASKED FOR: {shot}",
+                 f"{ch['name'].upper()} IS THE SUBJECT: frame them doing it, not the room."]
+        if carried:
+            extra.append(f"{ch['name'].upper()} CARRIES: {carried}")
+        context = image_prompts._image_context(
+            conn, gid, include_chars=True, extra=extra) \
+            if settings.IMAGE_ART_DIRECTOR else ""
+        name = ch["name"]
+    if context:
+        prompt = image_prompts._artdirected_prompt(context, fallback=prompt)
+    result = media.generate_scene_image(prompt, width=settings.IMAGE_VIEW_W,
+                                        height=settings.IMAGE_VIEW_H,
+                                        references=refs or None)
+    if not result or not result.get("image_url"):
+        return None
+    with db.get_conn() as conn:
+        if not repo.get_game(conn, gid):
+            return None    # game wiped while rendering
+        turn = repo.next_turn_index(conn, gid)   # filename stamp only (see _land_beat)
+        url = storage._persist(gid, result["image_url"], f"shot-t{turn}-{repo._id()}")
+    beat = _land_beat(gid, cid, image_prompts._concept("", description), loc, url,
+                      private_with=private_with, speaker_name=name)
     if not beat:
         return None
     events.publish(gid, "beat")

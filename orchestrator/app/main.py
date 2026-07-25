@@ -321,6 +321,11 @@ def _resolved_turn(gid: str, background_tasks: BackgroundTasks, text: str = "",
     if settings.IMAGE_ENABLED and shot:
         background_tasks.add_task(integrate.generate_directed_image, gid,
                                   shot["description"], shot["caption"])
+    for shot in result.pop("character_shots", []):           # a character's own show_self
+        if settings.IMAGE_ENABLED:
+            background_tasks.add_task(integrate.generate_character_shot, gid,
+                                      shot["character_id"], shot["description"],
+                                      shot.get("private_with"))
     fallback = result.pop("view_fallback", None)             # a look the narrator didn't render
     if settings.IMAGE_ENABLED and fallback is not None:
         background_tasks.add_task(integrate.generate_view_snapshot, gid, fallback or None)
@@ -416,6 +421,13 @@ def update_settings(gid: str, body: GameSettingsIn):
             if body.turn_voices != 0 and not (1 <= body.turn_voices <= 4):
                 raise HTTPException(422, "turn_voices must be 0 (default) or 1..4")
             repo.set_turn_voices(conn, gid, body.turn_voices)
+        if body.character_images is not None:
+            level = (body.character_images or "").strip().lower()
+            if level not in settings.IMAGE_CHARACTER_LEVELS:
+                raise HTTPException(
+                    422, "character_images must be one of "
+                         f"{sorted(settings.IMAGE_CHARACTER_LEVELS)}")
+            repo.set_character_image_frequency(conn, gid, level)
         if body.turn_acts is not None:
             if body.turn_acts != 0 and not (1 <= body.turn_acts <= 3):
                 raise HTTPException(422, "turn_acts must be 0 (default) or 1..3")
@@ -427,7 +439,8 @@ def update_settings(gid: str, body: GameSettingsIn):
                              "summary_every": repo.effective_summary_every(g),
                              "context_tokens": repo.effective_context_tokens(g),
                              "turn_voices": repo.effective_turn_voices(g),
-                             "turn_acts": repo.effective_turn_acts(g)},
+                             "turn_acts": repo.effective_turn_acts(g),
+                             "character_images": repo.effective_character_images(g)},
                 "narrator_voice_id": g["narrator_voice_id"]}
 
 

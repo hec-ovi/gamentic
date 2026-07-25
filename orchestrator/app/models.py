@@ -160,6 +160,8 @@ class GameSettingsIn(BaseModel):
     context_tokens: Optional[int] = None    # narrator token budget (0 = off, 4000..120000)
     turn_voices: Optional[int] = None       # characters cued to speak per turn (0 = default, 1..4)
     turn_acts: Optional[int] = None         # times one character may act per turn (0 = default, 1..3)
+    character_images: Optional[str] = None  # how often characters show what they are
+                                            # doing: off | sometimes | often
 
 
 class ViewIn(BaseModel):
