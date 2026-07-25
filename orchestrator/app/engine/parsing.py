@@ -143,16 +143,64 @@ def strip_markup(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
 
 
+# A tag the model OPENS and never closes, at the very END of the text (live 2026-07-25:
+# a dialogue beat stored as '"This smile?"[giggle' - the reply stopped inside the tag).
+# Every tag-shaped scrub above needs the closing bracket to match, so the fragment walks
+# through all of them. Square brackets go by BALANCE, like the surplus rule below; angle
+# brackets go by KNOWN TAG WORD only, because prose legitimately carries a '<'.
+_OPEN_SQUARE_TAIL = re.compile(r"\[/?\w*\s*$")
+_OPEN_ANGLE_TAIL = re.compile(r"</?(?:%s|pause|think)\s*$" % "|".join(EMOTIONS), re.I)
+
+
 def _strip_bracket_debris(text: str) -> str:
     """Unbalanced bracket remnants of half-formed tag markup survive every tag-shaped
     scrub (live, e2e 2026-06-11 edge-C: a dialogue beat stored as 'The keeper?!]' after
     the leading [angry] was lifted, leaving a stray close-bracket no rule recognized).
     Only the SURPLUS side dies: balanced brackets are legitimate speech."""
+    text = _OPEN_ANGLE_TAIL.sub("", text).rstrip()
+    if text.count("[") > text.count("]"):
+        text = _OPEN_SQUARE_TAIL.sub("", text).rstrip()
     while text.endswith("]") and text.count("]") > text.count("["):
         text = text[:-1].rstrip()
     while text.startswith("[") and text.count("[") > text.count("]"):
         text = text[1:].lstrip()
     return text
+
+
+# The other half of the same failure: a quote the model opened and never closed. Here the
+# words are REAL (a stop sequence or the end of the reply cut the line), so the pair is
+# completed instead of the text trimmed - deleting them would eat the sentence. Straight
+# and typographic doubles balance by count; the single quote balances only when the text
+# OPENS with one, since an apostrophe is indistinguishable from a quote mid-word.
+_LOOSE_SINGLE = re.compile(r"(?<![A-Za-z])'|'(?![A-Za-z])")
+
+
+def close_open_quotes(text: str) -> str:
+    text = (text or "").rstrip()
+    if not text:
+        return text
+    if text.count('"') % 2:
+        text += '"'
+    if text.count("“") > text.count("”"):
+        text += "”"
+    if text.startswith("'") and len(_LOOSE_SINGLE.findall(text)) % 2:
+        text += "'"
+    return text
+
+
+def repair_delimiters(text: str) -> str:
+    """Drop markup the model left open, close punctuation it left open. Every path that
+    stores or displays model text ends here, because either one breaks the beat on
+    screen: the fragment shows as literal '[giggle', the quote swallows the bubble."""
+    return close_open_quotes(_strip_bracket_debris(text or ""))
+
+
+def _repair_segment(kind: str, text: str) -> str:
+    """The same repair, then the speech convention: a bubble supplies its own framing,
+    so a line whose quote was only half-written loses the pair entirely rather than
+    keeping the orphan (live: a dialogue beat opened with '"' and never closed it)."""
+    text = repair_delimiters(text)
+    return _unquote(text) if kind in ("say", "private") else text
 
 
 def _extract_emotion(text: str) -> tuple[str, str]:
@@ -256,7 +304,7 @@ def scrub_model_text(text: str) -> str:
     memories, /explain answers): clean_prose plus the think/scaffold/markup strip.
     Folds matter most: a stored recap is re-fed to prompts EVERY turn, so one leaked
     scaffold compounds (e2e 2026-06-11: the turn-53 bytes passed clean_prose whole)."""
-    return strip_markup(strip_reasoning(clean_prose(text))).strip()
+    return repair_delimiters(strip_markup(strip_reasoning(clean_prose(text))).strip())
 
 
 # A screenplay impersonation in the FIRST line dodges the stop list: every name-colon
@@ -281,7 +329,7 @@ def _scrub_narration(text: str) -> tuple[str, str]:
     m = _EMOTION_TAG.match(text)
     if m and m.group(1).lower() in EMOTIONS:
         emotion = EMOTIONS[m.group(1).lower()]
-    return emotion, _PROSE_TAG.sub("", text).strip()
+    return emotion, repair_delimiters(_PROSE_TAG.sub("", text).strip())
 
 
 def _reclassify_do(content: str) -> tuple[str, str, str]:
@@ -327,6 +375,7 @@ def parse_character_output(text: str) -> list[tuple[str, str, str]]:
         inside = True   # this opener begins a span; the next opener decides if it closed
     if not matches:
         emotion, cleaned = _extract_emotion(_unquote(_clean_segment(text)))
+        cleaned = _repair_segment("say", cleaned)
         return [("say", cleaned, emotion)] if cleaned else []
     segs: list[tuple[str, str, str]] = []
     lead = _clean_segment(text[: matches[0].start()])
@@ -358,7 +407,106 @@ def parse_character_output(text: str) -> list[tuple[str, str, str]]:
             kind, content, emotion = _reclassify_do(content)
         if content:
             segs.append((kind, content, emotion))
-    return segs
+    # last stop for every segment: the shape decisions above (do-vs-say by matching
+    # quotes) are made on the raw text, so the repair runs only once they are settled
+    repaired = [(k, _repair_segment(k, c), e) for k, c, e in segs]
+    return [(k, c, e) for k, c, e in repaired if c]
+
+# The narrator writing a character's lines INSIDE its prose (live 2026-07-25: a narration
+# beat carried three of Chinesa's speeches, quotes, attributions and all, and she was cued
+# and spoke again after it). The rule has always been in narrator.system.md - the narrator
+# is the author's eye, never a voice - so this is the engine half of it: a beat is either
+# narration or dialogue, never both. Attributed speech is lifted OUT, in place, and the
+# turn emits narration / bubble / narration in the order the prose had them.
+#
+# Judged by SHAPE, never by wording: a quoted span counts as speech only when the prose
+# around it names a PRESENT character or points at one with a pronoun beside a speech verb.
+# An unattributed quote (a sign, a form, a line read aloud from paper) stays narration,
+# because narration legitimately quotes things that nobody says.
+_QUOTED = re.compile(r"[\"“]\s*([^\"“”]{2,}?)\s*[\"”]")
+_SPEECH_VERB = (r"says?|said|adds?|added|answers?|answered|repl(?:y|ies|ied)|continues?|"
+                r"continued|asks?|asked|whispers?|whispered|murmurs?|murmured|calls?|"
+                r"called|snaps?|snapped|breathes?|breathed|offers?|offered|repeats?|"
+                r"repeated|hisses?|hissed|shouts?|shouted|tells?|told|mutters?|muttered")
+_PRONOUN_SPEECH = re.compile(r"\b(?:she|he|they)\b[^.!?]{0,40}?\b(?:%s)\b" % _SPEECH_VERB, re.I)
+_WINDOW = 90          # how far around the quote an attribution may sit
+# Cast names are written in full ("Mr. Chen (CTO)") but referred to by one word ("Chen").
+# Titles are not identity: two characters can both be a Mr.
+_TITLES = {"mr", "mrs", "ms", "miss", "dr", "sir", "lady", "lord", "captain", "the"}
+
+
+def _name_regex(name: str) -> re.Pattern:
+    """Full name first, then each distinctive word of it: 'Mr. Chen (CTO)' answers to
+    'Chen' and to the whole string, never to 'Mr'."""
+    words = [w for w in re.findall(r"[A-Za-z][\w'-]{1,}", name)
+             if w.lower() not in _TITLES]
+    alts = [re.escape(name.strip())] + [re.escape(w) for w in words]
+    return re.compile(r"(?:%s)" % "|".join(a for a in alts if a), re.I)
+
+
+def _attribute(before: str, after: str, pats: dict, last: str | None,
+               sole: str | None) -> str | None:
+    """Which present character owns this quoted span, if any. A NAME in the window wins;
+    a bare pronoun beside a speech verb falls back to the last character the prose named
+    (that is what 'she says' refers to), and failing that to the only one it mentions at
+    all - the live beat opened with 'She takes the form' and named Chinesa two sentences
+    later, which is ordinary prose, not ambiguity."""
+    window_b, window_a = before[-_WINDOW:], after[:_WINDOW]
+    for name, pat in pats.items():
+        if pat.search(window_a) or pat.search(window_b):
+            return name
+    if _PRONOUN_SPEECH.search(window_a) or _PRONOUN_SPEECH.search(window_b):
+        return last or sole
+    return None
+
+
+def _tidy_narration(chunk: str) -> str:
+    """Prose left behind once a quote is lifted out: the attribution stays (it IS
+    narration - 'she says, voice dropping'), but the orphan punctuation the quote was
+    glued to does not."""
+    chunk = re.sub(r"\s{2,}", " ", chunk)
+    chunk = re.sub(r"^\s*[,;:]\s*", "", chunk)
+    chunk = re.sub(r"\s+([,.;:!?])", r"\1", chunk)
+    chunk = re.sub(r"(^|\n)\s*[,.;:]\s*", r"\1", chunk)
+    return chunk.strip()
+
+
+def split_narration_speech(text: str, names: list[str]) -> list[tuple[str, str | None, str]]:
+    """[(kind, speaker_name, text)] in prose order: 'narration' chunks with None, and
+    'dialogue' chunks owned by a present character. Returns a single narration entry
+    when nothing is attributable, so the ordinary path is untouched."""
+    if not text or not names:
+        return [("narration", None, text)] if text else []
+    pats = {n: _name_regex(n) for n in names if n and n.strip()}
+    mentioned = [n for n, p in pats.items() if p.search(text)]
+    sole = mentioned[0] if len(mentioned) == 1 else None
+    out: list[tuple[str, str | None, str]] = []
+    cursor, last_named = 0, None
+    for m in _QUOTED.finditer(text):
+        speaker = _attribute(text[:m.start()], text[m.end():], pats, last_named, sole)
+        for name, pat in pats.items():          # track who the prose named most recently
+            if pat.search(text[cursor:m.start()]):
+                last_named = name
+        if not speaker:
+            continue                            # not speech: leave it inside the narration
+        out.append(("narration", None, text[cursor:m.start()]))
+        out.append(("dialogue", speaker, m.group(1).strip()))
+        cursor = m.end()
+        last_named = speaker
+    if not out:
+        return [("narration", None, text)]
+    out.append(("narration", None, text[cursor:]))
+    merged: list[tuple[str, str | None, str]] = []
+    for kind, who, chunk in out:
+        chunk = _tidy_narration(chunk) if kind == "narration" else chunk.strip()
+        if not chunk:
+            continue
+        if kind == "narration" and merged and merged[-1][0] == "narration":
+            merged[-1] = ("narration", None, f"{merged[-1][2]} {chunk}".strip())
+        else:
+            merged.append((kind, who, chunk))
+    return merged
+
 
 # The character's memory marks, written as text. Live (2026-06-11, first night of the
 # self-memory tools): the 26B character agents narrate their tool use instead of
